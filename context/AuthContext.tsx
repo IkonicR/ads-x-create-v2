@@ -45,24 +45,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
 
-      // Supabase responded, clear the safety timer
-      clearTimeout(safetyTimer);
+      try {
+        setSession(session);
+        setUser(session?.user ?? null);
 
-      setSession(session);
-      setUser(session?.user ?? null);
+        // CRITICAL FIX: Stop loading IMMEDIATELY. Do not wait for the profile.
+        // This ensures the dashboard loads instantly on refresh.
+        if (mounted) setLoading(false);
+        clearTimeout(safetyTimer);
 
-      if (session?.user) {
-        try {
-          const p = await StorageService.getUserProfile(session.user.id);
-          if (mounted) setProfile(p);
-        } catch (e) {
-          console.warn("Profile fetch failed", e);
+        if (session?.user) {
+          // Fetch profile in the background without blocking the UI
+          StorageService.getUserProfile(session.user.id)
+            .then(p => {
+              if (mounted) setProfile(p);
+            })
+            .catch(e => {
+              console.warn("Background profile fetch failed", e);
+            });
+        } else {
+          if (mounted) setProfile(null);
         }
-      } else {
-        if (mounted) setProfile(null);
+      } catch (err) {
+        console.error("Auth state change critical error:", err);
+        // Ensure we unlock if something explodes
+        if (mounted) setLoading(false);
+        clearTimeout(safetyTimer);
       }
-
-      if (mounted) setLoading(false);
     });
 
     // 3. Trigger Initial Check

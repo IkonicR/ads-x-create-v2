@@ -2,19 +2,50 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# Run and deploy your AI Studio app
+# Ads x Create V2 (AI Studio)
 
-This contains everything you need to run your app locally.
+The world's best AI Ad Creator. Empowering business owners to generate agency-grade marketing assets instantly using Google Gemini 3 and Vercel AI SDK.
 
-View your app in AI Studio: https://ai.studio/apps/drive/1dC6ksgyT6WpTHl0WvLbQAeZPciwh2nXh
+View your app: [https://ads-x-create-v2.vercel.app](https://ads-x-create-v2.vercel.app)
+
+## Tech Stack
+*   **Frontend:** React 19, Vite, Tailwind v4
+*   **Backend:** Vercel Serverless Functions (`api/`)
+*   **AI:** Vercel AI SDK + Google Gemini 3 Pro
+*   **Database:** Supabase
 
 ## Run Locally
 
-**Prerequisites:**  Node.js
+**Prerequisites:** Node.js, Vercel CLI
 
+1.  **Install dependencies:**
+    ```bash
+    npm install
+    npm install -g vercel
+    ```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+2.  **Link Vercel Project:**
+    ```bash
+    npx vercel link
+    ```
+    (Follow the prompts to link to `ads-x-create-v2`)
+
+3.  **Pull Environment Variables:**
+    ```bash
+    npx vercel env pull .env.local
+    ```
+
+4.  **Run the App:**
+    ```bash
+    npx vercel dev
+    ```
+    *Note: Do not use `npm run dev` as it will not start the backend API functions.*
+
+## Deployment
+
+Deployments are automatic via Git push to `main`.
+
+To deploy manually:
+```bash
+npx vercel deploy --prod
+```

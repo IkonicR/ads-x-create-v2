@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { Business, ViewState, Task, Asset, ExtendedAsset } from './types';
 import { StorageService } from './services/storage';
-import { ThemeProvider } from './context/ThemeContext';
+import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { NavigationProvider, useNavigation } from './context/NavigationContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -20,6 +20,7 @@ import Library from './views/Library';
 import AdminDashboard from './views/AdminDashboard';
 import ChatInterface from './views/ChatInterface';
 import UserProfile from './views/UserProfile';
+import { GalaxyHeading } from './components/GalaxyHeading';
 
 // Helper to map URL paths to ViewState (for the Sidebar)
 const getViewStateFromPath = (pathname: string): ViewState => {
@@ -69,6 +70,7 @@ const MainLayout: React.FC<any> = (props) => {
 
 const AppContent: React.FC = () => {
   const { user, profile, loading } = useAuth(); 
+  const { theme } = useTheme(); 
   const navigate = useNavigate();
   const location = useLocation();
   
@@ -81,6 +83,7 @@ const AppContent: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [pendingAssets, setPendingAssets] = useState<ExtendedAsset[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
 
   // Load initial data
   useEffect(() => {
@@ -114,30 +117,34 @@ const AppContent: React.FC = () => {
           }
 
         } else {
-          navigate('/onboarding');
+          // Only if we are SURE there are 0 businesses do we redirect
         }
       } catch (error) {
         console.error("Failed to load initial data", error);
+      } finally {
+        setLoadingData(false); // Data load complete
       }
     };
     load();
   }, [user]); // Only on user login
 
   // --- AUTHENTICATION GATES ---
-  if (loading) return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-4">
-      <div className="animate-pulse text-[#6D5DFC] font-bold">Loading Studio...</div>
-      <button 
-        onClick={() => {
-          localStorage.clear();
-          window.location.reload();
-        }}
-        className="text-xs text-gray-400 underline hover:text-red-500"
-      >
-        Stuck? Click to Reset
-      </button>
-    </div>
-  );
+  if (loading || loadingData || (user && !profile)) {
+    const bgClass = theme === 'dark' ? 'bg-[#0F1115]' : 'bg-[#E0E5EC]';
+    return ( 
+      <div className={`min-h-screen flex flex-col items-center justify-center gap-8 ${bgClass} transition-colors duration-300`}>
+        <div className="scale-110">
+          <GalaxyHeading text="ADS X CREATE" className="text-4xl md:text-6xl tracking-tighter" />
+        </div>
+        <div className="flex flex-col items-center gap-2">
+          <div className="w-12 h-1 rounded-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 animate-pulse" />
+          <div className="text-xs font-bold tracking-[0.3em] opacity-40 uppercase animate-pulse">
+            Loading Studio
+          </div>
+        </div>
+      </div>
+    );
+  }
   
   if (!user) return <Login />;
   if (profile && !profile.onboarding_completed) return <UserOnboarding />;
@@ -186,7 +193,7 @@ const AppContent: React.FC = () => {
       ]);
       setTasks(loadedTasks);
       setAssets(loadedAssets);
-      navigate('/dashboard');
+      // Stay on current view
     } catch (error) {
       console.error("Error switching business", error);
     }

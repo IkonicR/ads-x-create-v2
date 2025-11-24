@@ -16,8 +16,8 @@ Our goal is to empower business owners (who are not marketers) to generate **age
 ### 1. Tech Stack
 *   **Frontend:** React 19 + Vite.
 *   **Styling:** Tailwind CSS v4 (Native Variables) + Framer Motion.
-*   **AI:** Google Gemini 3 Pro (Maxed out for aesthetics).
-*   **Backend:** Supabase (PostgreSQL + RLS).
+*   **AI:** Vercel AI SDK + Google Gemini 3 Pro (Maxed out for aesthetics).
+*   **Backend:** Vercel Serverless Functions (`api/`) + Supabase (PostgreSQL + RLS).
 
 ### 2. Design System: "Celestial Neumorphism"
 *   **Theme:** `#E0E5EC` (Light) / `#0F1115` (Dark).
@@ -46,4 +46,4 @@ Our goal is to empower business owners (who are not marketers) to generate **age
 *   **Safety:** Never delete user data without confirmation.
 
 ## Project Config
-*   **Supabase Project ID:** sagjrsjocoojpxjuxlwz
+*   **Supabase Project ID:** afzrfcqidscibmgptkcl

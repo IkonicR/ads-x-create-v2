@@ -90,258 +90,150 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
                 initial={{ opacity: 0, y: 10, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                className={`absolute bottom-full mb-4 left-0 w-full max-h-[60vh] sm:max-h-[50vh] overflow-hidden rounded-3xl ${slabBg} ${slabShadowClass} border border-white/5 flex flex-col`}
+                className={`absolute bottom-full mb-4 left-1/2 -translate-x-1/2 w-[90vw] max-w-4xl h-[60vh] overflow-hidden rounded-3xl ${slabBg} ${slabShadowClass} border border-white/5 flex flex-col md:flex-row`}
               >
-                {/* Header (Dynamic Info Bar) */}
-                <div className="flex justify-between items-center p-4 border-b border-gray-100 dark:border-white/5 shrink-0 min-h-[60px]">
-                  {(() => {
-                     // Determine Active Item Context
-                     const isPreset = activeMenu === 'preset';
-                     const isStyle = activeMenu === 'style';
-                     
-                     const activeItem = isPreset 
-                        ? presets.find(p => p.id === selectedPreset)
+                {/* LEFT SIDE: The Grid (Mobile: Top, Desktop: Left 60%) */}
+                <div className="flex-1 flex flex-col h-full border-b md:border-b-0 md:border-r border-gray-100 dark:border-white/5 relative">
+                   <div className="p-4 border-b border-gray-100 dark:border-white/5 shrink-0 flex justify-between items-center">
+                      <h4 className={`text-xs font-bold uppercase tracking-wider ${themeStyles.textSub}`}>
+                        Select {activeMenu ? activeMenu.charAt(0).toUpperCase() + activeMenu.slice(1) : ''}
+                      </h4>
+                      <button onClick={() => setActiveMenu(null)} className="md:hidden text-gray-400">
+                        <X size={18} />
+                      </button>
+                   </div>
+                   
+                   <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
+                      {/* Grid Content */}
+                      {(activeMenu === 'preset' || activeMenu === 'style') && (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                          {(activeMenu === 'preset' ? presets : aestheticStyles).map((item: any) => (
+                            <button
+                              key={item.id}
+                              onClick={() => activeMenu === 'preset' ? setSelectedPreset(item.id) : setSelectedStyle(item.id)}
+                              className={`group p-3 rounded-2xl text-center transition-all flex flex-col items-center gap-3 ${
+                                (activeMenu === 'preset' ? selectedPreset : selectedStyle) === item.id
+                                  ? `${insetShadowClass} text-brand` 
+                                  : `${btnShadowClass} hover:translate-y-[-1px]`
+                              }`}
+                            >
+                               <div className="w-full aspect-square rounded-xl overflow-hidden relative bg-gray-100 dark:bg-gray-800">
+                                 {item.imageUrl ? (
+                                   <img src={item.imageUrl} className="w-full h-full object-cover" alt={item.name} />
+                                 ) : (
+                                   <div className="w-full h-full flex items-center justify-center text-gray-300 dark:text-gray-600">
+                                     {activeMenu === 'preset' ? <LayoutTemplate size={32}/> : <Palette size={32}/>}
+                                   </div>
+                                 )}
+                               </div>
+                               <span className={`text-xs font-bold truncate w-full ${
+                                 (activeMenu === 'preset' ? selectedPreset : selectedStyle) === item.id ? 'text-brand' : themeStyles.textMain
+                               }`}>
+                                 {item.name}
+                               </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Keep Ratio/Subject/Model Logic as simplistic grids for now to save space */}
+                      {activeMenu === 'ratio' && (
+                         <div className="grid grid-cols-3 gap-3">
+                           {RATIOS.map(r => (
+                             <button key={r.id} onClick={() => setSelectedRatio(r.id)} className={`p-4 rounded-2xl flex flex-col items-center gap-2 ${selectedRatio === r.id ? `${insetShadowClass} text-brand` : `${btnShadowClass} ${themeStyles.textMain}`}`}>
+                               <r.icon size={24} />
+                               <span className="text-xs font-bold">{r.label}</span>
+                             </button>
+                           ))}
+                         </div>
+                      )}
+                      {(activeMenu === 'subject' || activeMenu === 'model') && (
+                         <div className="flex flex-col gap-3">
+                            {/* Placeholder for Subject/Model - Ideally refactor to use this layout too if needed */}
+                            <p className={`text-center p-10 ${themeStyles.textSub}`}>
+                               {activeMenu === 'subject' ? 'Select a subject from the list below.' : 'Select a model tier.'}
+                            </p>
+                            {/* Re-injecting simple subject list for functionality */}
+                            {activeMenu === 'subject' && subjects.map(s => (
+                               <button key={s.id} onClick={() => setSelectedSubject(s.id)} className={`p-3 rounded-2xl text-left transition-all ${selectedSubject === s.id ? `${insetShadowClass} text-brand` : btnShadowClass}`}>
+                                  {s.name}
+                               </button>
+                            ))}
+                            {activeMenu === 'model' && (
+                               <div className="flex flex-col gap-2">
+                                  {['flash', 'pro', 'ultra'].map(tier => (
+                                     <button key={tier} onClick={() => setModelTier(tier as any)} className={`p-3 rounded-2xl text-left capitalize ${modelTier === tier ? `${insetShadowClass} text-brand` : btnShadowClass}`}>
+                                        {tier}
+                                     </button>
+                                  ))}
+                               </div>
+                            )}
+                         </div>
+                      )}
+                   </div>
+                </div>
+
+                {/* RIGHT SIDE: The Inspector (Desktop: Right 40%) */}
+                <div className="hidden md:flex w-[350px] shrink-0 flex-col bg-gray-50/50 dark:bg-black/20 backdrop-blur-sm p-6">
+                   <div className="flex justify-end">
+                      <button onClick={() => setActiveMenu(null)} className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
+                        <X size={20} />
+                      </button>
+                   </div>
+                   
+                   {(() => {
+                      const isPreset = activeMenu === 'preset';
+                      const isStyle = activeMenu === 'style';
+                      const item = isPreset 
+                        ? presets.find(p => p.id === selectedPreset) 
                         : isStyle 
-                          ? aestheticStyles.find(s => s.id === selectedStyle)
+                          ? aestheticStyles.find(s => s.id === selectedStyle) 
                           : null;
 
-                     if ((isPreset || isStyle) && activeItem) {
-                        return (
-                          <div className="flex flex-col animate-fade-in">
-                             <div className="flex items-center gap-2">
-                               <h4 className={`text-sm font-bold uppercase tracking-wider ${themeStyles.textMain}`}>
-                                 {activeItem.name}
-                               </h4>
-                               <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${isPreset ? 'bg-blue-500/10 text-blue-500' : 'bg-purple-500/10 text-purple-500'}`}>
-                                  {isPreset ? 'Layout' : 'Style'}
-                               </span>
-                             </div>
-                             <p className={`text-[10px] ${themeStyles.textSub} truncate max-w-[250px]`}>
-                               {activeItem.description}
-                             </p>
-                          </div>
-                        );
-                     }
+                      if (!item || (!isPreset && !isStyle)) return (
+                        <div className="flex-1 flex flex-col items-center justify-center text-center opacity-40">
+                           <Sparkles size={48} className="mb-4 text-gray-400" />
+                           <p className={`text-sm font-bold ${themeStyles.textMain}`}>Select an option</p>
+                           <p className={`text-xs ${themeStyles.textSub}`}>to view details</p>
+                        </div>
+                      );
 
-                     // Default Title
-                     return (
-                        <h4 className={`text-sm font-bold uppercase tracking-wider ${themeStyles.textSub}`}>
-                          Select {activeMenu ? activeMenu.charAt(0).toUpperCase() + activeMenu.slice(1) : ''}
-                        </h4>
-                     );
-                  })()}
-                  
-                  <button onClick={() => setActiveMenu(null)} className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
-                    <X size={18} />
-                  </button>
-                </div>
-                
-                <div className="overflow-y-auto custom-scrollbar p-4 pb-24 sm:pb-4">
-                   {activeMenu === 'preset' && (
-                     <div className="grid grid-cols-2 gap-3">
-                       {presets.map(p => (
-                         <button
-                           key={p.id}
-                           onClick={() => { setSelectedPreset(p.id); }}
-                           className={`p-3 rounded-2xl text-center transition-all flex flex-col items-center gap-3 ${
-                             selectedPreset === p.id 
-                               ? `${insetShadowClass} text-brand` 
-                               : `${btnShadowClass} hover:translate-y-[-1px]`
-                           }`}
-                         >
-                            <div className="w-full aspect-square rounded-xl overflow-hidden relative bg-gray-100 dark:bg-gray-800">
-                              {p.imageUrl ? (
-                                <img src={p.imageUrl} className="w-full h-full object-cover" alt={p.name} />
+                      return (
+                        <div className="flex-1 flex flex-col animate-fade-in">
+                           <div className={`w-full aspect-video rounded-2xl overflow-hidden mb-6 shadow-lg ${themeStyles.border} border`}>
+                              {item.imageUrl ? (
+                                <img src={item.imageUrl} className="w-full h-full object-cover" />
                               ) : (
-                                <div className="w-full h-full flex items-center justify-center text-gray-300 dark:text-gray-600">
-                                  <LayoutTemplate size={32} />
+                                <div className="w-full h-full bg-gray-200 dark:bg-gray-800 flex items-center justify-center">
+                                   {isPreset ? <LayoutTemplate size={48} className="opacity-20"/> : <Palette size={48} className="opacity-20"/>}
                                 </div>
                               )}
-                              {/* Removed Overlay Divs - Relying on Inset Shadow Container */}
-                            </div>
-                           <div className="text-center w-full">
-                             <span className={`text-xs font-bold block truncate ${selectedPreset === p.id ? 'text-brand' : themeStyles.textMain}`}>
-                               {p.name}
-                             </span>
-                           </div>
-                         </button>
-                       ))}
-                     </div>
-                   )}
-
-                   {activeMenu === 'style' && (
-                     <div className="grid grid-cols-2 gap-3">
-                       {aestheticStyles.map(s => (
-                         <button
-                           key={s.id}
-                           onClick={() => { setSelectedStyle(s.id); }}
-                           className={`p-3 rounded-2xl text-center transition-all flex flex-col items-center gap-3 ${
-                             selectedStyle === s.id 
-                               ? `${insetShadowClass} text-brand` 
-                               : `${btnShadowClass} hover:translate-y-[-1px]`
-                           }`}
-                         >
-                            <div className="w-full aspect-square rounded-xl overflow-hidden relative bg-gray-100 dark:bg-gray-800">
-                              {s.imageUrl ? (
-                                <img src={s.imageUrl} className="w-full h-full object-cover" alt={s.name} />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center text-gray-300 dark:text-gray-600">
-                                  <Palette size={32} />
-                                </div>
-                              )}
-                              {/* Removed Overlay Divs - Relying on Inset Shadow Container */}
-                            </div>
-                           <div className="text-center w-full">
-                             <span className={`text-xs font-bold block truncate ${selectedStyle === s.id ? 'text-brand' : themeStyles.textMain}`}>
-                               {s.name}
-                             </span>
-                           </div>
-                         </button>
-                       ))}
-                     </div>
-                   )}
-
-                   {activeMenu === 'ratio' && (
-                     <div className="grid grid-cols-3 gap-3">
-                       {RATIOS.map(r => (
-                         <button
-                           key={r.id}
-                           onClick={() => { setSelectedRatio(r.id); setActiveMenu(null); }}
-                           className={`p-4 rounded-2xl text-center transition-all flex flex-col items-center gap-2 ${
-                             selectedRatio === r.id 
-                               ? `${insetShadowClass} text-brand` 
-                               : `${btnShadowClass} ${themeStyles.textMain} hover:translate-y-[-1px]`
-                           }`}
-                         >
-                           <r.icon size={24} />
-                           <span className="text-xs font-bold">{r.label}</span>
-                           <span className="text-[10px] opacity-50">{r.id}</span>
-                         </button>
-                       ))}
-                     </div>
-                   )}
-
-                   {activeMenu === 'subject' && (
-                     <div className="flex flex-col gap-3">
-                       <button
-                         onClick={() => { setSelectedSubject(''); setActiveMenu(null); }}
-                         className={`p-4 rounded-2xl text-left transition-all border border-dashed border-gray-400/30 hover:bg-gray-50 dark:hover:bg-white/5 ${
-                           selectedSubject === '' ? 'bg-gray-50 dark:bg-white/5' : ''
-                         }`}
-                       >
-                         <span className={`text-sm font-bold block ${themeStyles.textMain}`}>No Specific Subject</span>
-                         <span className={`text-xs ${themeStyles.textSub}`}>The AI will generate the subject based on your prompt.</span>
-                       </button>
-                       
-                       {subjects.length > 0 && <div className={`text-xs font-bold uppercase tracking-wider ${themeStyles.textSub} mt-2 mb-1 px-1`}>Your Library</div>}
-                       
-                       {subjects.map(s => (
-                         <button
-                           key={s.id}
-                           onClick={() => { setSelectedSubject(s.id); setActiveMenu(null); }}
-                           className={`p-3 rounded-2xl text-left transition-all flex items-center gap-4 ${
-                             selectedSubject === s.id 
-                               ? `${insetShadowClass} border-l-4 border-brand` 
-                               : `${btnShadowClass} ${themeStyles.textMain} hover:translate-y-[-1px]`
-                           }`}
-                         >
-                           {s.imageUrl ? (
-                             <img src={s.imageUrl} className="w-12 h-12 rounded-xl object-cover bg-gray-200" />
-                           ) : (
-                             <div className="w-12 h-12 rounded-xl bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-400">
-                               {s.type === 'product' ? <Box size={20}/> : <User size={20}/>}
-                             </div>
-                           )}
-                           <div>
-                             <span className="text-sm font-bold block">{s.name}</span>
-                             <span className="text-xs opacity-60 capitalize">{s.type}</span>
-                           </div>
-                         </button>
-                       ))}
-                     </div>
-                   )}
-
-                   {activeMenu === 'model' && (
-                      <div className="col-span-2 sm:col-span-3 flex flex-col gap-3">
-                         
-                         {/* Flash Tier */}
-                         <button
-                           onClick={() => { setModelTier('flash'); setActiveMenu(null); }}
-                           className={`p-4 rounded-2xl flex items-center gap-4 transition-all group ${
-                             modelTier === 'flash' 
-                               ? `${insetShadowClass} border-l-4 border-blue-400` 
-                               : `${btnShadowClass} hover:translate-y-[-1px]`
-                           }`}
-                         >
-                           <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${modelTier === 'flash' ? 'bg-blue-400 text-white' : 'bg-gray-200 dark:bg-gray-800 text-gray-500'}`}>
-                             <Zap size={20} fill="currentColor" />
-                           </div>
-                           <div className="text-left flex-1 flex justify-between items-center">
-                             <div>
-                               <span className={`text-sm font-bold block ${themeStyles.textMain}`}>Flash 2.5</span>
-                               <span className={`text-xs ${themeStyles.textSub}`}>Lightning fast, standard resolution.</span>
-                             </div>
-                             <span className={`px-3 py-1 rounded-full text-xs font-bold ${themeStyles.textSub} ${themeStyles.shadowIn} ${modelTier === 'flash' ? 'text-brand' : ''}`}>
-                               10 Credits
-                             </span>
-                           </div>
-                         </button>
-
-                         {/* Pro Tier */}
-                         <button
-                           onClick={() => { setModelTier('pro'); setActiveMenu(null); }}
-                           className={`p-4 rounded-2xl flex items-center gap-4 transition-all group ${
-                             modelTier === 'pro' 
-                               ? `${insetShadowClass} border-l-4 border-brand` 
-                               : `${btnShadowClass} hover:translate-y-[-1px]`
-                           }`}
-                         >
-                           <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${modelTier === 'pro' ? 'bg-brand text-white' : 'bg-gray-200 dark:bg-gray-800 text-gray-500'}`}>
-                             <Diamond size={20} fill="currentColor" />
-                           </div>
-                           <div className="text-left flex-1 flex justify-between items-center">
-                             <div>
-                               <span className={`text-sm font-bold block ${themeStyles.textMain}`}>Gemini Pro</span>
-                               <span className={`text-xs ${themeStyles.textSub}`}>High fidelity, enhanced lighting.</span>
-                             </div>
-                             <span className={`px-3 py-1 rounded-full text-xs font-bold ${themeStyles.textSub} ${themeStyles.shadowIn} ${modelTier === 'pro' ? 'text-brand' : ''}`}>
-                               40 Credits
-                             </span>
-                           </div>
-                         </button>
-
-                         {/* Ultra Tier */}
-                         <button
-                           onClick={() => { setModelTier('ultra'); setActiveMenu(null); }}
-                           className={`p-4 rounded-2xl flex items-center gap-4 transition-all group overflow-hidden relative ${
-                             modelTier === 'ultra' 
-                               ? `${insetShadowClass} border-l-4 border-purple-500` 
-                               : `${btnShadowClass} hover:translate-y-[-1px]`
-                           }`}
-                         >
-                           <div className={`w-10 h-10 rounded-xl flex items-center justify-center relative z-10 ${modelTier === 'ultra' ? 'bg-gradient-to-tr from-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/30' : 'bg-gray-200 dark:bg-gray-800 text-gray-500'}`}>
-                             <Sparkles size={20} fill="currentColor" />
-                           </div>
-                           <div className="text-left flex-1 flex justify-between items-center relative z-10">
-                             <div>
-                               <span className={`text-sm font-bold block bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500 bg-clip-text ${modelTier === 'ultra' ? 'text-transparent' : themeStyles.textMain}`}>
-                                 Ultra 4K
-                               </span>
-                               <span className={`text-xs ${themeStyles.textSub}`}>Maximum resolution & detail.</span>
-                             </div>
-                             <span className={`px-3 py-1 rounded-full text-xs font-bold ${themeStyles.textSub} ${themeStyles.shadowIn} ${modelTier === 'ultra' ? 'text-transparent bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-text' : ''}`}>
-                               80 Credits
-                             </span>
                            </div>
                            
-                           {/* Subtle Glow BG for Ultra */}
-                           {modelTier === 'ultra' && (
-                             <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-purple-500/10 to-transparent pointer-events-none" />
-                           )}
-                         </button>
-
-                      </div>
-                   )}
+                           <h3 className={`text-2xl font-extrabold mb-2 ${themeStyles.textMain}`}>{item.name}</h3>
+                           <p className={`text-sm leading-relaxed mb-6 ${themeStyles.textSub}`}>{item.description}</p>
+                           
+                           <div className="space-y-4 mt-auto">
+                              <div>
+                                <span className="text-[10px] font-bold uppercase tracking-wider opacity-50 block mb-1">
+                                  {isPreset ? 'Composition Logic' : 'Logo Treatment'}
+                                </span>
+                                <div className={`p-3 rounded-xl text-xs font-mono ${themeStyles.bg} ${themeStyles.shadowIn} ${themeStyles.textMain}`}>
+                                  {/* @ts-ignore */}
+                                  {isPreset ? item.logoPlacement : item.logoMaterial || 'Standard'}
+                                </div>
+                              </div>
+                              
+                              <button 
+                                onClick={() => setActiveMenu(null)}
+                                className="w-full py-3 rounded-xl bg-brand text-white font-bold text-sm shadow-lg shadow-brand/30 hover:scale-[1.02] active:scale-95 transition-all"
+                              >
+                                Confirm Selection
+                              </button>
+                           </div>
+                        </div>
+                      );
+                   })()}
                 </div>
               </motion.div>
             </>

@@ -3,7 +3,7 @@
 ## System Architecture
 
 ### 1. Frontend (React + Vite + Tailwind v4)
-The application is a modern SPA using React 19.
+The application is a modern SPA using React 19, hosted on Vercel.
 *   **Entry Point:** `index.tsx` -> `App.tsx`.
 *   **Routing:** Custom state-based routing (`ViewState` enum) managed in `App.tsx`.
 *   **Contexts:**
@@ -13,21 +13,23 @@ The application is a modern SPA using React 19.
 
 ### 2. Data Layer (Supabase)
 We use Supabase as a Backend-as-a-Service.
-*   **Client:** initialized in `services/supabase.ts`.
+*   **Client:** initialized in `services/supabase.ts` using `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
 *   **Abstraction:** `services/storage.ts` wraps all Supabase calls. **Do not call Supabase directly from Views.** Always use `StorageService`.
 *   **Sync Strategy:**
     *   Views initialize state from `props` (passed down from `App.tsx`).
     *   Writes go to `StorageService` (Async).
     *   `App.tsx` re-fetches data or updates local state optimistically.
 
-### 3. AI Engine (Gemini)
-*   **Client:** `services/geminiService.ts`.
+### 3. AI Engine (Vercel AI SDK + Google Gemini)
+We use the **Vercel AI SDK** to orchestrate calls to Google Gemini models via secure Serverless Functions.
+*   **Frontend Service:** `services/geminiService.ts` fetches from our own API endpoints (`/api/generate-text`, `/api/generate-image`).
+*   **Backend Functions:** Located in `api/`. These run on Vercel's Edge/Serverless runtime, securing the `GOOGLE_GENERATIVE_AI_API_KEY`.
 *   **Models:**
-    *   `gemini-3-pro-image-preview`: Used for the **Visual Ad Studio**. Supports Aspect Ratio, high fidelity, and **Multi-Modal Input** (Text + Image).
-    *   `gemini-2.5-flash`: Used for Chat, Copywriting, and logic tasks.
+    *   **Text/Chat:** `gemini-2.5-flash` (Fast) or `gemini-3-pro` (Smart) via `api/generate-text.ts`.
+    *   **Images:** `gemini-3-pro-image-preview` (or similar) via `api/generate-image.ts`.
 *   **Multi-Modal Context:**
-    *   **Brand Logos:** Injected as `inlineData` to prompt the AI to include branding.
-    *   **Product Reference:** Offering images (from the **Offerings** tab) are injected to ensure strict visual likeness (if the `preserveLikeness` flag is set).
+    *   **Brand Logos:** Injected as Base64 data.
+    *   **Product Reference:** Injected to ensure visual likeness.
 *   **Context Injection:** We construct "Super Prompts" by appending Business Context (Brand Voice, Product Details, Price) to the user's raw input.
 
 ### 4. File Storage (Supabase)
@@ -40,7 +42,6 @@ We use Supabase as a Backend-as-a-Service.
 
 ### 5. Business Profile Logic (`views/BusinessProfile.tsx`)
 The profile is the "Source of Truth" for the AI. We use intelligent UI patterns to capture structured data.
-
 *   **Offerings (Products/Services):**
     *   **Data:** Name, Price, Description, Image.
     *   **Strict Mode:** A `preserveLikeness` boolean flag. If true, the prompt explicitly forbids the AI from hallucinating visual changes to the product.
@@ -49,17 +50,17 @@ The profile is the "Source of Truth" for the AI. We use intelligent UI patterns 
 
 ### Credit System
 We operate on a high-margin credit model to account for AI costs and operational overhead.
-*   **Baseline Value:** 1 Credit ≈ $0.02 USD (Based on a $20/mo subscription providing 1,000 credits).
+*   **Baseline Value:** 1 Credit ≈ $0.02 USD.
 *   **Target Margin:** >80% on all generation tiers.
 
 ### Image Generation Tiers
-We offer three tiers of image generation quality, priced to incentivize "Drafting" while securing high margins on "Final" assets.
+We offer three tiers of image generation quality.
 
-| Tier | Model | Resolution | API Cost (Est.) | Price (Credits) | Price ($) | Margin |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Flash 2.5** | `gemini-2.5-flash-image` | 1024x1024 | ~$0.04 | **10** | $0.20 | **80%** |
-| **Gemini Pro** | `gemini-3-pro-image-preview` | ~1024x1024 (HQ) | ~$0.13 | **40** | $0.80 | **83%** |
-| **Ultra 4K** | `gemini-3-pro` (High Res) | 4096x4096 | ~$0.24 | **80** | $1.60 | **85%** |
+| Tier | Model | Resolution | Cost/Margin |
+| :--- | :--- | :--- | :--- |
+| **Flash** | `gemini-2.5-flash-image` | Standard | High Margin (Drafts) |
+| **Pro** | `gemini-3-pro-image-preview` | High Quality | Balanced (Final Assets) |
+| **Ultra** | `gemini-3-pro` (High Res) | 4k | Premium (Upscaled) |
 
 ## Key Components
 
@@ -67,7 +68,7 @@ We offer three tiers of image generation quality, priced to incentivize "Draftin
 A complex view comprising:
 *   **Masonry Grid:** Displays generated assets in a pinterest-style layout.
 *   **Control Deck:** A fixed "Slab" component at the bottom used to configure generations.
-    *   **Subject Selector:** Links generation to a specific `Offering`. Passing the offering passes its **Price, Description, and Reference Image** to the AI.
+    *   **Subject Selector:** Links generation to a specific `Offering`.
     *   **Preset/Style Selectors:** Dynamic menus populated from Supabase (`presets`, `styles`).
 
 ### Admin Dashboard (`views/AdminDashboard.tsx`)
@@ -75,15 +76,10 @@ A complex view comprising:
 *   **Roadmap:** Simple internal issue tracker.
 *   **Brain Logic:** Editor for system prompts.
 
-### Neumorphic Design System
-We use a custom Tailwind setup.
-*   **Shadows:** Defined in `index.css` as CSS variables (`--shadow-neu-out-light`, etc.).
-*   **Usage:** `NeuCard`, `NeuButton`, `NeuInput`, `NeuImageUploader`.
-
 ## Workflow Guides
 
 ### Adding a New Feature
-1.  **Define Data:** Update `types.ts` and Supabase Schema (if needed).
+1.  **Define Data:** Update `types.ts` and Supabase Schema.
 2.  **Update Storage:** Add methods to `services/storage.ts`.
 3.  **Create View:** Build the component in `views/`.
 4.  **Route:** Add the enum to `ViewState` and render it in `App.tsx`.
@@ -91,9 +87,6 @@ We use a custom Tailwind setup.
 
 ### Modifying the AI Personality (Admin HQ)
 The AI logic is governed by a **Fall-through System** managed in `views/AdminDashboard.tsx`:
-1.  **Code Defaults:** Defined as constants (`DEFAULT_IMAGE_PROMPT`, etc.) in `services/prompts.ts`. These are the "Factory Settings".
-2.  **Admin Override:** An Admin can define custom prompts in the **Brain Logic** tab of the Dashboard.
-3.  **Logic:**
-    *   If the Override is **Empty**: The system uses the Code Default. (Updates to code apply automatically).
-    *   If the Override has **Content**: The system uses the Override exclusively.
-4.  **Storage:** Overrides are persisted in the `system_prompts` table in Supabase.
+1.  **Code Defaults:** Defined in `services/prompts.ts`.
+2.  **Admin Override:** An Admin can define custom prompts in the **Brain Logic** tab.
+3.  **Storage:** Overrides are persisted in the `system_prompts` table.
