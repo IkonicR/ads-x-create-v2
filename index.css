@@ -1,0 +1,111 @@
+@import "tailwindcss";
+
+@theme {
+  /* Fonts */
+  --font-sans: "Nunito Sans", sans-serif;
+
+  /* Brand Colors */
+  --color-brand: #6D5DFC;
+  --color-brand-hover: #5849C2;
+
+  /* Neumorphic System Colors */
+  --color-neu-light: #E0E5EC;
+  --color-neu-dark: #0F1115;
+  --color-neu-accent-light: rgba(255, 255, 255, 0.6);
+  --color-neu-accent-dark: #161920;
+  --color-neu-text-main-light: #4A5568;
+  --color-neu-text-sub-light: #A0AEC0;
+  --color-neu-text-main-dark: #F8FAFC;
+  --color-neu-text-sub-dark: #94A3B8;
+
+  /* Shadows */
+  /* Light Mode: Stronger contrast for visibility on E0E5EC */
+  --shadow-neu-out-light: 9px 9px 16px rgb(163,177,198,0.6), -9px -9px 16px rgba(255,255,255, 0.6);
+  --shadow-neu-in-light: inset 6px 6px 10px rgb(163,177,198, 0.7), inset -6px -6px 10px rgba(255,255,255, 0.8);
+  
+  /* Dark Mode */
+  --shadow-neu-out-dark: 6px 6px 14px #060709, -6px -6px 14px #181b21;
+  --shadow-neu-in-dark: inset 6px 6px 14px #060709, inset -6px -6px 14px #181b21;
+
+  /* Galaxy System Colors */
+  --galaxy-bg-light: #000000;
+  --galaxy-bg-dark: #FFFFFF; /* White for high contrast in Dark Mode */
+}
+
+/* Global Styles */
+body {
+  font-family: var(--font-sans);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Galaxy Portal Effects - High Density Parallax */
+@keyframes drift {
+  from { background-position: 0 0; }
+  to { background-position: -1000px 0; } /* Leftward drift */
+}
+
+.bg-galaxy {
+  background-color: var(--galaxy-bg-light);
+  /* Dark Mode Override via media query or selector logic handled below */
+  background-image: 
+    /* Layer 1: Dense distant stars (White) */
+    radial-gradient(white 1px, transparent 1.5px),
+    /* Layer 2: Medium stars (Blue-ish) */
+    radial-gradient(rgba(200, 230, 255, 0.9) 1.5px, transparent 2px),
+    /* Layer 3: Close bright stars (Purple-ish) */
+    radial-gradient(rgba(230, 210, 255, 1) 2px, transparent 3px);
+  
+  /* Tighter spacing for higher density */
+  background-size: 
+    50px 50px, 
+    100px 100px, 
+    200px 200px;
+    
+  background-position: 
+    0 0, 
+    20px 20px, 
+    40px 40px;
+
+  /* Parallax Animation */
+  animation: drift 120s linear infinite;
+}
+
+.dark .bg-galaxy {
+  /* For the CARD (bg-galaxy), we probably still want Black space? 
+     Or does the user want white space everywhere in dark mode?
+     Usually space is black. User complained about TEXT visibility.
+     I will keep Card Galaxy Black for now unless told otherwise, 
+     but the variable is updated. Let's see. 
+     Actually, GeneratorCard uses <GalaxyCanvas> which is hardcoded Black. 
+     So .bg-galaxy class is mostly for non-canvas fallbacks. */
+  background-color: #000000; 
+}
+
+.text-galaxy {
+  background-color: var(--galaxy-bg-light);
+  background-image: 
+    /* Tuned sizes to match Canvas (1px - 2px) + Colors */
+    radial-gradient(white 1px, transparent 1.5px),
+    radial-gradient(rgba(180, 220, 255, 0.9) 1.5px, transparent 2px), /* Cyan/Blue tint */
+    radial-gradient(rgba(220, 190, 255, 1) 2px, transparent 3px); /* Purple tint */
+  
+  /* High density spacing */
+  background-size: 20px 20px, 40px 40px, 80px 80px;
+  background-position: 0 0, 10px 10px, 20px 20px;
+  
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  background-attachment: fixed;
+  /* Restored Drift to match Canvas motion (Leftward) */
+  animation: drift 120s linear infinite;
+}
+
+.dark .text-galaxy {
+  background-color: var(--galaxy-bg-dark); /* White */
+  background-image: 
+    /* INVERTED STARS (Black/Grey) for White Background */
+    radial-gradient(rgba(0,0,0,0.8) 1px, transparent 1.5px),
+    radial-gradient(rgba(50,50,80,0.9) 1.5px, transparent 2px),
+    radial-gradient(rgba(80,20,100,0.9) 2px, transparent 3px);
+}
