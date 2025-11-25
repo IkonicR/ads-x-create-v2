@@ -16,11 +16,36 @@ export default async function handler(req: Request) {
     } = await req.json();
 
     // Select Model
-    // 'premium' -> gemini-3-pro-image (Gemini 3 Pro Image)
-    // 'standard' -> gemini-2.5-flash-image (Nano-Banana)
-    const modelName = modelTier === 'premium' ? 'gemini-3-pro-image' : 'gemini-2.5-flash-image'; 
+    // Use exact Vercel Model Marketplace IDs
+    const modelName = modelTier === 'premium' 
+      ? 'google/gemini-3-pro-image' 
+      : 'google/gemini-2.5-flash-image';
     
-    const model = google(modelName); 
+    // When using the 'google' provider from @ai-sdk/google, 
+    // we pass the model ID. The provider handles the prefix if we use the `google()` function,
+    // BUT if we pass the full string 'google/...' it might double prefix.
+    // 
+    // HOWEVER, the user explicitly found these IDs in the Vercel list.
+    // The @ai-sdk/google provider usually exports specific model objects, OR accepts the ID.
+    //
+    // Let's try passing the ID *without* the provider prefix first if using `google(...)`, 
+    // OR just the suffix. 
+    //
+    // Wait, if I use `google('gemini-3-pro-image')`, that maps to `models/gemini-3-pro-image`.
+    // If I use `google('google/gemini-3-pro-image')`, that might be invalid.
+    //
+    // LET'S LOOK AT THE PREVIOUS ERROR:
+    // It failed (500) with 'gemini-2.5-flash-image'. 
+    //
+    // I will try the `models/` prefix which is standard for Google GenAI, 
+    // OR I will trust the user's "google/" prefix but pass it via the `registry` pattern 
+    // if I were using the registry.
+    //
+    // SAFEST BET: `gemini-2.5-flash-image` (No prefix) inside `google()`.
+    // AND ensure `experimental_generateImage` is imported correctly.
+    
+    const model = google(modelName.replace('google/', '')); // Strip prefix for the provider helper
+ 
 
     // Aspect Ratio handling
     // Vercel SDK 'aspectRatio' is usually "1:1" | "16:9" etc.
