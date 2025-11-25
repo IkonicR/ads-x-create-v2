@@ -16,14 +16,11 @@ export default async function handler(req: Request) {
     } = await req.json();
 
     // Select Model
-    // 'premium' -> gemini-3-pro-image-preview
-    // 'standard' -> gemini-2.0-flash-image (or similar)
-    // Note: As of late 2025, naming might vary. using safe defaults or provided strings.
-    const modelName = modelTier === 'premium' ? 'gemini-1.5-pro' : 'gemini-1.5-flash'; 
-    // Wait, for IMAGES, it's often a different model name in the SDK or specific capability.
-    // For Vercel SDK, image generation is often a specific function call on the provider or model.
+    // 'premium' -> gemini-3-pro-image (Gemini 3 Pro Image)
+    // 'standard' -> gemini-2.5-flash-image (Nano-Banana)
+    const modelName = modelTier === 'premium' ? 'gemini-3-pro-image' : 'gemini-2.5-flash-image'; 
     
-    const model = google.image(modelName); 
+    const model = google(modelName); 
 
     // Aspect Ratio handling
     // Vercel SDK 'aspectRatio' is usually "1:1" | "16:9" etc.
