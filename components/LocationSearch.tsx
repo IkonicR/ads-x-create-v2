@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useLoadScript } from '@react-google-maps/api';
+import { useJsApiLoader } from '@react-google-maps/api';
 import { useThemeStyles, NeuInput } from './NeuComponents';
 import { Search, Loader2, MapPin } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -25,10 +25,21 @@ export const LocationSearch: React.FC<LocationSearchProps> = ({ value, onChange,
   const sessionToken = useRef<google.maps.places.AutocompleteSessionToken | null>(null);
   const dummyDiv = useRef<HTMLDivElement | null>(null); // Required for PlacesService
 
-  const { isLoaded } = useLoadScript({
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_KEY,
+  const { isLoaded, loadError } = useJsApiLoader({
+    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_KEY || "",
     libraries,
+    id: 'google-map-script',
+    nonce: 'google-map-script',
   });
+
+  useEffect(() => {
+    if (!import.meta.env.VITE_GOOGLE_MAPS_KEY) {
+      console.error("🚨 CRITICAL: VITE_GOOGLE_MAPS_KEY is missing from environment variables. Please check .env.local and restart your dev server.");
+    }
+    if (loadError) {
+      console.error("🚨 Google Maps Load Error:", loadError);
+    }
+  }, [loadError]);
 
   // Initialize Services
   useEffect(() => {
