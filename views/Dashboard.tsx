@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Business, Asset, Task } from '../types';
-import { NeuCard, NeuButton, NeuBadge, useThemeStyles } from '../components/NeuComponents';
+import { NeuCard, NeuButton, NeuBadge, useThemeStyles, BRAND_COLOR } from '../components/NeuComponents';
 import { TrendingUp, Clock, Zap, Plus } from 'lucide-react';
 import { AreaChart, Area, Tooltip, ResponsiveContainer } from 'recharts';
 import { GalaxyHeading } from '../components/GalaxyHeading';
@@ -31,8 +31,8 @@ const Dashboard: React.FC<DashboardProps> = ({ business, tasks, recentAssets, on
     <div className="space-y-8 pb-10">
       <header className="flex justify-between items-center">
         <div>
-          <GalaxyHeading 
-            text={`Good morning, ${business.role}`} 
+          <GalaxyHeading
+            text={`Good morning, ${business.role}`}
             className="text-4xl md:text-5xl font-extrabold tracking-tight mb-1 pb-2"
           />
           <p className={styles.textSub}>Here's what's happening with {business.name}</p>
@@ -54,12 +54,12 @@ const Dashboard: React.FC<DashboardProps> = ({ business, tasks, recentAssets, on
               <Zap size={20} />
             </div>
           </div>
-          <NeuButton className="w-full text-sm py-2" onClick={() => {}}>Top Up</NeuButton>
+          <NeuButton className="w-full text-sm py-2" onClick={() => { }}>Top Up</NeuButton>
         </NeuCard>
 
         {/* Metric 2 */}
         <NeuCard>
-           <div className="flex justify-between items-start mb-4">
+          <div className="flex justify-between items-start mb-4">
             <div>
               <p className={`text-sm font-bold ${styles.textSub}`}>Active Tasks</p>
               <h3 className={`text-3xl font-bold ${styles.textMain}`}>{tasks.filter(t => t.status !== 'Done').length}</h3>
@@ -74,29 +74,29 @@ const Dashboard: React.FC<DashboardProps> = ({ business, tasks, recentAssets, on
         {/* Chart */}
         <NeuCard className="flex flex-col justify-between">
           <div className="flex justify-between items-start mb-2">
-             <p className={`text-sm font-bold ${styles.textSub}`}>Generation Activity</p>
-             <TrendingUp size={20} className="text-green-500" />
+            <p className={`text-sm font-bold ${styles.textSub}`}>Generation Activity</p>
+            <TrendingUp size={20} className="text-green-500" />
           </div>
           <div className="h-24 w-full">
-             <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={data}>
                 <defs>
                   <linearGradient id="colorGens" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6D5DFC" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#6D5DFC" stopOpacity={0}/>
+                    <stop offset="5%" stopColor={BRAND_COLOR} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={BRAND_COLOR} stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <Tooltip 
-                   contentStyle={{ 
-                     backgroundColor: isDark ? '#0F1115' : '#F4F6F9', 
-                     border: 'none', 
-                     borderRadius: '10px', 
-                     boxShadow: isDark ? '6px 6px 14px #060709' : '5px 5px 12px #D6DAE3',
-                     color: isDark ? '#F8FAFC' : '#1F2937'
-                   }}
-                   itemStyle={{ color: '#6D5DFC' }}
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: isDark ? '#0F1115' : '#F4F6F9',
+                    border: 'none',
+                    borderRadius: '10px',
+                    boxShadow: isDark ? '6px 6px 14px #060709' : '5px 5px 12px #D6DAE3',
+                    color: isDark ? '#F8FAFC' : '#1F2937'
+                  }}
+                  itemStyle={{ color: BRAND_COLOR }}
                 />
-                <Area type="monotone" dataKey="gens" stroke="#6D5DFC" fillOpacity={1} fill="url(#colorGens)" />
+                <Area type="monotone" dataKey="gens" stroke={BRAND_COLOR} fillOpacity={1} fill="url(#colorGens)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -110,8 +110,8 @@ const Dashboard: React.FC<DashboardProps> = ({ business, tasks, recentAssets, on
             {recentAssets.map(asset => (
               <NeuCard key={asset.id} className="aspect-square flex flex-col p-4 group cursor-pointer hover:scale-[1.02] transition-transform">
                 <div className={`flex-1 rounded-xl mb-3 overflow-hidden shadow-inner ${isDark ? 'bg-black/30' : 'bg-gray-200'}`}>
-                   {/* Placeholder for image */}
-                   <img src={asset.content} alt="Asset" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                  {/* Placeholder for image */}
+                  <img src={asset.content} alt="Asset" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
                 </div>
                 <div className="flex justify-between items-center">
                   <span className={`text-xs font-bold ${styles.textSub}`}>{asset.type.toUpperCase()}</span>
@@ -120,7 +120,7 @@ const Dashboard: React.FC<DashboardProps> = ({ business, tasks, recentAssets, on
               </NeuCard>
             ))}
             <NeuCard className="aspect-square flex items-center justify-center cursor-pointer" inset onClick={() => onNavigate('GENERATOR')}>
-               <Plus size={32} className={styles.textSub} />
+              <Plus size={32} className={styles.textSub} />
             </NeuCard>
           </div>
         </section>
@@ -130,11 +130,11 @@ const Dashboard: React.FC<DashboardProps> = ({ business, tasks, recentAssets, on
           <div className="space-y-4">
             {tasks.slice(0, 4).map(task => (
               <NeuCard key={task.id} className="flex justify-between items-center py-4 px-5">
-                 <div className="flex items-center gap-3">
-                   <div className={`w-3 h-3 rounded-full ${task.priority === 'High' ? 'bg-red-400' : task.priority === 'Medium' ? 'bg-yellow-400' : 'bg-green-400'}`} />
-                   <span className={`font-bold text-sm ${styles.textMain}`}>{task.title}</span>
-                 </div>
-                 <NeuBadge>{task.status}</NeuBadge>
+                <div className="flex items-center gap-3">
+                  <div className={`w-3 h-3 rounded-full ${task.priority === 'High' ? 'bg-red-400' : task.priority === 'Medium' ? 'bg-yellow-400' : 'bg-green-400'}`} />
+                  <span className={`font-bold text-sm ${styles.textMain}`}>{task.title}</span>
+                </div>
+                <NeuBadge>{task.status}</NeuBadge>
               </NeuCard>
             ))}
           </div>

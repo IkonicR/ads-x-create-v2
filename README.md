@@ -10,8 +10,8 @@ View your app: [https://ads-x-create-v2.vercel.app](https://ads-x-create-v2.verc
 
 ## Tech Stack
 *   **Frontend:** React 19, Vite, Tailwind v4
-*   **Backend:** Vercel Serverless Functions (`api/`)
-*   **AI:** Vercel AI SDK + Google Gemini 3 Pro
+*   **Backend:** Supabase (BaaS)
+*   **AI:** Google Gemini 3 Pro (Client-side Direct)
 *   **Database:** Supabase
 
 ## Run Locally

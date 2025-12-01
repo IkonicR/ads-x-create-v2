@@ -10,6 +10,7 @@ The application is a modern SPA using React 19, hosted on Vercel.
     *   `ThemeContext`: Manages Light/Dark mode classes on the `html` element.
     *   `NavigationContext`: Intercepts navigation to prevent data loss (Dirty State).
     *   `NotificationContext`: Global toast system.
+    *   `AuthContext`: Manages user authentication via Supabase.
 
 ### 2. Data Layer (Supabase)
 We use Supabase as a Backend-as-a-Service.
@@ -20,17 +21,43 @@ We use Supabase as a Backend-as-a-Service.
     *   Writes go to `StorageService` (Async).
     *   `App.tsx` re-fetches data or updates local state optimistically.
 
-### 3. AI Engine (Vercel AI SDK + Google Gemini)
-We use the **Vercel AI SDK** to orchestrate calls to Google Gemini models via secure Serverless Functions.
-*   **Frontend Service:** `services/geminiService.ts` fetches from our own API endpoints (`/api/generate-text`, `/api/generate-image`).
-*   **Backend Functions:** Located in `api/`. These run on Vercel's Edge/Serverless runtime, securing the `GOOGLE_GENERATIVE_AI_API_KEY`.
-*   **Models:**
-    *   **Text/Chat:** `gemini-2.5-flash` (Fast) or `gemini-3-pro` (Smart) via `api/generate-text.ts`.
-    *   **Images:** `gemini-3-pro-image-preview` (or similar) via `api/generate-image.ts`.
-*   **Multi-Modal Context:**
-    *   **Brand Logos:** Injected as Base64 data.
-    *   **Product Reference:** Injected to ensure visual likeness.
-*   **Context Injection:** We construct "Super Prompts" by appending Business Context (Brand Voice, Product Details, Price) to the user's raw input.
+## 3. Image Generation Pipeline (Single-Step Smart Injection)
+
+We utilize the advanced **Multimodal Capabilities** of Gemini 3 Pro (and 2.5 Flash Image) to handle context, branding, and creativity in a single, powerful request.
+
+### The "Job Ticket" Architecture
+Located in `services/prompts.ts`, we dynamically assemble a structured "Job Ticket" based on the request payload.
+
+**1. The Base:**
+*   Business Context (Name, Industry, Tone, Colors).
+*   User Request (The core prompt).
+
+**2. The Injectors:**
+*   **Ad Preferences:** Injects `promotion`, `benefits`, and `targetAudience` into the context.
+*   **Style Injector:** Adds specific keywords and negative constraints based on the user's selected `Style Preset`.
+*   **Asset Injector:**
+    *   **Preserve Integrity (ON):** Injects the product image and instructs the model to use it *exactly* (blended).
+    *   **Preserve Integrity (OFF):** Injects the image but allows the model to *stylize* it.
+
+### The Flow
+1.  **Client (`geminiService.ts`):** Packages the `GenerationContext` (User selections + Brand data).
+2.  **Prompt Factory (`prompts.ts`):** Constructs the "Job Ticket" system instruction.
+3.  **Execution:** Calls Google Gemini API directly from the client.
+4.  **Output:** A high-fidelity commercial asset.
+
+---
+
+## 4. Modifying the AI Personality
+
+### Chat & Text Tasks
+*   **Location:** Managed via `System Prompts` in the Admin Dashboard (stored in Supabase `system_prompts` table).
+*   **Usage:** `services/prompts.ts` fetches these rules dynamically.
+
+### Image Generation
+*   **Location:** `services/prompts.ts` (Client-side).
+*   **To Modify:** Edit the `createImagePrompt` function.
+
+---
 
 ### 4. File Storage (Supabase)
 *   **Bucket:** `business-assets` (Public Access enabled).
@@ -44,7 +71,10 @@ We use the **Vercel AI SDK** to orchestrate calls to Google Gemini models via se
 The profile is the "Source of Truth" for the AI. We use intelligent UI patterns to capture structured data.
 *   **Offerings (Products/Services):**
     *   **Data:** Name, Price, Description, Image.
-    *   **Strict Mode:** A `preserveLikeness` boolean flag. If true, the prompt explicitly forbids the AI from hallucinating visual changes to the product.
+    *   **Data:** Name, Price, Description, Image.
+    *   **Preserve Product Integrity:** A `preserveLikeness` boolean flag.
+        *   **True:** "Use real product image" (blended).
+        *   **False:** "Stylize" (creative adaptation).
 
 ## Business Model & Pricing
 
@@ -66,15 +96,17 @@ We offer three tiers of image generation quality.
 
 ### Visual Ad Studio (`views/Generator.tsx`)
 A complex view comprising:
-*   **Masonry Grid:** Displays generated assets in a pinterest-style layout.
+*   **Masonry Grid:** Displays generated assets in a pinterest-style layout. Uses "Shortest-Column First" algorithm.
+*   **Infinite Scroll:** Automatically loads more assets as you scroll.
 *   **Control Deck:** A fixed "Slab" component at the bottom used to configure generations.
-    *   **Subject Selector:** Links generation to a specific `Offering`.
+    *   **Subject Selector:** Links generation to a specific `Offering`. Includes "Quick Edit" button.
     *   **Preset/Style Selectors:** Dynamic menus populated from Supabase (`presets`, `styles`).
 
 ### Admin Dashboard (`views/AdminDashboard.tsx`)
 *   **Config Tab:** Dynamic editor for Presets and Styles. Allows uploading thumbnails and editing prompt modifiers live without code deployment.
 *   **Roadmap:** Simple internal issue tracker.
 *   **Brain Logic:** Editor for system prompts.
+*   **Logs Tab:** A real-time feed of all AI generation requests. Used to inspect the "Mega-Prompt" (Context + Data + Instructions) sent to the model for debugging hallucinations or missing data.
 
 ## Workflow Guides
 
@@ -84,6 +116,14 @@ A complex view comprising:
 3.  **Create View:** Build the component in `views/`.
 4.  **Route:** Add the enum to `ViewState` and render it in `App.tsx`.
 5.  **Nav:** Add the item to `components/Layout.tsx`.
+
+### Debugging AI Hallucinations
+1.  Go to **Admin HQ** -> **Logs**.
+2.  Locate the failed generation row.
+3.  Inspect the `prompt` column.
+    *   Is the data missing? (Code Issue)
+    *   Is the data there but ignored? (Prompt Engineering Issue)
+4.  Adjust `services/prompts.ts` (or the Brain Logic tab) accordingly.
 
 ### Modifying the AI Personality (Admin HQ)
 The AI logic is governed by a **Fall-through System** managed in `views/AdminDashboard.tsx`:

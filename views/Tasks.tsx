@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Task } from '../types';
 import { NeuCard, NeuButton, NeuBadge, useThemeStyles } from '../components/NeuComponents';
 import { CheckCircle2, Clock, AlertCircle, Plus, MoreVertical, Calendar, MoreHorizontal } from 'lucide-react';
-import { generateTasks } from '../services/geminiService';
+import { generateTaskSuggestions } from '../services/geminiService';
 import { GalaxyHeading } from '../components/GalaxyHeading';
 
 interface TasksProps {
@@ -47,7 +47,7 @@ const Tasks: React.FC<TasksProps> = ({ tasks, businessDesc, setTasks }) => {
           {tasks.filter(t => t.status === status).length}
         </span>
       </div>
-      
+
       <div className="space-y-4 min-h-[200px]">
         {tasks.filter(t => t.status === status).map(task => (
           <NeuCard key={task.id} className="p-4 group hover:scale-[1.02] cursor-grab active:cursor-grabbing">
@@ -65,8 +65,8 @@ const Tasks: React.FC<TasksProps> = ({ tasks, businessDesc, setTasks }) => {
             </div>
           </NeuCard>
         ))}
-        
-        <NeuButton className={`w-full border-2 border-dashed ${styles.border} shadow-none bg-transparent ${styles.textSub} hover:border-[#6D5DFC] hover:text-[#6D5DFC]`}>
+
+        <NeuButton className={`w-full border-2 border-dashed ${styles.border} shadow-none bg-transparent ${styles.textSub} hover:border-brand hover:text-brand`}>
           <Plus size={16} /> Add Task
         </NeuButton>
       </div>
@@ -77,16 +77,16 @@ const Tasks: React.FC<TasksProps> = ({ tasks, businessDesc, setTasks }) => {
     <div className="pb-8 h-full flex flex-col">
       <header className="flex justify-between items-center mb-8">
         <div>
-          <GalaxyHeading 
-            text="Marketing Board" 
+          <GalaxyHeading
+            text="Marketing Board"
             className="text-4xl md:text-5xl font-extrabold tracking-tight mb-1 pb-2"
           />
         </div>
         <div className="flex gap-4">
-            <NeuButton onClick={handleAiSuggest} disabled={loadingAi}>
-              {loadingAi ? 'Generating...' : '✨ AI Suggest Tasks'}
-            </NeuButton>
-            <NeuButton variant="primary"><Plus size={18} /> New Task</NeuButton>
+          <NeuButton onClick={handleAiSuggest} disabled={loadingAi}>
+            {loadingAi ? 'Generating...' : '✨ AI Suggest Tasks'}
+          </NeuButton>
+          <NeuButton variant="primary"><Plus size={18} /> New Task</NeuButton>
         </div>
       </header>
 

@@ -1,6 +1,16 @@
-
-import { Business } from '../types';
+import { GoogleGenAI, GenerateContentResponse, Chat, FunctionDeclaration, Type, Part } from "@google/genai";
+import { Business, StylePreset } from '../types';
 import { PromptFactory } from './prompts';
+import { getSymbolFromCurrency } from '../utils/currency';
+import { supabase } from './supabase';
+
+// Helper to get the client.
+const getAiClient = () => {
+  // Fallback for VITE_ prefix or standard
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') return null;
+  return new GoogleGenAI({ apiKey });
+};
 
 // Helper: Fetch image from URL and convert to Base64
 const urlToBase64 = async (url: string): Promise<string | null> => {
@@ -12,7 +22,7 @@ const urlToBase64 = async (url: string): Promise<string | null> => {
       reader.onloadend = () => {
         const base64 = reader.result as string;
         // Remove data URL prefix (e.g., "data:image/png;base64,")
-        resolve(base64.split(',')[1]); 
+        resolve(base64.split(',')[1]);
       };
       reader.onerror = reject;
       reader.readAsDataURL(blob);
@@ -29,7 +39,14 @@ export const generateAdCopy = async (
   tone: string,
   keywords: string[]
 ): Promise<string> => {
+  const ai = getAiClient();
+
+  if (!ai) {
+    return `(Simulated) Magic copy for ${productName} by ${businessName}.`;
+  }
+
   try {
+    const model = 'gemini-2.5-flash';
     const prompt = `
       Write a short, punchy ad copy for a business named "${businessName}".
       Product: "${productName}".
@@ -38,202 +55,372 @@ export const generateAdCopy = async (
       Keep it under 200 characters.
     `;
 
-    const response = await fetch('/api/generate-text', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        prompt,
-        modelTier: 'standard'
-      })
+    const response: GenerateContentResponse = await ai.models.generateContent({
+      model: model,
+      contents: prompt,
     });
 
-    if (!response.ok) throw new Error('Failed to generate text');
-    const data = await response.json();
-    return data.text || "Could not generate text.";
+    return response.text || "Could not generate text.";
   } catch (error) {
-    console.error("API Error:", error);
+    console.error("Gemini API Error:", error);
     return "Error generating content.";
   }
 };
 
-export const generateImage = async (
-  business: Business,
-  visualPrompt: string,
-  tone: string,
-  keywords: string[],
-  negativePrompt?: string,
-  modelTier: 'flash' | 'pro' | 'ultra' = 'pro',
-  aspectRatio: string = '1:1',
-  subjectContext?: { 
-    name: string; 
-    type: 'product' | 'person'; 
-    imageUrl?: string; 
-    price?: string; 
-    description?: string; 
-    preserveLikeness?: boolean;
-    logoMaterial?: string;
-    logoPlacement?: string;
+
+
+export const generateTaskSuggestions = async (businessDescription: string): Promise<string[]> => {
+  const ai = getAiClient();
+  if (!ai) {
+    return ["Review Q3 Marketing Plan", "Update Social Media Assets", "Launch New Product Campaign"];
   }
-): Promise<string> => {
+
   try {
-    let enhancedPrompt = visualPrompt;
-    
-    // Inject Subject Context
-    if (subjectContext) {
-      enhancedPrompt += `\n\nIMPORTANT - PRIMARY SUBJECT: ${subjectContext.name}.`;
-      
-      if (subjectContext.price) {
-        enhancedPrompt += ` The product price is ${subjectContext.price}.`;
-      }
-      if (subjectContext.description) {
-        enhancedPrompt += ` Product Details: ${subjectContext.description}.`;
-      }
+    const prompt = await PromptFactory.createTaskSuggestionPrompt(businessDescription);
 
-      if (subjectContext.type === 'person') {
-        enhancedPrompt += ` The person is a ${subjectContext.name}, key team member. Render them professionally.`;
-      } else {
-        enhancedPrompt += ` The product is ${subjectContext.name}. Focus on it clearly.`;
-      }
-
-      if (subjectContext.preserveLikeness) {
-        enhancedPrompt += `\n\nCRITICAL: PRESERVE VISUAL IDENTITY. The product in the reference image must be maintained exactly. Do not alter the packaging, label, logo, or shape. This is a compliance requirement.`;
-      }
-    }
-
-    const strictPrompt = await PromptFactory.createImagePrompt(
-      business, 
-      enhancedPrompt, 
-      keywords, 
-      negativePrompt, 
-      subjectContext?.logoMaterial,
-      subjectContext?.logoPlacement
-    );
-    
-    // Map model tiers to backend expectation
-    const backendTier = modelTier === 'flash' ? 'standard' : 'premium';
-
-    // Prepare Images (Logo / Product)
-    let logoBase64: string | undefined;
-    if (business.logoUrl) {
-      const b64 = await urlToBase64(business.logoUrl);
-      if (b64) logoBase64 = b64;
-    }
-
-    let productBase64: string | undefined;
-    if (subjectContext?.imageUrl) {
-      const b64 = await urlToBase64(subjectContext.imageUrl);
-      if (b64) productBase64 = b64;
-    }
-
-    const startTime = Date.now();
-    console.log(`[Gemini-Vercel] Generating Image...`, { tier: backendTier });
-
-    const response = await fetch('/api/generate-image', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        prompt: strictPrompt,
-        modelTier: backendTier,
-        aspectRatio,
-        logoBase64,
-        productBase64
-      })
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: { responseMimeType: 'application/json' }
     });
 
-    console.log(`[Gemini-Vercel] Response received (${Date.now() - startTime}ms)`);
+    return JSON.parse(response.text || "[]");
+  } catch (e) {
+    console.error(e);
+    return ["Check Analytics", "Draft Newsletter"];
+  }
+}
 
-    if (!response.ok) return "";
-    const data = await response.json();
-    
-    // The backend returns { image: base64 }
-    if (data.image) {
-       return `data:image/png;base64,${data.image}`;
+export const generateImage = async (
+  prompt: string,
+  business: Business,
+  stylePreset?: StylePreset,
+  subjectContext?: {
+    type: string;
+    imageUrl: string;
+    preserveLikeness: boolean;
+    promotion?: string;
+    benefits?: string[];
+    targetAudience?: string;
+  },
+  aspectRatio: string = "1:1",
+  modelTier: 'flash' | 'pro' | 'ultra' = 'pro'
+): Promise<string> => {
+  const ai = getAiClient();
+  if (!ai) throw new Error("Gemini API Key not found");
+
+  // 1. Prepare Prompt Inputs
+  let visualPrompt = prompt;
+  if (subjectContext) {
+    visualPrompt += `\nPRIMARY SUBJECT: ${subjectContext.type}. ${subjectContext.preserveLikeness ? 'Maintain strict visual likeness.' : ''}`;
+  }
+
+  // 2. Generate the "Job Ticket" Prompt
+  const finalPrompt = await PromptFactory.createImagePrompt(
+    business,
+    visualPrompt,
+    business.voice.keywords || [],
+    (stylePreset?.avoid || []).join(', '),
+    stylePreset?.logoMaterial,
+    stylePreset?.logoPlacement,
+    subjectContext?.promotion, // Promotion
+    subjectContext?.benefits, // Benefits
+    subjectContext?.targetAudience || business.adPreferences?.targetAudience, // Target Audience (Subject specific overrides global)
+    subjectContext?.preserveLikeness || false, // Preserve Likeness
+    stylePreset
+  );
+
+  console.log("[Gemini] Generated Prompt:", finalPrompt);
+
+  // 3. Select Model
+  let modelName = 'gemini-3-pro-image-preview'; // Default to Pro
+  // if (modelTier === 'ultra') modelName = 'gemini-3-pro-image-preview'; // Placeholder for Ultra
+  // if (modelTier === 'flash') modelName = 'gemini-2.5-flash-image'; // Placeholder for Flash
+
+  // 4. Call Gemini
+  try {
+    // Log the attempt
+    await supabase.from('generation_logs').insert({
+      business_id: business.id,
+      prompt: prompt,
+      mega_prompt: finalPrompt,
+      model: modelName,
+      status: 'started',
+      metadata: { aspectRatio }
+    });
+
+    // Prepare Parts
+    const parts: Part[] = [{ text: finalPrompt }];
+
+    // --- ATTACHMENT ORDER: PRODUCT -> LOGO -> STYLE ---
+
+    // 1. Product / Subject (Image #1 if present)
+    if (subjectContext?.imageUrl) {
+      const subjectImagePart = await urlToBase64(subjectContext.imageUrl);
+      if (subjectImagePart) {
+        parts.push({ inlineData: { mimeType: "image/png", data: subjectImagePart } });
+        parts.push({ text: " [REFERENCE IMAGE 1: MAIN PRODUCT] " });
+      }
     }
-    return "";
 
-  } catch (error) {
-    console.error("Gemini API Error:", error);
-    return "";
+    // 2. Logo (Image #2 or #1)
+    if (business.logoUrl) {
+      const logoPart = await urlToBase64(business.logoUrl);
+      if (logoPart) {
+        parts.push({ inlineData: { mimeType: "image/png", data: logoPart } });
+        parts.push({ text: " [REFERENCE IMAGE: LOGO] " });
+      }
+    }
+
+    // 3. Style Reference (Image #3 or #2 or #1)
+    if (stylePreset?.referenceImages && stylePreset.referenceImages.length > 0) {
+      // Use the first one as the primary anchor for now, or loop if model supports multiple style inputs well
+      // For the "Job Ticket" logic, it expects one main style anchor.
+      const refUrl = stylePreset.referenceImages[0];
+      const styleImagePart = await urlToBase64(refUrl);
+      if (styleImagePart) {
+        parts.push({ inlineData: { mimeType: "image/png", data: styleImagePart } });
+        parts.push({ text: " [REFERENCE IMAGE: STYLE] " });
+      }
+    } else if (stylePreset?.imageUrl) {
+      const styleImagePart = await urlToBase64(stylePreset.imageUrl);
+      if (styleImagePart) {
+        parts.push({ inlineData: { mimeType: "image/png", data: styleImagePart } });
+        parts.push({ text: " [REFERENCE IMAGE: STYLE] " });
+      }
+    }
+
+    // Wait, Type definition says contents: Content[] | string | Part[]
+    // If I pass Part[], it might be interpreted as a single Content with those parts?
+    // Let's try wrapping it in a Content object.
+
+    // Actually, let's look at how I did it before.
+    // contents: [{ role: 'user', parts }]
+    // That seems correct for the API.
+
+    // RE-EDITING THE CALL BELOW TO WRAP IN CONTENT OBJECT
+    const result = await ai.models.generateContent({
+      model: modelName,
+      contents: [{ role: 'user', parts: parts }],
+      config: {
+        temperature: 0.7,
+        imageConfig: {
+          aspectRatio: aspectRatio,
+          imageSize: '2K' // Bonus: High resolution
+        }
+      }
+    });
+
+    // PARSE IMAGE RESPONSE (Gemini 3 Pro returns inlineData, not text)
+    const response = result; // The result IS the response in this SDK version
+    const candidate = response.candidates?.[0];
+
+    let resultImage = "";
+    for (const part of candidate?.content?.parts || []) {
+      if (part.inlineData) {
+        resultImage = `data:image/png;base64,${part.inlineData.data}`;
+        break;
+      }
+    }
+
+    if (!resultImage) {
+      // Fallback if no image found (maybe text error?)
+      const text = response.text || "";
+      console.warn("[Gemini] No image found. Text response:", text);
+      if (text.startsWith('http')) return text;
+      return "https://placehold.co/1024x1024/png?text=Gemini+Generation+Failed";
+    }
+
+    // Log Success
+    await supabase.from('generation_logs').insert({
+      business_id: business.id,
+      prompt: finalPrompt,
+      model: modelName,
+      status: 'success',
+      image_url: '(base64 data)',
+      metadata: {
+        finishReason: candidate?.finishReason,
+        aspectRatio,
+        stylePresetId: stylePreset?.id,
+        subjectContext,
+        modelTier
+      }
+    });
+
+    return resultImage;
+
+  } catch (error: any) {
+    console.error("Gemini Generation Failed:", error);
+    // DEBUG: List models if 404 to help diagnose
+    if (error.message && error.message.includes('404')) {
+      try {
+        console.log("[Gemini-Debug] Listing available models...");
+        const models = await ai.models.list();
+        console.log("[Gemini-Debug] Available Models:", models);
+      } catch (listErr) {
+        console.error("[Gemini-Debug] Failed to list models:", listErr);
+      }
+    }
+
+    // Log Failure
+    await supabase.from('generation_logs').insert({
+      business_id: business.id,
+      prompt: finalPrompt,
+      model: modelName,
+      status: 'error',
+      metadata: { error: error.message || error }
+    });
+    throw error;
   }
 };
 
-export const generateTaskSuggestions = async (businessDescription: string): Promise<string[]> => {
-   try {
-    const prompt = await PromptFactory.createTaskSuggestionPrompt(businessDescription);
-    
-    // We ask for JSON format in the prompt usually, but let's ensure the backend knows or we parse the text.
-    // Simplest is to just ask for text and parse it here as before.
-    const response = await fetch('/api/generate-text', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        prompt,
-        modelTier: 'standard' // Tasks are simple
-      })
+export const enhanceOffering = async (
+  name: string,
+  price: string,
+  category: string,
+  description: string
+): Promise<{ description: string, targetAudience: string, benefits: string[], features: string[], promotion: string }> => {
+
+  const ai = getAiClient();
+  if (!ai) throw new Error("No API Key");
+
+  const prompt = `
+    You are a masterful marketing copywriter.
+    Enhance the product strategy for: "${name}" (${category}).
+    Price: ${price}.
+    Current Description: "${description}".
+
+    Output a valid JSON object with these fields:
+    {
+      "description": "A compelling, persuasive description (max 2 sentences)",
+      "targetAudience": "The ideal buyer persona",
+      "benefits": ["Benefit 1", "Benefit 2", "Benefit 3"],
+      "features": ["Feature 1", "Feature 2", "Feature 3"],
+      "promotion": "A catchy, realistic promotion idea (e.g. 'Limited Time 20% Off')"
+    }
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: { responseMimeType: 'application/json' }
     });
 
-    if (!response.ok) return ["Check Analytics", "Draft Newsletter"];
-    const data = await response.json();
-    
-    // Attempt to parse JSON from the text response
-    try {
-      // Clean up markdown code blocks if present
-      let text = data.text.replace(/```json/g, '').replace(/```/g, '').trim();
-      return JSON.parse(text);
-    } catch (e) {
-      console.warn("Failed to parse task JSON", e);
-      return ["Review Strategy", "Update Content"];
-    }
-   } catch (e) {
-     console.error(e);
-     return ["Check Analytics", "Draft Newsletter"];
-   }
+    return JSON.parse(response.text || "{}");
+  } catch (e) {
+    return {
+      description: description,
+      targetAudience: "General Public",
+      benefits: ["High Quality", "Great Value"],
+      features: ["Premium Materials"],
+      promotion: "New Arrival"
+    };
+  }
 }
 
-// CHAT SERVICE
+// CHAT SERVICE WITH TOOLS
 export const sendChatMessage = async (
   business: Business,
   history: { role: 'user' | 'ai'; text: string }[],
-  newMessage: string
+  newMessage: string,
+  subjectContext?: { id: string; name: string; type: 'product' | 'person'; imageUrl?: string }
 ): Promise<{ text: string; image?: string }> => {
+  const ai = getAiClient();
+
+  if (!ai) {
+    return { text: "Please select an API key to start chatting." };
+  }
+
   try {
     const systemInstruction = await PromptFactory.createChatSystemInstruction(business);
-    
-    // Convert history to Vercel SDK format (user/assistant)
-    // Note: 'ai' role in our app maps to 'assistant' in SDK/OpenAI format usually, 
-    // but Google provider uses 'model'. Vercel SDK normalizes this to 'assistant'.
-    const messages = history.map(h => ({
-      role: h.role === 'ai' ? 'assistant' : 'user',
-      content: h.text
-    }));
 
-    // Add the new message
-    messages.push({ role: 'user', content: newMessage });
+    const imageGenTool: FunctionDeclaration = {
+      name: 'generate_marketing_image',
+      description: 'Generates a visual ad image based on a prompt.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          prompt: {
+            type: Type.STRING,
+            description: 'The visual description of the image to generate.',
+          },
+        },
+        required: ['prompt'],
+      },
+    };
 
-    const response = await fetch('/api/generate-text', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messages,
-        system: systemInstruction,
-        modelTier: 'standard' // Chat is usually fast
-      })
+    // Prepare Context for the AI
+    let contextMessage = newMessage;
+    let imageGenContext: any = undefined;
+
+    if (subjectContext) {
+      contextMessage += `\n\n[User attached context: ${subjectContext.type.toUpperCase()} - ${subjectContext.name}]`;
+
+      // Hydrate context for image generation
+      imageGenContext = {
+        type: subjectContext.type,
+        imageUrl: subjectContext.imageUrl || '',
+        preserveLikeness: subjectContext.type === 'person', // Default strict for people
+      };
+
+      // If Product, try to find details
+      if (subjectContext.type === 'product') {
+        const offering = business.offerings.find(o => o.id === subjectContext.id);
+        if (offering) {
+          imageGenContext.promotion = offering.promotion;
+          imageGenContext.benefits = offering.benefits;
+          imageGenContext.targetAudience = offering.targetAudience;
+          imageGenContext.preserveLikeness = offering.preserveLikeness;
+        }
+      }
+    }
+
+    const chat = ai.chats.create({
+      model: 'gemini-2.5-flash',
+      config: {
+        systemInstruction: systemInstruction,
+        tools: [{ functionDeclarations: [imageGenTool] }],
+      },
+      history: history.map(h => ({
+        role: h.role === 'ai' ? 'model' : 'user',
+        parts: [{ text: h.text }]
+      }))
     });
 
-    if (!response.ok) return { text: "I'm having trouble connecting." };
-    const data = await response.json();
+    const response = await chat.sendMessage({
+      message: contextMessage
+    });
 
-    // Note: Image generation tool call handling would need to be moved to the backend 
-    // or handled by the client interpreting a specific response.
-    // For now, we return the text. 
-    // If we want to restore Tool Use (Image Gen inside Chat), 
-    // we would need to implement 'tool calling' in the backend function.
-    
-    return { text: data.text || "I'm out of ideas right now." };
+    const functionCalls = response.candidates?.[0]?.content?.parts?.filter(p => p.functionCall).map(p => p.functionCall);
+
+    if (functionCalls && functionCalls.length > 0) {
+      const call = functionCalls[0];
+      if (call && call.name === 'generate_marketing_image') {
+        // @ts-ignore
+        const imagePrompt = call.args['prompt'] as string;
+
+        // Use the new generateImage signature
+        const generatedImageBase64 = await generateImage(
+          imagePrompt,
+          business,
+          undefined, // No style preset for chat yet
+          imageGenContext, // Pass the hydrated context
+          '1:1',
+          'pro'
+        );
+
+        return {
+          text: `I've generated that image for you based on: "${imagePrompt}"`,
+          image: generatedImageBase64
+        };
+      }
+    }
+
+    return { text: response.text || "I'm out of ideas right now." };
 
   } catch (error) {
     console.error("Chat Error:", error);
     return { text: "I'm having trouble connecting to the creative server." };
   }
 };
-

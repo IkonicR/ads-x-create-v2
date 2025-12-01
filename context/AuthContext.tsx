@@ -30,59 +30,65 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    let mounted = true;
+    console.log("Auth: Starting Session Check...");
 
-    // 1. Set up the Timeout (Safety Valve)
-    // If Supabase is completely unresponsive for 5s, we stop the loading screen.
-    const safetyTimer = setTimeout(() => {
-      if (mounted && loading) {
-        console.warn("Auth check timed out (5s). Proceeding as logged out.");
+    // Check active sessions and subscribe to auth changes
+    const getSession = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) {
+          console.error("Auth: Session Error", error);
+          throw error;
+        }
+        console.log("Auth: Session Result", session ? "User Found" : "No User");
+
+        setSession(session);
+        const currentUser = session?.user ?? null;
+        setUser(currentUser);
+
+        if (currentUser) {
+          // Fire and forget - don't await
+          StorageService.getUserProfile(currentUser.id)
+            .then(p => setProfile(p))
+            .catch(e => console.error("Auth: Profile Fetch Error", e));
+        }
+      } catch (error) {
+        console.error("Auth: Fatal Error", error);
+      } finally {
+        console.log("Auth: Finished Loading");
         setLoading(false);
       }
-    }, 5000);
+    };
 
-    // 2. Initialize via Listener (Non-blocking)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return;
+    getSession();
 
-      try {
-        setSession(session);
-        setUser(session?.user ?? null);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      console.log("Auth: State Changed", _event);
+      setSession(session);
 
-        // CRITICAL FIX: Stop loading IMMEDIATELY. Do not wait for the profile.
-        // This ensures the dashboard loads instantly on refresh.
-        if (mounted) setLoading(false);
-        clearTimeout(safetyTimer);
+      const currentUser = session?.user ?? null;
 
-        if (session?.user) {
-          // Fetch profile in the background without blocking the UI
-          StorageService.getUserProfile(session.user.id)
-            .then(p => {
-              if (mounted) setProfile(p);
-            })
-            .catch(e => {
-              console.warn("Background profile fetch failed", e);
-            });
-        } else {
-          if (mounted) setProfile(null);
-        }
-      } catch (err) {
-        console.error("Auth state change critical error:", err);
-        // Ensure we unlock if something explodes
-        if (mounted) setLoading(false);
-        clearTimeout(safetyTimer);
+      // STABILIZATION: Only update 'user' if the ID has changed to prevent loops
+      setUser(prevUser => {
+        if (prevUser?.id === currentUser?.id) return prevUser;
+        return currentUser;
+      });
+
+      if (currentUser) {
+        // Fire and forget - don't await
+        StorageService.getUserProfile(currentUser.id)
+          .then(p => setProfile(p))
+          .catch(e => console.error("Auth: Profile Fetch Error", e));
+      } else {
+        setProfile(null);
       }
+
+      // GUARANTEED TO RUN
+      setLoading(false);
     });
 
-    // 3. Trigger Initial Check
-    supabase.auth.getSession().catch(err => console.error("Session check error", err));
-
-    return () => {
-      mounted = false;
-      clearTimeout(safetyTimer);
-      subscription.unsubscribe();
-    };
-  }, []); // Empty dependency array
+    return () => subscription.unsubscribe();
+  }, []);
 
   const signInWithGoogle = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
@@ -103,8 +109,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('lastBusinessId');
   };
 
+  const value = React.useMemo(() => ({
+    session,
+    user,
+    profile,
+    loading,
+    signInWithGoogle,
+    signOut,
+    refreshProfile
+  }), [session, user, profile, loading]);
+
   return (
-    <AuthContext.Provider value={{ session, user, profile, loading, signInWithGoogle, signOut, refreshProfile }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

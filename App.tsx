@@ -20,6 +20,7 @@ import Library from './views/Library';
 import AdminDashboard from './views/AdminDashboard';
 import ChatInterface from './views/ChatInterface';
 import UserProfile from './views/UserProfile';
+import DesignLab from './views/DesignLab';
 import { GalaxyHeading } from './components/GalaxyHeading';
 
 // Helper to map URL paths to ViewState (for the Sidebar)
@@ -37,6 +38,7 @@ const getViewStateFromPath = (pathname: string): ViewState => {
     case '/admin': return ViewState.ADMIN;
     case '/user-profile': return ViewState.USER_PROFILE;
     case '/onboarding': return ViewState.ONBOARDING;
+    case '/design-lab': return ViewState.DESIGN_LAB;
     default: return ViewState.DASHBOARD;
   }
 };
@@ -55,6 +57,7 @@ const getPathFromViewState = (view: ViewState): string => {
     case ViewState.ADMIN: return '/admin';
     case ViewState.USER_PROFILE: return '/user-profile';
     case ViewState.ONBOARDING: return '/onboarding';
+    case ViewState.DESIGN_LAB: return '/design-lab';
     default: return '/dashboard';
   }
 };
@@ -69,14 +72,14 @@ const MainLayout: React.FC<any> = (props) => {
 };
 
 const AppContent: React.FC = () => {
-  const { user, profile, loading } = useAuth(); 
-  const { theme } = useTheme(); 
+  const { user, profile, loading } = useAuth();
+  const { theme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
-  
+
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [activeBusinessId, setActiveBusinessId] = useState<string>('');
-  
+
   // We no longer keep 'view' state here. We use 'location.pathname'.
   const currentView = getViewStateFromPath(location.pathname);
 
@@ -87,33 +90,36 @@ const AppContent: React.FC = () => {
 
   // Load initial data
   useEffect(() => {
-    if (!user) return; 
+    if (!user) {
+      setLoadingData(false); // Allow Login screen to render if no user
+      return;
+    }
 
     const load = async () => {
       try {
         // SECURITY: Pass user.id to filter businesses
         const loadedBusinesses = await StorageService.getBusinesses(user.id);
         setBusinesses(loadedBusinesses);
-        
+
         if (loadedBusinesses.length > 0) {
           const savedBusinessId = localStorage.getItem('lastBusinessId');
-          const targetBusinessId = (savedBusinessId && loadedBusinesses.find(b => b.id === savedBusinessId)) 
-            ? savedBusinessId 
+          const targetBusinessId = (savedBusinessId && loadedBusinesses.find(b => b.id === savedBusinessId))
+            ? savedBusinessId
             : loadedBusinesses[0].id;
-          
+
           setActiveBusinessId(targetBusinessId);
 
           // Initial Fetch
           const [loadedTasks, loadedAssets] = await Promise.all([
             StorageService.getTasks(targetBusinessId),
-            StorageService.getAssets(targetBusinessId)
+            StorageService.getRecentAssets(targetBusinessId, 10) // Optimization: Only fetch recent
           ]);
           setTasks(loadedTasks);
           setAssets(loadedAssets);
 
           // Redirect logic: If we are at root '/', go to Dashboard or Onboarding
           if (location.pathname === '/') {
-              navigate('/dashboard');
+            navigate('/dashboard');
           }
 
         } else {
@@ -126,12 +132,54 @@ const AppContent: React.FC = () => {
       }
     };
     load();
-  }, [user]); // Only on user login
+  }, [user?.id]); // Only on user ID change (prevents object ref loops)
+
+  // --- TIMEOUT HANDLING ---
+  const [connectionError, setConnectionError] = useState(false);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (loading || loadingData) {
+      timer = setTimeout(() => {
+        setConnectionError(true);
+      }, 15000); // 15 seconds timeout
+    }
+    return () => clearTimeout(timer);
+  }, [loading, loadingData]);
+
+  const handleRetry = () => {
+    setConnectionError(false);
+    window.location.reload();
+  };
+
+  if (connectionError) {
+    return (
+      <div className={`min-h-screen flex flex-col items-center justify-center gap-6 ${theme === 'dark' ? 'bg-neu-dark text-neu-text-main-dark' : 'bg-neu-light text-neu-text-main-light'} transition-colors duration-300`}>
+        <div className="scale-110 opacity-50 grayscale">
+          <GalaxyHeading text="SYSTEM OFFLINE" className="text-4xl md:text-6xl tracking-tighter" />
+        </div>
+        <div className="flex flex-col items-center gap-4 max-w-md text-center px-4">
+          <p className="opacity-60">
+            The database is taking too long to respond. This usually happens during a restart or network outage.
+          </p>
+          <button
+            onClick={handleRetry}
+            className="px-6 py-3 rounded-xl bg-brand text-white font-bold hover:opacity-90 transition-all shadow-lg hover:shadow-brand/20"
+          >
+            Retry Connection
+          </button>
+          <div className="text-xs font-mono opacity-30 mt-4">
+            Error: Connection Timed Out (15s)
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // --- AUTHENTICATION GATES ---
-  if (loading || loadingData || (user && !profile)) {
-    const bgClass = theme === 'dark' ? 'bg-[#0F1115]' : 'bg-[#E0E5EC]';
-    return ( 
+  if (loading || loadingData) {
+    const bgClass = theme === 'dark' ? 'bg-neu-dark' : 'bg-neu-light';
+    return (
       <div className={`min-h-screen flex flex-col items-center justify-center gap-8 ${bgClass} transition-colors duration-300`}>
         <div className="scale-110">
           <GalaxyHeading text="ADS X CREATE" className="text-4xl md:text-6xl tracking-tighter" />
@@ -145,10 +193,11 @@ const AppContent: React.FC = () => {
       </div>
     );
   }
-  
+
   if (!user) return <Login />;
-  if (profile && !profile.onboarding_completed) return <UserOnboarding />;
-  
+  // If user exists but has no profile (or onboarding not done), force onboarding
+  if (user && (!profile || !profile.onboarding_completed)) return <UserOnboarding />;
+
   // The wrapper function for navigation context
   const handleSetView = (newView: ViewState) => {
     const path = getPathFromViewState(newView);
@@ -163,13 +212,14 @@ const AppContent: React.FC = () => {
     const newBusiness: Business = {
       ...newBusinessData as any,
       owner_id: user.id, // Explicitly set owner
+      currency: 'USD', // Default currency
       profile: { address: '', contactEmail: '', contactPhone: '', hours: [], socials: [], ...newBusinessData.profile },
       adPreferences: { goals: '', targetAudience: '', complianceText: '', preferredCta: 'Learn More', sloganUsage: 'Sometimes', ...newBusinessData.adPreferences },
       offerings: [],
       teamMembers: [],
       voice: { tone: 'Professional', keywords: [], slogan: '', negativeKeywords: [], ...newBusinessData.voice }
     };
-    
+
     await StorageService.saveBusiness(newBusiness, user.id);
     const updatedList = await StorageService.getBusinesses(user.id);
     setBusinesses(updatedList);
@@ -182,14 +232,14 @@ const AppContent: React.FC = () => {
     try {
       setActiveBusinessId(id);
       localStorage.setItem('lastBusinessId', id);
-      
+
       // Clear data immediately to prevent ghosting
       setTasks([]);
       setAssets([]);
 
       const [loadedTasks, loadedAssets] = await Promise.all([
         StorageService.getTasks(id),
-        StorageService.getAssets(id)
+        StorageService.getRecentAssets(id, 10) // Optimization: Only fetch recent
       ]);
       setTasks(loadedTasks);
       setAssets(loadedAssets);
@@ -205,15 +255,35 @@ const AppContent: React.FC = () => {
     setBusinesses(prev => prev.map(b => b.id === updated.id ? updated : b));
   };
 
+  // Optimized update for AdminDashboard (which already saves to DB)
+  const handleExternalBusinessUpdate = (updated: Business) => {
+    setBusinesses(prev => prev.map(b => b.id === updated.id ? updated : b));
+  };
+
   const deductCredit = (amount: number) => {
     if (activeBusiness) {
       updateBusiness({ ...activeBusiness, credits: Math.max(0, activeBusiness.credits - amount) });
     }
   };
 
+  const updateCredits = (newBalance: number) => {
+    if (activeBusiness) {
+      // Update local state ONLY, because server already updated DB
+      setBusinesses(prev => prev.map(b => b.id === activeBusiness.id ? { ...b, credits: newBalance } : b));
+    }
+  };
+
   const handleAddAsset = async (asset: Asset) => {
-    await StorageService.saveAsset({ ...asset, businessId: activeBusinessId });
+    // Optimistic Update: Update UI immediately
     setAssets(prev => [asset, ...prev]);
+
+    // Background Save: Fire and forget (or handle error silently)
+    try {
+      await StorageService.saveAsset({ ...asset, businessId: activeBusinessId });
+    } catch (error) {
+      console.error("Background save failed for asset", asset.id, error);
+      // Optional: Revert state or show toast if save fails
+    }
   }
 
   const handleDeleteAsset = async (assetId: string) => {
@@ -226,17 +296,17 @@ const AppContent: React.FC = () => {
   };
 
   const handleUpdateTasks = async (newTasks: Task[]) => {
-     await StorageService.saveTasks(newTasks, activeBusinessId);
-     setTasks(newTasks);
+    await StorageService.saveTasks(newTasks, activeBusinessId);
+    setTasks(newTasks);
   }
-  
+
   const setTasksWrapper = (val: React.SetStateAction<Task[]>) => {
-     if (typeof val === 'function') {
-        const newState = val(tasks);
-        handleUpdateTasks(newState);
-     } else {
-        handleUpdateTasks(val);
-     }
+    if (typeof val === 'function') {
+      const newState = val(tasks);
+      handleUpdateTasks(newState);
+    } else {
+      handleUpdateTasks(val);
+    }
   };
 
   return (
@@ -249,16 +319,16 @@ const AppContent: React.FC = () => {
       >
         <Routes>
           <Route path="/onboarding" element={<Onboarding onComplete={handleBusinessCreate} />} />
-          
+
           {/* Protected Routes - Only render if activeBusiness exists */}
           {activeBusiness && (
             <>
               <Route path="/dashboard" element={
-                <Dashboard 
-                  business={activeBusiness} 
-                  tasks={tasks} 
+                <Dashboard
+                  business={activeBusiness}
+                  tasks={tasks}
                   recentAssets={assets.slice(0, 4)}
-                  onNavigate={handleSetView} 
+                  onNavigate={handleSetView}
                 />
               } />
               <Route path="/profile" element={
@@ -271,25 +341,33 @@ const AppContent: React.FC = () => {
                 <BrandKit business={activeBusiness} updateBusiness={updateBusiness} />
               } />
               <Route path="/generator" element={
-                <Generator 
-                  business={activeBusiness} 
-                  deductCredit={deductCredit} 
+                <Generator
+                  business={activeBusiness}
+                  deductCredit={deductCredit}
+                  updateCredits={updateCredits}
                   addAsset={handleAddAsset}
                   deleteAsset={handleDeleteAsset}
                   assets={assets}
                   pendingAssets={pendingAssets}
                   setPendingAssets={setPendingAssets}
+                  loadMoreAssets={async () => {
+                    const moreAssets = await StorageService.getAssets(activeBusiness.id, 10, assets.length);
+                    if (moreAssets.length > 0) {
+                      setAssets(prev => [...prev, ...moreAssets]);
+                    }
+                    return moreAssets.length;
+                  }}
                 />
               } />
               <Route path="/tasks" element={
-                <Tasks 
-                  tasks={tasks} 
-                  setTasks={setTasksWrapper} 
+                <Tasks
+                  tasks={tasks}
+                  setTasks={setTasksWrapper}
                   businessDesc={activeBusiness.description}
                 />
               } />
               <Route path="/library" element={
-                <Library assets={assets} />
+                <Library businessId={activeBusiness.id} />
               } />
               <Route path="/chat" element={
                 <ChatInterface business={activeBusiness} />
@@ -297,9 +375,10 @@ const AppContent: React.FC = () => {
             </>
           )}
 
-          <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/admin" element={<AdminDashboard onBusinessUpdated={handleExternalBusinessUpdate} />} />
           <Route path="/user-profile" element={<UserProfile />} />
-          
+          <Route path="/design-lab" element={<DesignLab />} />
+
           {/* Fallback: If no active business, go to onboarding, else dashboard */}
           <Route path="*" element={<Navigate to={activeBusiness ? "/dashboard" : "/onboarding"} replace />} />
         </Routes>

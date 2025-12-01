@@ -1,50 +1,42 @@
 
 # System Prompt & "Digital Brain" Logic
 
-## Configuration & Overrides (Admin HQ)
-The AI personality is controlled via a **Fall-through System** accessible in the Admin Dashboard ("Brain Logic" tab).
+## Philosophy: "Guided Creativity"
+We moved away from the "Brand Enforcer" model (strict, choking rules) to a **"Guided Creativity"** model.
+We give the AI the **Ingredients** (Brand, Colors, Style Reference) and trust it to be the **Chef**.
 
-1.  **Factory Defaults (Hardcoded):** The logic defined below exists in the codebase (`services/prompts.ts`). It is the baseline behavior.
-2.  **Admin Overrides (Database):** Administrators can define custom prompts via the UI.
-3.  **Resolution Logic:**
-    *   `Prompt = Custom_Prompt_From_DB || Factory_Default_From_Code`
-    *   This ensures that code updates improve the baseline, while specific overrides (if set) are respected.
+## The "Ingredients" Protocol
+Instead of a 50-line rulebook, we construct a lightweight "Visual Brief" dynamically in `api/generate-image.ts`.
 
-## Philosophy
-We do not allow Gemini to be a "Creative Writer" in the traditional sense. We treat Gemini as a **Brand Enforcer**. It is not allowed to invent facts. It must strictly adhere to the data provided in the `Business` object (The Digital Brain).
-
-## The Guardrail Protocol (Factory Defaults)
-To prevent "Marketing Schizophrenia" and hallucinations, every API call to `Gemini 3 Pro` is wrapped in a specific context structure.
-
-### 1. The Identity Anchor
-We explicitly inject the business identity at the top of every prompt.
+### 1. The Inputs (Data)
+We provide the raw facts without editorializing.
 ```text
-BRAND IDENTITY:
-- Business Name: ${business.name}
-- Industry: ${business.industry}
-- Brand Colors: ${business.colors}
+INPUTS:
+- Brand: ${business.name} (${business.industry})
+- Colors: ${business.colors}
+- User Idea: "${userRequest}"
 ```
 
-### 2. The "Do Not Invent" Rule
-We instruct the model to reject creative liberties regarding the product itself.
+### 2. The Visual Guidance (Reference)
+We prioritize **Visuals over Text**.
+*   **Style Reference:** We attach the actual image of the selected Style Preset (Image #3). We tell the AI: *"Use this image as the ground truth for mood/lighting."*
+*   **Logo:** We attach the Brand Logo (Image #1) and say: *"Integrate naturally."*
+*   **Product:** We attach the Product Image (Image #2) and say: *"Focus on this."*
+
+### 3. The Task (Freedom)
+We give a simple, empowering instruction.
 ```text
-STRICT RULES:
-1. Do NOT invent features that are not described in the Offering description.
-2. If the product description is "Black Coffee", do NOT generate a Latte Art pattern unless specified.
-3. Adhere to the Ban List: Do NOT use words/imagery found in ${business.voice.negativeKeywords}.
+TASK:
+Create a stunning, cohesive visual that brings the User Idea to life.
+If the user asks for specific text, make it the visual hero.
+Otherwise, prioritize visual impact and brand vibe.
 ```
 
-### 3. The Visual Style Injection
-We separate *Content* (The Product) from *Style* (The Vibe).
-*   **Content Source**: Comes strictly from the `Offering` database.
-*   **Style Source**: Comes strictly from the `StylePreset` selected by the user.
+## Why this works
+*   **No "Telephone" Game:** The AI sees the Style image directly. It doesn't need us to describe "Neon" in words.
+*   **Less Hallucination:** By reducing the rule count, the AI focuses its attention on the *Images* provided.
+*   **Better Art:** The results are less stiff and more "designed."
 
-### Example Mega-Prompt construction
-If the user selects "Espresso" (Offering) and "Cyberpunk" (Style):
-
-> "Create a high-end product image for 'Lumina Coffee'. The product is 'Signature Espresso'. The style is 'Cyberpunk aesthetic, neon lighting'.
-> CONSTRAINT: Do not show milk or cream. Do not use the word 'Cheap'.
-> The primary color of the brand is #4A3B32, try to incorporate this subtly."
-
-## Why this matters
-Generic AI tools default to the "Average" of the internet. By forcing these constraints, we force Gemini to default to the "Specifics" of the user's business.
+## Configuration
+The prompt structure is currently **Hardcoded** in `api/generate-image.ts` to ensure consistency with the image attachment logic.
+Future versions may allow Admin overrides for the "Task" section via the database.

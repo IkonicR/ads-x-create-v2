@@ -23,15 +23,15 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     localStorage.setItem('axc_theme', theme);
     const root = window.document.documentElement;
-    
+
     if (theme === 'dark') {
       root.classList.add('dark');
-      document.body.style.backgroundColor = '#0F1115'; // Space Black
-      document.body.style.color = '#F8FAFC';
+      document.body.style.backgroundColor = 'var(--color-neu-dark)';
+      document.body.style.color = 'var(--color-neu-text-main-dark)';
     } else {
       root.classList.remove('dark');
-      document.body.style.backgroundColor = '#F4F6F9'; // Off-white
-      document.body.style.color = '#1F2937';
+      document.body.style.backgroundColor = 'var(--color-neu-light)';
+      document.body.style.color = 'var(--color-neu-text-main-light)';
     }
   }, [theme]);
 

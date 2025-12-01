@@ -44,8 +44,8 @@ If a user attaches a Product Image or Style Reference:
 
 ---
 
-## Margin & Credit System (REVISED)
-To ensure profitability, the internal "Credit" system is pegged to the highest cost basis (4K Pro).
+## Margin & Credit System (DEFINITIVE)
+To ensure profitability, the internal "Credit" system operates on a High Margin model.
 
 *   **1 Credit** ≈ $0.02 Cost Basis.
 
@@ -53,9 +53,9 @@ To ensure profitability, the internal "Credit" system is pegged to the highest c
 
 | Action | Engine | Credit Cost | Value ($) | Margin |
 | :--- | :--- | :--- | :--- | :--- |
-| **Premium Gen** | Gemini 3 Pro | **10 Credits** | $0.20 | ~30% (on HD) |
-| **4K Upgrade** | Gemini 3 Pro | **15 Credits** | $0.30 | ~17% (on 4K) |
-| **Fast Gen** | Gemini Flash | **3 Credits** | $0.06 | ~33% |
+| **Premium Gen** | Gemini 3 Pro | **40 Credits** | $0.80 | **~83%** |
+| **4K Upgrade** | Gemini 3 Pro | **80 Credits** | $1.60 | **~85%** |
+| **Fast Gen** | Gemini Flash | **10 Credits** | $0.20 | **~80%** |
 | **Chat/Text** | Gemini Flash | **Free** | $0.00 | N/A |
 
 ## Technical Constraints

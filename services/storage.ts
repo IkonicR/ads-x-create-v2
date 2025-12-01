@@ -1,6 +1,6 @@
 
 import { supabase } from './supabase';
-import { Business, Asset, Task, AdminNote, SystemPrompts, UserProfile, Preset, StylePreset } from '../types';
+import { Business, Asset, Task, AdminNote, SystemPrompts, UserProfile, StylePreset } from '../types';
 
 const DEFAULT_BUSINESS: Business = {
   id: '1',
@@ -12,13 +12,15 @@ const DEFAULT_BUSINESS: Business = {
   credits: 120,
   role: 'Owner',
   colors: { primary: '#4A3B32', secondary: '#D4A373', accent: '#A95C36' },
-  voice: { 
+  voice: {
     sliders: {
       identity: 40, // Somewhat reserved
       style: 70,    // Fairly casual
       emotion: 50   // Balanced
     },
-    keywords: ['Sustainable', 'Artisan', 'Morning'], 
+    archetype: 'The Sage',
+    tonePills: ['Sustainable', 'Artisan'],
+    keywords: ['Sustainable', 'Artisan', 'Morning'],
     slogan: 'Wake up to better.',
     negativeKeywords: ['Cheap', 'Fast Food', 'Bitter']
   },
@@ -55,7 +57,16 @@ const DEFAULT_BUSINESS: Business = {
   usps: ['Ethically Sourced', 'Roasted Weekly', 'Award Winning'],
   testimonials: [
     { id: 't1', author: 'Sarah J.', quote: 'Best latte I have ever had.' }
-  ]
+  ],
+  currency: 'USD',
+  typography: { headingFont: 'Playfair Display', bodyFont: 'Lato', scale: 'medium' },
+  coreCustomerProfile: {
+    demographics: 'Urban professionals, 25-45',
+    psychographics: 'Eco-conscious, values quality over speed',
+    painPoints: ['Burnt coffee', 'Unethical sourcing'],
+    desires: ['A morning ritual', 'Sustainable choices']
+  },
+  competitors: []
 };
 
 const DEFAULT_TASKS: Task[] = [
@@ -72,6 +83,7 @@ const mapBusinessFromDB = (row: any): Business => ({
   industry: row.industry,
   description: row.description,
   website: row.website,
+  currency: row.currency || 'USD', // <--- Default to USD
   credits: row.credits,
   role: row.role,
   colors: row.colors,
@@ -84,7 +96,11 @@ const mapBusinessFromDB = (row: any): Business => ({
   logoUrl: row.logo_url,
   fontName: row.font_name,
   usps: row.usps,
-  testimonials: row.testimonials
+  testimonials: row.testimonials,
+  logoVariants: row.logo_variants,
+  typography: row.typography,
+  coreCustomerProfile: row.core_customer_profile,
+  competitors: row.competitors
 });
 
 // Helper to map App Business to DB payload
@@ -96,6 +112,7 @@ const mapBusinessToDB = (business: Business) => ({
   industry: business.industry,
   description: business.description,
   website: business.website,
+  currency: business.currency, // <--- Added
   credits: business.credits,
   role: business.role,
   colors: business.colors,
@@ -108,24 +125,30 @@ const mapBusinessToDB = (business: Business) => ({
   logo_url: business.logoUrl,
   font_name: business.fontName,
   usps: business.usps,
-  testimonials: business.testimonials
+  testimonials: business.testimonials,
+  logo_variants: business.logoVariants,
+  typography: business.typography,
+  core_customer_profile: business.coreCustomerProfile,
+  competitors: business.competitors
 });
 
 export const StorageService = {
   getBusinesses: async (userId?: string): Promise<Business[]> => {
+    console.log("[Storage] Fetching businesses for user:", userId);
     let query = supabase.from('businesses').select('*');
-    
+
     // SECURITY: Only show businesses owned by the user (if userId provided)
     if (userId) {
       query = query.eq('owner_id', userId);
     }
 
     const { data, error } = await query;
-    
+
     if (error) {
-      console.error('Error fetching businesses:', error);
+      console.error('[Storage] Error fetching businesses:', error);
       return [];
     }
+    console.log("[Storage] Businesses found:", data?.length);
 
     if (!data || data.length === 0) {
       // Do NOT seed default business implicitly here anymore.
@@ -139,7 +162,7 @@ export const StorageService = {
 
   saveBusiness: async (business: Business, userId?: string): Promise<void> => {
     const payload = mapBusinessToDB(business);
-    
+
     // SECURITY: Ensure owner_id is set on creation
     if (!payload.owner_id && userId) {
       payload.owner_id = userId;
@@ -150,11 +173,11 @@ export const StorageService = {
   },
 
   // --- Assets ---
-  
+
   async uploadBusinessAsset(file: File, businessId: string, folder: string = 'logos'): Promise<string | null> {
     try {
       const fileExt = file.name.split('.').pop();
-      const fileName = `${businessId}/${folder}/${Date.now()}.${fileExt}`;
+      const fileName = `${businessId}/${folder}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from('business-assets')
@@ -194,17 +217,29 @@ export const StorageService = {
     }
   },
 
-  async getAssets(businessId: string): Promise<Asset[]> {
-    const { data, error } = await supabase
+  getAssets: async (businessId: string, limit?: number, offset?: number): Promise<Asset[]> => {
+    console.log("[Storage] Fetching Assets...", { limit, offset });
+    let query = supabase
       .from('assets')
       .select('*')
       .eq('business_id', businessId)
       .order('created_at', { ascending: false });
 
+    if (limit) {
+      query = query.limit(limit);
+    }
+
+    if (offset) {
+      query = query.range(offset, offset + (limit || 10) - 1);
+    }
+
+    const { data, error } = await query;
+
     if (error) {
-      console.error('Error fetching assets:', error);
+      console.error('[Storage] Error fetching assets:', error);
       return [];
     }
+    console.log("[Storage] Assets found:", data?.length);
 
     return data.map(row => ({
       id: row.id,
@@ -217,12 +252,16 @@ export const StorageService = {
     }));
   },
 
+  getRecentAssets: async (businessId: string, limit: number = 10): Promise<Asset[]> => {
+    return StorageService.getAssets(businessId, limit);
+  },
+
   deleteAsset: async (assetId: string): Promise<void> => {
     const { error } = await supabase
       .from('assets')
       .delete()
       .eq('id', assetId);
-    
+
     if (error) {
       console.error('Error deleting asset:', error);
       throw error;
@@ -230,37 +269,20 @@ export const StorageService = {
   },
 
   getTasks: async (businessId: string): Promise<Task[]> => {
+    console.log("[Storage] Fetching Tasks...");
     const { data, error } = await supabase
       .from('tasks')
       .select('*')
       .eq('business_id', businessId);
 
     if (error) {
-      console.error('Error fetching tasks:', error);
+      console.error('[Storage] Error fetching tasks:', error);
       return DEFAULT_TASKS;
     }
+    console.log("[Storage] Tasks found:", data?.length);
 
     if (!data || data.length === 0) {
-      // Seed default tasks
-      const tasksPayload = DEFAULT_TASKS.map(t => ({
-        business_id: businessId,
-        title: t.title,
-        status: t.status,
-        priority: t.priority,
-        due_date: t.dueDate,
-        created_at: new Date().toISOString()
-      }));
-      
-      const { data: inserted } = await supabase.from('tasks').insert(tasksPayload).select();
-      if (inserted) {
-        return inserted.map((row: any) => ({
-          id: row.id,
-          title: row.title,
-          status: row.status,
-          priority: row.priority,
-          dueDate: row.due_date
-        }));
-      }
+      // Return default tasks immediately (Do not seed DB to avoid blocking load)
       return DEFAULT_TASKS;
     }
 
@@ -296,8 +318,12 @@ export const StorageService = {
       id: row.id,
       content: row.content,
       category: row.category,
-      isDone: row.is_done,
-      createdAt: row.created_at
+      // Map legacy boolean if status is missing, otherwise use status
+      status: row.status || (row.is_done ? 'done' : 'todo'),
+      priority: row.priority || 'medium',
+      createdAt: row.created_at,
+      links: row.links || [],
+      tags: row.tags || []
     }));
   },
 
@@ -306,7 +332,13 @@ export const StorageService = {
       id: n.id,
       content: n.content,
       category: n.category,
-      is_done: n.isDone,
+      status: n.status,
+      priority: n.priority,
+      links: n.links || [],
+      tags: n.tags || [],
+      // Keep legacy field synced for safety if needed, or just ignore it. 
+      // Let's sync it for now to be safe if rollback occurs.
+      is_done: n.status === 'done',
       created_at: n.createdAt
     }));
     const { error } = await supabase.from('admin_notes').upsert(payloads);
@@ -328,12 +360,12 @@ export const StorageService = {
     // Let's just delete all and insert new, or use a fixed ID for singleton.
     // Cleaner: Get the existing one, update it.
     const existing = await StorageService.getSystemPrompts();
-    
+
     // Actually, we can just upsert with a known query if we had an ID.
     // Since we don't track the ID in SystemPrompts type, let's fetch the ID first if it exists.
-    
+
     const { data } = await supabase.from('system_prompts').select('id').limit(1).maybeSingle();
-    
+
     const payload: any = {
       chat_persona: prompts.chatPersona,
       image_gen_rules: prompts.imageGenRules,
@@ -350,42 +382,10 @@ export const StorageService = {
 
   // --- Config (Presets & Styles) ---
 
-  getPresets: async (): Promise<Preset[]> => {
-    const { data, error } = await supabase
-      .from('presets')
-      .select('*')
-      .order('sort_order', { ascending: true });
-      
-    if (error) {
-      console.error('Error fetching presets:', error);
-      return [];
-    }
-    
-    return data.map((row: any) => ({
-      id: row.id,
-      name: row.name,
-      description: row.description,
-      promptModifier: row.prompt_modifier,
-      icon: row.icon,
-      imageUrl: row.image_url,
-      logoPlacement: row.logo_placement
-    }));
-  },
-
-  savePreset: async (preset: Preset & { sortOrder?: number, isActive?: boolean }): Promise<void> => {
-    const payload = {
-      id: preset.id,
-      name: preset.name,
-      description: preset.description,
-      prompt_modifier: preset.promptModifier,
-      icon: preset.icon,
-      image_url: preset.imageUrl,
-      logo_placement: preset.logoPlacement,
-      sort_order: preset.sortOrder,
-      is_active: preset.isActive
-    };
-    const { error } = await supabase.from('presets').upsert(payload);
-    if (error) console.error('Error saving preset:', error);
+  deletePreset: async (id: string): Promise<{ error: any }> => {
+    const { error } = await supabase.from('presets').delete().eq('id', id);
+    if (error) console.error('Error deleting preset:', error);
+    return { error };
   },
 
   getStyles: async (): Promise<StylePreset[]> => {
@@ -393,23 +393,27 @@ export const StorageService = {
       .from('styles')
       .select('*')
       .order('sort_order', { ascending: true });
-      
+
     if (error) {
       console.error('Error fetching styles:', error);
       return [];
     }
-    
+
     return data.map((row: any) => ({
       id: row.id,
       name: row.name,
       description: row.description,
       imageUrl: row.image_url,
       promptModifier: row.prompt_modifier,
-      logoMaterial: row.logo_material
+      logoMaterial: row.logo_material,
+      config: row.config,
+      referenceImages: row.reference_images, // <--- Added
+      styleCues: row.style_cues,             // <--- Added
+      avoid: row.avoid                       // <--- Added
     }));
   },
 
-  saveStyle: async (style: StylePreset & { sortOrder?: number, isActive?: boolean }): Promise<void> => {
+  saveStyle: async (style: StylePreset & { sortOrder?: number, isActive?: boolean }): Promise<{ error: any }> => {
     const payload = {
       id: style.id,
       name: style.name,
@@ -418,10 +422,21 @@ export const StorageService = {
       prompt_modifier: style.promptModifier,
       logo_material: style.logoMaterial,
       sort_order: style.sortOrder,
-      is_active: style.isActive
+      is_active: style.isActive,
+      config: style.config,
+      reference_images: style.referenceImages, // <--- Added
+      style_cues: style.styleCues,             // <--- Added
+      avoid: style.avoid                       // <--- Added
     };
     const { error } = await supabase.from('styles').upsert(payload);
     if (error) console.error('Error saving style:', error);
+    return { error };
+  },
+
+  deleteStyle: async (id: string): Promise<{ error: any }> => {
+    const { error } = await supabase.from('styles').delete().eq('id', id);
+    if (error) console.error('Error deleting style:', error);
+    return { error };
   },
 
   // --- User Profiles ---
@@ -460,5 +475,19 @@ export const StorageService = {
   async signOut() {
     const { error } = await supabase.auth.signOut();
     if (error) console.error('Error signing out:', error);
+  },
+
+  getGenerationLogs: async (): Promise<any[]> => {
+    const { data, error } = await supabase
+      .from('generation_logs')
+      .select('*, businesses(name)') // Join with businesses to get name
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error) {
+      console.error('Error fetching logs:', error);
+      return [];
+    }
+    return data || [];
   }
 };

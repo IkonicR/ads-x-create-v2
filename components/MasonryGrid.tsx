@@ -1,34 +1,65 @@
+import React, { useMemo, useState, useEffect } from 'react';
 
-import React, { useMemo } from 'react';
-
-interface MasonryGridProps {
-  children: React.ReactNode[];
+interface MasonryGridProps<T> {
+  items: T[];
+  renderItem: (item: T) => React.ReactNode;
+  getItemAspectRatio: (item: T) => number;
   columns?: number;
   gap?: number;
+  className?: string;
 }
 
-const MasonryGrid: React.FC<MasonryGridProps> = React.memo(({ children, columns = 3, gap = 16 }) => {
-  
+const MasonryGrid = <T,>({
+  items,
+  renderItem,
+  getItemAspectRatio,
+  columns = 3,
+  gap = 16,
+  className = ''
+}: MasonryGridProps<T>) => {
+
   const columnWrapper = useMemo(() => {
-    const cols: React.ReactNode[][] = Array.from({ length: columns }, () => []);
-    
-    React.Children.forEach(children, (child, i) => {
-      const columnIndex = i % columns;
-      cols[columnIndex].push(child);
+    const cols: T[][] = Array.from({ length: columns }, () => []);
+    const colHeights = new Array(columns).fill(0);
+
+    items.forEach((item) => {
+      // Find the shortest column
+      let minHeight = colHeights[0];
+      let minColIndex = 0;
+
+      for (let i = 1; i < columns; i++) {
+        if (colHeights[i] < minHeight) {
+          minHeight = colHeights[i];
+          minColIndex = i;
+        }
+      }
+
+      // Add item to that column
+      cols[minColIndex].push(item);
+
+      // Update column height
+      // Height = Width / AspectRatio
+      // We assume column width is constant (1 unit), so height added is 1 / aspectRatio
+      const ratio = getItemAspectRatio(item) || 1;
+      colHeights[minColIndex] += (1 / ratio);
     });
-    
+
     return cols;
-  }, [children, columns]);
+  }, [items, columns, getItemAspectRatio]);
 
   return (
-    <div className="flex w-full" style={{ gap: `${gap}px` }}>
-      {columnWrapper.map((colChildren, colIndex) => (
+    <div className={`flex w-full ${className}`} style={{ gap: `${gap}px` }}>
+      {columnWrapper.map((colItems, colIndex) => (
         <div key={colIndex} className="flex flex-col flex-1" style={{ gap: `${gap}px` }}>
-          {colChildren}
+          {colItems.map((item, itemIndex) => (
+            <React.Fragment key={itemIndex}>
+              {renderItem(item)}
+            </React.Fragment>
+          ))}
         </div>
       ))}
     </div>
   );
-});
+};
 
 export default MasonryGrid;

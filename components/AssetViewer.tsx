@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Asset } from '../types';
 import { useThemeStyles, NeuButton } from './NeuComponents';
@@ -16,10 +17,10 @@ interface AssetViewerProps {
 export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDelete, onRefine }) => {
   const { styles, theme } = useThemeStyles();
   const isDark = theme === 'dark';
-  
+
   // Tabs State
   const [activeTab, setActiveTab] = useState<'details' | 'refine'>('details');
-  
+
   // Zoom State
   const [isZoomed, setIsZoomed] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
@@ -29,8 +30,8 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
   const [refineInput, setRefineInput] = useState('');
 
   // Galaxy Colors - Deep Space Portal
-  const galaxyBg = '#050505'; 
-  const galaxyStars = ['#ffffff', '#A5B4FC', '#60a5fa', '#F472B6']; 
+  const galaxyBg = '#050505';
+  const galaxyStars = ['#ffffff', '#A5B4FC', '#60a5fa', '#F472B6'];
 
   const handleDownload = () => {
     if (asset) {
@@ -48,11 +49,11 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!isZoomed || !imageContainerRef.current) return;
-    
+
     const { left, top, width, height } = imageContainerRef.current.getBoundingClientRect();
     const x = (e.clientX - left) / width;
     const y = (e.clientY - top) / height;
-    
+
     setMousePos({ x, y });
   };
 
@@ -62,7 +63,7 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
 
   if (!asset) return null;
 
-  return (
+  return ReactDOM.createPortal(
     <AnimatePresence>
       {asset && (
         <motion.div
@@ -70,31 +71,33 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-[100] flex items-center justify-center overflow-hidden"
+          onClick={onClose}
         >
           {/* 1. The Portal Background (Galaxy) */}
           <div className="absolute inset-0 z-0">
-             <GalaxyCanvas 
-               backgroundColor={galaxyBg}
-               starColors={galaxyStars}
-             />
-             {/* Subtle vignette */}
-             <div className="absolute inset-0 bg-radial-gradient from-transparent to-black/80 pointer-events-none" />
+            <GalaxyCanvas
+              backgroundColor={galaxyBg}
+              starColors={galaxyStars}
+            />
+            {/* Subtle vignette */}
+            <div className="absolute inset-0 bg-radial-gradient from-transparent to-black/80 pointer-events-none" />
           </div>
 
           {/* 2. The Floating Neumorphic Slab */}
-          <motion.div 
+          <motion.div
             initial={{ scale: 0.95, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 20 }}
             transition={{ type: "spring", duration: 0.5, bounce: 0.3 }}
             className={`relative z-10 w-[95%] max-w-6xl max-h-[90vh] rounded-[2.5rem] overflow-hidden flex flex-col md:flex-row shadow-2xl border border-white/10 ${styles.bg}`}
             style={{
-               boxShadow: '0 0 0 1px rgba(255,255,255,0.05), 0 20px 50px -12px rgba(0,0,0,0.5)'
+              boxShadow: '0 0 0 1px rgba(255,255,255,0.05), 0 20px 50px -12px rgba(0,0,0,0.5)'
             }}
+            onClick={(e) => e.stopPropagation()}
           >
-            
+
             {/* Close Button (Floating) */}
-            <button 
+            <button
               onClick={onClose}
               className={`absolute top-4 right-4 z-50 p-2 rounded-full transition-transform hover:rotate-90 active:scale-95 ${styles.bg} ${styles.shadowOut} ${styles.textSub} hover:text-red-500`}
             >
@@ -103,200 +106,198 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
 
             {/* Left: The Asset (The "View") */}
             <div className={`flex-1 relative flex items-center justify-center p-6 md:p-10 ${isDark ? 'bg-black/20' : 'bg-gray-100/50'} overflow-hidden`}>
-               
-               {/* Zoom Tooltip/Icon */}
-               <div className="absolute top-6 left-6 z-20 pointer-events-none opacity-50">
-                 <div className={`px-3 py-1 rounded-full flex items-center gap-2 text-xs font-bold ${styles.bg} ${styles.shadowOut} ${styles.textSub}`}>
-                    <ZoomIn size={12}/> {isZoomed ? 'Click to Reset' : 'Click to Zoom'}
-                 </div>
-               </div>
 
-               <motion.div 
-                 layoutId={`asset-${asset.id}`}
-                 ref={imageContainerRef}
-                 onClick={toggleZoom}
-                 onMouseMove={handleMouseMove}
-                 className={`relative w-full h-full max-h-[70vh] flex items-center justify-center rounded-2xl overflow-hidden shadow-lg cursor-zoom-in transition-transform duration-200`}
-               >
-                 <img 
-                   src={asset.content} 
-                   alt={asset.prompt} 
-                   className="max-w-full max-h-full object-contain rounded-xl transition-transform duration-100 ease-out"
-                   style={{
-                      transform: isZoomed 
-                        ? `scale(2.5) translate(${(0.5 - mousePos.x) * 100}px, ${(0.5 - mousePos.y) * 100}px)` 
-                        : 'scale(1)'
-                   }}
-                 />
-               </motion.div>
+              {/* Zoom Tooltip/Icon */}
+              <div className="absolute top-6 left-6 z-20 pointer-events-none opacity-50">
+                <div className={`px-3 py-1 rounded-full flex items-center gap-2 text-xs font-bold ${styles.bg} ${styles.shadowOut} ${styles.textSub}`}>
+                  <ZoomIn size={12} /> {isZoomed ? 'Click to Reset' : 'Click to Zoom'}
+                </div>
+              </div>
+
+              <motion.div
+                layoutId={`asset-${asset.id}`}
+                ref={imageContainerRef}
+                onClick={toggleZoom}
+                onMouseMove={handleMouseMove}
+                className={`relative w-full h-full max-h-[70vh] flex items-center justify-center rounded-2xl overflow-hidden shadow-lg cursor-zoom-in transition-transform duration-200`}
+              >
+                <img
+                  src={asset.content}
+                  alt={asset.prompt}
+                  className="max-w-full max-h-full object-contain rounded-xl transition-transform duration-100 ease-out"
+                  style={{
+                    transform: isZoomed
+                      ? `scale(2.5) translate(${(0.5 - mousePos.x) * 100}px, ${(0.5 - mousePos.y) * 100}px)`
+                      : 'scale(1)'
+                  }}
+                />
+              </motion.div>
             </div>
 
             {/* Right: Control Deck / Info */}
             <div className={`w-full md:w-[400px] flex-shrink-0 flex flex-col border-l border-white/5 ${styles.bg}`}>
-               
-               {/* Tab Navigation */}
-               <div className="px-6 pt-6 pb-2 flex gap-4 border-b border-white/5">
-                  <button 
-                    onClick={() => setActiveTab('details')}
-                    className={`pb-3 text-sm font-bold transition-colors relative ${
-                      activeTab === 'details' ? `text-brand` : `${styles.textSub} hover:${styles.textMain}`
-                    }`}
-                  >
-                    Details
-                    {activeTab === 'details' && (
-                      <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand rounded-full" />
-                    )}
-                  </button>
-                  <button 
-                    onClick={() => setActiveTab('refine')}
-                    className={`pb-3 text-sm font-bold transition-colors relative ${
-                      activeTab === 'refine' ? `text-brand` : `${styles.textSub} hover:${styles.textMain}`
-                    }`}
-                  >
-                    Refine & Edit
-                    {activeTab === 'refine' && (
-                      <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand rounded-full" />
-                    )}
-                  </button>
-               </div>
 
-               {/* Scrollable Info Body */}
-               <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar relative">
-                 
-                 <AnimatePresence mode="wait">
-                   {activeTab === 'details' ? (
-                     <motion.div 
-                       key="details"
-                       initial={{ opacity: 0, x: 20 }}
-                       animate={{ opacity: 1, x: 0 }}
-                       exit={{ opacity: 0, x: -20 }}
-                       className="space-y-6"
-                     >
-                       <div className="flex items-center gap-3">
+              {/* Tab Navigation */}
+              <div className="px-6 pt-6 pb-2 flex gap-4 border-b border-white/5">
+                <button
+                  onClick={() => setActiveTab('details')}
+                  className={`pb-3 text-sm font-bold transition-colors relative ${activeTab === 'details' ? `text-brand` : `${styles.textSub} hover:${styles.textMain}`
+                    }`}
+                >
+                  Details
+                  {activeTab === 'details' && (
+                    <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand rounded-full" />
+                  )}
+                </button>
+                <button
+                  onClick={() => setActiveTab('refine')}
+                  className={`pb-3 text-sm font-bold transition-colors relative ${activeTab === 'refine' ? `text-brand` : `${styles.textSub} hover:${styles.textMain}`
+                    }`}
+                >
+                  Refine & Edit
+                  {activeTab === 'refine' && (
+                    <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand rounded-full" />
+                  )}
+                </button>
+              </div>
+
+              {/* Scrollable Info Body */}
+              <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar relative">
+
+                <AnimatePresence mode="wait">
+                  {activeTab === 'details' ? (
+                    <motion.div
+                      key="details"
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      className="space-y-6"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${styles.shadowIn} ${styles.textSub}`}>
+                          {asset.type}
+                        </span>
+                        {asset.aspectRatio && (
                           <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${styles.shadowIn} ${styles.textSub}`}>
-                            {asset.type}
+                            {asset.aspectRatio}
                           </span>
-                          {asset.aspectRatio && (
-                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${styles.shadowIn} ${styles.textSub}`}>
-                              {asset.aspectRatio}
-                            </span>
-                          )}
-                       </div>
+                        )}
+                      </div>
 
-                       {/* Prompt Section */}
-                       <div>
-                         <label className={`text-xs font-bold uppercase tracking-wider mb-2 block ${styles.textSub}`}>
-                           Prompt
-                         </label>
-                         <div className={`p-4 rounded-2xl text-sm leading-relaxed ${styles.shadowIn} ${styles.textMain} italic opacity-90`}>
-                           "{asset.prompt}"
-                         </div>
-                       </div>
-
-                       {/* Style Section */}
-                       {asset.stylePreset && (
-                         <div>
-                           <label className={`text-xs font-bold uppercase tracking-wider mb-2 block ${styles.textSub}`}>
-                             Aesthetic
-                           </label>
-                           <div className="flex items-center gap-2">
-                             <div className={`w-3 h-3 rounded-full bg-brand shadow-[0_0_10px_rgba(109,93,252,0.5)]`} />
-                             <span className={`font-bold ${styles.textMain}`}>{asset.stylePreset}</span>
-                           </div>
-                         </div>
-                       )}
-
-                       {/* Metadata */}
-                       <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className={`text-xs font-bold uppercase tracking-wider mb-1 block ${styles.textSub}`}>Created</label>
-                            <span className={`text-sm font-medium ${styles.textMain}`}>{new Date(asset.createdAt).toLocaleDateString()}</span>
-                          </div>
-                          <div>
-                             <label className={`text-xs font-bold uppercase tracking-wider mb-1 block ${styles.textSub}`}>ID</label>
-                             <span className={`text-sm font-medium truncate block ${styles.textMain} opacity-50`}>#{asset.id.slice(-6)}</span>
-                          </div>
-                       </div>
-                     </motion.div>
-                   ) : (
-                     <motion.div 
-                       key="refine"
-                       initial={{ opacity: 0, x: 20 }}
-                       animate={{ opacity: 1, x: 0 }}
-                       exit={{ opacity: 0, x: -20 }}
-                       className="h-full flex flex-col"
-                     >
-                        {/* History / Version Stack Placeholder */}
-                        <div className="flex-1 flex flex-col items-center justify-center text-center opacity-50 min-h-[200px]">
-                           <History size={32} className="mb-3" />
-                           <p className={`text-sm font-bold ${styles.textMain}`}>No other versions yet</p>
-                           <p className={`text-xs ${styles.textSub} max-w-[200px]`}>
-                             Ask the AI to refine this asset below to create variations.
-                           </p>
+                      {/* Prompt Section */}
+                      <div>
+                        <label className={`text-xs font-bold uppercase tracking-wider mb-2 block ${styles.textSub}`}>
+                          Prompt
+                        </label>
+                        <div className={`p-4 rounded-2xl text-sm leading-relaxed ${styles.shadowIn} ${styles.textMain} italic opacity-90`}>
+                          "{asset.prompt}"
                         </div>
+                      </div>
 
-                        {/* Input Area */}
-                        <div className="mt-auto pt-4">
-                           <label className={`text-xs font-bold uppercase tracking-wider mb-2 block ${styles.textSub}`}>
-                             Instructions
-                           </label>
-                           <div className={`relative rounded-2xl ${styles.shadowIn} overflow-hidden`}>
-                             <textarea 
-                               value={refineInput}
-                               onChange={(e) => setRefineInput(e.target.value)}
-                               placeholder="e.g. Make it brighter, change background to..."
-                               className={`w-full pl-4 pr-12 py-3 bg-transparent outline-none text-sm ${styles.textMain} placeholder-gray-400 resize-none`}
-                               rows={3}
-                             />
-                             <button 
-                               onClick={handleSendRefinement}
-                               disabled={!refineInput.trim()}
-                               className={`absolute bottom-2 right-2 p-2 rounded-xl transition-all ${
-                                 refineInput.trim() ? 'bg-brand text-white hover:bg-brand-hover' : 'bg-gray-200 dark:bg-gray-800 text-gray-400 cursor-not-allowed'
-                               }`}
-                             >
-                               <Send size={16} />
-                             </button>
-                           </div>
+                      {/* Style Section */}
+                      {asset.stylePreset && (
+                        <div>
+                          <label className={`text-xs font-bold uppercase tracking-wider mb-2 block ${styles.textSub}`}>
+                            Aesthetic
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <div className={`w-3 h-3 rounded-full bg-brand shadow-[0_0_10px_rgba(109,93,252,0.5)]`} />
+                            <span className={`font-bold ${styles.textMain}`}>{asset.stylePreset}</span>
+                          </div>
                         </div>
-                     </motion.div>
-                   )}
-                 </AnimatePresence>
-
-               </div>
-
-               {/* Footer Actions (Only visible on Details tab mostly, but good to have access) */}
-               {activeTab === 'details' && (
-                 <div className={`p-6 pt-4 border-t border-white/5 flex flex-col gap-3`}>
-                    <NeuButton className="w-full py-4" variant="primary" onClick={handleDownload}>
-                      <Download size={18} /> Download Asset
-                    </NeuButton>
-                    
-                    <div className="flex gap-3">
-                      <NeuButton className="flex-1 py-3 text-xs" onClick={() => navigator.clipboard.writeText(asset.prompt)}>
-                        <Copy size={16} /> Copy Prompt
-                      </NeuButton>
-                      {onDelete && (
-                        <NeuButton 
-                          className="flex-1 py-3 text-xs hover:text-red-500 hover:shadow-neu-in-light dark:hover:shadow-neu-in-dark" 
-                          onClick={() => {
-                             if (confirm('Delete this asset permanently?')) {
-                               onDelete(asset.id);
-                               onClose();
-                             }
-                          }}
-                        >
-                          <Trash2 size={16} /> Delete
-                        </NeuButton>
                       )}
-                    </div>
-                 </div>
-               )}
+
+                      {/* Metadata */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className={`text-xs font-bold uppercase tracking-wider mb-1 block ${styles.textSub}`}>Created</label>
+                          <span className={`text-sm font-medium ${styles.textMain}`}>{new Date(asset.createdAt).toLocaleDateString()}</span>
+                        </div>
+                        <div>
+                          <label className={`text-xs font-bold uppercase tracking-wider mb-1 block ${styles.textSub}`}>ID</label>
+                          <span className={`text-sm font-medium truncate block ${styles.textMain} opacity-50`}>#{asset.id.slice(-6)}</span>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="refine"
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      className="h-full flex flex-col"
+                    >
+                      {/* History / Version Stack Placeholder */}
+                      <div className="flex-1 flex flex-col items-center justify-center text-center opacity-50 min-h-[200px]">
+                        <History size={32} className="mb-3" />
+                        <p className={`text-sm font-bold ${styles.textMain}`}>No other versions yet</p>
+                        <p className={`text-xs ${styles.textSub} max-w-[200px]`}>
+                          Ask the AI to refine this asset below to create variations.
+                        </p>
+                      </div>
+
+                      {/* Input Area */}
+                      <div className="mt-auto pt-4">
+                        <label className={`text-xs font-bold uppercase tracking-wider mb-2 block ${styles.textSub}`}>
+                          Instructions
+                        </label>
+                        <div className={`relative rounded-2xl ${styles.shadowIn} overflow-hidden`}>
+                          <textarea
+                            value={refineInput}
+                            onChange={(e) => setRefineInput(e.target.value)}
+                            placeholder="e.g. Make it brighter, change background to..."
+                            className={`w-full pl-4 pr-12 py-3 bg-transparent outline-none text-sm ${styles.textMain} placeholder-gray-400 resize-none`}
+                            rows={3}
+                          />
+                          <button
+                            onClick={handleSendRefinement}
+                            disabled={!refineInput.trim()}
+                            className={`absolute bottom-2 right-2 p-2 rounded-xl transition-all ${refineInput.trim() ? 'bg-brand text-white hover:bg-brand-hover' : 'bg-gray-200 dark:bg-gray-800 text-gray-400 cursor-not-allowed'
+                              }`}
+                          >
+                            <Send size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+              </div>
+
+              {/* Footer Actions (Only visible on Details tab mostly, but good to have access) */}
+              {activeTab === 'details' && (
+                <div className={`p-6 pt-4 border-t border-white/5 flex flex-col gap-3`}>
+                  <NeuButton className="w-full py-4" variant="primary" onClick={handleDownload}>
+                    <Download size={18} /> Download Asset
+                  </NeuButton>
+
+                  <div className="flex gap-3">
+                    <NeuButton className="flex-1 py-3 text-xs" onClick={() => navigator.clipboard.writeText(asset.prompt)}>
+                      <Copy size={16} /> Copy Prompt
+                    </NeuButton>
+                    {onDelete && (
+                      <NeuButton
+                        className="flex-1 py-3 text-xs hover:text-red-500 hover:shadow-neu-in-light dark:hover:shadow-neu-in-dark"
+                        onClick={() => {
+                          if (confirm('Delete this asset permanently?')) {
+                            onDelete(asset.id);
+                            onClose();
+                          }
+                        }}
+                      >
+                        <Trash2 size={16} /> Delete
+                      </NeuButton>
+                    )}
+                  </div>
+                </div>
+              )}
 
             </div>
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 };

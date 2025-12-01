@@ -1,8 +1,16 @@
 {
   "mcpServers": {
     "supabase": {
-      "httpUrl": "https://mcp.supabase.com/mcp?read_only=false&project_ref=afzrfcqidscibmgptkcl",
-      "trust": false
+      "command": "npx",
+      "args": [
+        "-y",
+        "-q",
+        "@supabase/mcp-server-supabase"
+      ],
+      "env": {
+        "SUPABASE_URL": "https://afzrfcqidscibmgptkcl.supabase.co",
+        "SUPABASE_ACCESS_TOKEN": "sbp_39bf49512d308dfdee7aaed9b3b7fc08031527c3"
+      }
     }
   }
 }
