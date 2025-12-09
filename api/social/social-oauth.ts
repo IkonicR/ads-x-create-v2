@@ -128,8 +128,8 @@ async function refreshToken(refreshTokenValue: string): Promise<{
     refresh_token: string;
     expires_in: number;
 } | null> {
-    const GHL_CLIENT_ID = process.env.GHL_CLIENT_ID || '693810a3890d023eb434ed2e-miyjrfk3';
-    const GHL_CLIENT_SECRET = process.env.GHL_CLIENT_SECRET || 'bc77b6d9-4564-409b-a4bc-5aec3c0f19f9';
+    const GHL_CLIENT_ID = process.env.GHL_CLIENT_ID;
+    const GHL_CLIENT_SECRET = process.env.GHL_CLIENT_SECRET;
 
     try {
         const response = await fetch('https://services.leadconnectorhq.com/oauth/token', {

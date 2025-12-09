@@ -9,8 +9,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 
-const GHL_CLIENT_ID = process.env.GHL_CLIENT_ID || '693810a3890d023eb434ed2e-miyjrfk3';
-const GHL_CLIENT_SECRET = process.env.GHL_CLIENT_SECRET || 'bc77b6d9-4564-409b-a4bc-5aec3c0f19f9';
+const GHL_CLIENT_ID = process.env.GHL_CLIENT_ID;
+const GHL_CLIENT_SECRET = process.env.GHL_CLIENT_SECRET;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { code, state: businessId } = req.query;

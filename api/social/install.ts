@@ -8,7 +8,7 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-const GHL_CLIENT_ID = process.env.GHL_CLIENT_ID || '693810a3890d023eb434ed2e-miyjrfk3';
+const GHL_CLIENT_ID = process.env.GHL_CLIENT_ID;
 
 // Scopes required for social posting
 const SCOPES = [
