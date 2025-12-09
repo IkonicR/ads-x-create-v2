@@ -56,7 +56,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const data = await ghlResponse.json();
 
         // Map to a cleaner format
-        const accounts = (data.accounts || []).map((acc: any) => ({
+        const accounts = (data.results?.accounts || []).map((acc: any) => ({
             id: acc.id,
             platform: acc.platform?.toLowerCase() || 'unknown',
             name: acc.name || acc.username || 'Unknown Account',
