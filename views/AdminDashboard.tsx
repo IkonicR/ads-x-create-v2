@@ -166,6 +166,28 @@ const AdminDashboard: React.FC<{ onBusinessUpdated?: (business: Business) => voi
     }
   };
 
+  const handleUpdateSocialConfig = async (businessId: string, locationId: string, accessToken: string) => {
+    const updatedBusinesses = businesses.map(b =>
+      b.id === businessId
+        ? {
+          ...b,
+          socialConfig: {
+            ghlLocationId: locationId,
+            ghlAccessToken: accessToken,
+            onboardingStatus: 'connected' as const,
+            connectedAccounts: b.socialConfig?.connectedAccounts || []
+          }
+        }
+        : b
+    );
+    setBusinesses(updatedBusinesses);
+    const businessToSave = updatedBusinesses.find(b => b.id === businessId);
+    if (businessToSave) {
+      await StorageService.saveBusiness(businessToSave);
+      if (onBusinessUpdated) onBusinessUpdated(businessToSave);
+    }
+  };
+
   return (
     <div className="space-y-8 pb-10">
       <header className="flex flex-col md:flex-row justify-between items-center gap-4">
@@ -239,6 +261,7 @@ const AdminDashboard: React.FC<{ onBusinessUpdated?: (business: Business) => voi
         <AccountsTab
           businesses={businesses}
           handleUpdateCredits={handleUpdateCredits}
+          handleUpdateSocialConfig={handleUpdateSocialConfig}
           handleRefresh={handleRefresh}
           styles={styles}
           searchTerm={searchTerm}

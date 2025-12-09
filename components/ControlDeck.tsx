@@ -1,11 +1,12 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { useOnClickOutside } from '../hooks/useOnClickOutside';
-import { useThemeStyles } from './NeuComponents';
+import { useThemeStyles, useNeuAnimations, NeuButton, NeuInput, NeuDropdown } from './NeuComponents';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Send, LayoutTemplate, Palette, X, Crop, User, Smartphone, Monitor, Square, Box, RectangleVertical, RectangleHorizontal, Zap, Diamond, Plus, Camera, Sun, Edit2 } from 'lucide-react';
-import { StylePreset, ViewState } from '../types';
+import { Sparkles, Send, LayoutTemplate, Palette, X, Crop, User, Smartphone, Monitor, Square, Box, RectangleVertical, RectangleHorizontal, Zap, Diamond, Plus, Camera, Sun, Edit2, Target, DollarSign, Tag, RotateCcw } from 'lucide-react';
+import { StylePreset, ViewState, GenerationStrategy, VisualMotif, CampaignMode, SubjectType, Offering, TeamMember } from '../types';
 import { useNavigation } from '../context/NavigationContext';
 import { supabase } from '../services/supabase';
+import { CAMPAIGN_PRESETS, applyPreset, DEFAULT_STRATEGY } from '../constants/campaignPresets';
 
 // Helper to format technical strings
 const formatValue = (val: string) => {
@@ -16,8 +17,20 @@ const formatValue = (val: string) => {
 interface ControlDeckProps {
   onGenerate: (prompt: string, styleId: string, ratio: string, subjectId: string, modelTier: 'flash' | 'pro' | 'ultra') => void;
   styles: StylePreset[];
-  subjects: { id: string; name: string; type: 'product' | 'person'; imageUrl?: string; price?: string; description?: string; preserveLikeness?: boolean }[];
-  activeCount?: number; // NEW: For concurrent generation tracking
+  subjects: { id: string; name: string; type: 'product' | 'service' | 'person' | 'location'; imageUrl?: string; price?: string; description?: string; preserveLikeness?: boolean; promotion?: string }[];
+  activeCount?: number;
+  restoreState?: {
+    prompt: string;
+    styleId: string;
+    ratio: string;
+    subjectId: string;
+    modelTier: 'flash' | 'pro' | 'ultra';
+    timestamp: number;
+  } | null;
+  // Strategy Props
+  strategy: GenerationStrategy;
+  onStrategyChange: (strategy: GenerationStrategy) => void;
+  visualMotifs?: VisualMotif[];
 }
 
 const RATIOS = [
@@ -42,7 +55,11 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
   onGenerate,
   styles: aestheticStyles,
   subjects,
-  activeCount = 0
+  activeCount = 0,
+  restoreState,
+  strategy,
+  onStrategyChange,
+  visualMotifs = []
 }) => {
   const { styles: themeStyles, theme } = useThemeStyles();
   const { navigate } = useNavigation();
@@ -57,6 +74,17 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
   const [selectedSubject, setSelectedSubject] = useState(() => loadSetting('subject', ''));
   const [modelTier, setModelTier] = useState<'pro' | 'ultra'>(() => loadSetting('tier', 'pro') as any);
 
+  // Restore State Effect
+  React.useEffect(() => {
+    if (restoreState) {
+      setPrompt(restoreState.prompt);
+      setSelectedStyle(restoreState.styleId);
+      setSelectedRatio(restoreState.ratio);
+      setSelectedSubject(restoreState.subjectId);
+      setModelTier(restoreState.modelTier);
+    }
+  }, [restoreState]);
+
   // Save settings on change
   React.useEffect(() => {
     localStorage.setItem('gen_prompt', prompt);
@@ -67,10 +95,40 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
     localStorage.setItem('gen_tier', modelTier);
   }, [prompt, selectedStyle, selectedRatio, selectedSubject, modelTier]);
 
-  const [activeMenu, setActiveMenu] = useState<'style' | 'ratio' | 'subject' | 'model' | null>(null);
+  const [activeMenu, setActiveMenu] = useState<'style' | 'ratio' | 'subject' | 'model' | 'strategy' | null>(null);
 
-  // Determine layout mode
-  const isComplexMenu = activeMenu === 'style' || activeMenu === 'subject';
+  // Determine layout mode - Strategy also uses larger layout
+  const isComplexMenu = activeMenu === 'style' || activeMenu === 'subject' || activeMenu === 'strategy';
+
+  // Derive subject type from selected subject
+  const selectedSubjectData = useMemo(() => {
+    if (!selectedSubject) return null;
+    return subjects.find(s => s.id === selectedSubject) || null;
+  }, [selectedSubject, subjects]);
+
+  const subjectType: SubjectType = useMemo(() => {
+    if (!selectedSubjectData) return 'none';
+    return selectedSubjectData.type as SubjectType;
+  }, [selectedSubjectData]);
+
+  // Strategy update helper
+  const updateStrategy = (updates: Partial<GenerationStrategy>) => {
+    onStrategyChange({
+      ...strategy,
+      ...updates,
+      mode: 'custom', // Any manual change sets mode to custom
+    });
+  };
+
+  // Handle preset click - clicking active preset deselects it
+  const handlePresetClick = (mode: Exclude<CampaignMode, 'custom'>) => {
+    if (strategy.mode === mode) {
+      onStrategyChange({ ...strategy, mode: 'custom' });
+    } else {
+      const newStrategy = applyPreset(mode, subjectType, strategy);
+      onStrategyChange(newStrategy);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,6 +140,7 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
   const activeRatioLabel = RATIOS.find(r => r.id === selectedRatio)?.label || 'Ratio';
   const activeSubject = subjects.find(s => s.id === selectedSubject);
   const activeSubjectLabel = activeSubject ? activeSubject.name : 'Subject';
+  const activeStrategyLabel = strategy.mode === 'custom' ? 'Strategy' : CAMPAIGN_PRESETS[strategy.mode as Exclude<CampaignMode, 'custom'>]?.name || 'Strategy';
 
   // Neumorphic Tokens
   const slabBg = themeStyles.bg;
@@ -102,12 +161,13 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
   };
 
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
+  const variants = useNeuAnimations();
 
   const menuRef = useRef<HTMLDivElement>(null);
   useOnClickOutside(menuRef, () => setActiveMenu(null));
 
   return (
-    <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-50 w-[95%] max-w-3xl`}>
+    <div className={`fixed bottom-24 md:bottom-8 left-1/2 md:left-[calc(50%+48px)] -translate-x-1/2 z-50 w-[95%] md:w-[calc(100%-120px)] max-w-3xl transition-all duration-300`}>
 
       {/* The Slab */}
       <div className={`rounded-[2rem] p-3 ${slabBg} ${slabShadowClass} relative flex flex-col gap-3`}>
@@ -126,12 +186,16 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
                 className={`
                   absolute bottom-full mb-4 left-1/2 -translate-x-1/2 
                   overflow-hidden rounded-3xl ${slabBg} ${slabShadowClass} border border-white/5 flex 
-                  ${isComplexMenu ? 'w-[90vw] max-w-6xl h-[70vh] flex-col md:flex-row' : 'w-full max-w-xl max-h-[50vh] flex-col'}
+                  ${isComplexMenu
+                    ? activeMenu === 'strategy'
+                      ? 'w-[90vw] max-w-xl max-h-[70vh] flex-col'
+                      : 'w-[90vw] max-w-6xl h-[70vh] flex-col md:flex-row'
+                    : 'w-full max-w-xl max-h-[50vh] flex-col'}
                 `}
               >
                 {/* LEFT SIDE (Grid) */}
-                <div className={`flex-1 flex flex-col h-full relative ${isComplexMenu ? 'w-full md:w-1/2 lg:w-7/12 border-r border-white/5' : 'w-full'}`}>
-                  <div className={`p-4 border-b border-gray-100 dark:border-white/5 shrink-0 flex justify-between items-center ${isComplexMenu ? 'md:border-b-0' : ''}`}>
+                <div className={`flex-1 flex flex-col h-full relative ${isComplexMenu && activeMenu !== 'strategy' ? 'w-full md:w-1/2 lg:w-7/12 border-r border-white/5' : 'w-full'}`}>
+                  <div className={`p-4 border-b border-gray-100 dark:border-white/5 shrink-0 flex justify-between items-center ${isComplexMenu && activeMenu !== 'strategy' ? 'md:border-b-0' : ''}`}>
                     <h4 className={`text-xs font-bold uppercase tracking-wider ${themeStyles.textSub}`}>
                       Select {activeMenu ? activeMenu.charAt(0).toUpperCase() + activeMenu.slice(1) : ''}
                     </h4>
@@ -262,12 +326,265 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
                       </div>
                     )}
 
+                    {/* Strategy Menu */}
+                    {activeMenu === 'strategy' && (
+                      <div className="space-y-4">
+                        {/* Campaign Presets */}
+                        <div>
+                          <h4 className={`text-xs font-bold uppercase tracking-wider ${themeStyles.textSub} mb-2`}>Campaign Mode</h4>
+                          <p className={`text-xs ${themeStyles.textSub} mb-3 opacity-70`}>Quick presets that configure all settings for you</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            {Object.entries(CAMPAIGN_PRESETS).map(([key, preset]) => (
+                              <button
+                                key={key}
+                                onClick={() => handlePresetClick(key as Exclude<CampaignMode, 'custom'>)}
+                                className={`p-3 rounded-2xl text-center transition-all flex flex-col items-center gap-1 ${strategy.mode === key
+                                  ? `${insetShadowClass} text-brand`
+                                  : `${btnShadowClass} ${themeStyles.textMain} hover:translate-y-[-1px]`
+                                  }`}
+                              >
+                                <span className="text-xl">{preset.icon}</span>
+                                <span className="text-xs font-bold">{preset.name}</span>
+                                <span className={`text-[10px] ${strategy.mode === key ? 'text-brand/70' : 'opacity-50'}`}>{preset.description}</span>
+                              </button>
+                            ))}
+                          </div>
+                          {strategy.mode === 'custom' && (
+                            <p className={`text-xs ${themeStyles.textSub} text-center mt-2`}>Custom settings active</p>
+                          )}
+                        </div>
+
+                        {/* Dynamic Controls based on subject type */}
+                        <div className={`p-3 rounded-2xl ${btnShadowClass}`}>
+                          <h4 className={`text-xs font-bold uppercase tracking-wider ${themeStyles.textSub} mb-1`}>
+                            {subjectType === 'product' && 'Product Controls'}
+                            {subjectType === 'service' && 'Service Controls'}
+                            {subjectType === 'person' && 'Team Controls'}
+                            {subjectType === 'location' && 'Location Controls'}
+                            {subjectType === 'none' && 'Brand Controls'}
+                          </h4>
+                          <p className={`text-[10px] ${themeStyles.textSub} opacity-60 mb-3`}>Override how this ad is generated</p>
+
+                          {/* Product Controls */}
+                          {subjectType === 'product' && (
+                            <div className="space-y-3">
+                              {/* Framing */}
+                              <div>
+                                <label className={`text-xs ${themeStyles.textSub} block mb-1`}>Framing</label>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => updateStrategy({ productFraming: 'hero' })}
+                                    className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${strategy.productFraming === 'hero'
+                                      ? `${insetShadowClass} text-brand`
+                                      : `${btnShadowClass} ${themeStyles.textMain}`
+                                      }`}
+                                  >Hero</button>
+                                  <button
+                                    onClick={() => updateStrategy({ productFraming: 'lifestyle' })}
+                                    className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${strategy.productFraming === 'lifestyle'
+                                      ? `${insetShadowClass} text-brand`
+                                      : `${btnShadowClass} ${themeStyles.textMain}`
+                                      }`}
+                                  >Lifestyle</button>
+                                </div>
+                              </div>
+
+                              {/* Deal Layer */}
+                              <div>
+                                <label className={`text-xs ${themeStyles.textSub} block mb-1`}>Deal Layer</label>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => updateStrategy({ showPrice: !strategy.showPrice })}
+                                    disabled={!selectedSubjectData?.price}
+                                    className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 ${!selectedSubjectData?.price ? 'opacity-40 cursor-not-allowed' : ''} ${strategy.showPrice
+                                      ? `${insetShadowClass} text-brand`
+                                      : `${btnShadowClass} ${themeStyles.textMain}`
+                                      }`}
+                                  ><DollarSign size={12} /> Price</button>
+                                  <button
+                                    onClick={() => updateStrategy({ showPromo: !strategy.showPromo })}
+                                    disabled={!selectedSubjectData?.promotion}
+                                    className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 ${!selectedSubjectData?.promotion ? 'opacity-40 cursor-not-allowed' : ''} ${strategy.showPromo
+                                      ? `${insetShadowClass} text-brand`
+                                      : `${btnShadowClass} ${themeStyles.textMain}`
+                                      }`}
+                                  ><Tag size={12} /> Promo</button>
+                                </div>
+                              </div>
+
+                              {/* Strict Likeness */}
+                              <button
+                                onClick={() => updateStrategy({ strictLikeness: !strategy.strictLikeness })}
+                                className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition-all ${strategy.strictLikeness
+                                  ? `${insetShadowClass} text-brand`
+                                  : `${btnShadowClass} ${themeStyles.textMain}`
+                                  }`}
+                              >Strict Product Likeness</button>
+                            </div>
+                          )}
+
+                          {/* Team Controls */}
+                          {subjectType === 'person' && (
+                            <div className="space-y-3">
+                              {/* Framing */}
+                              <div>
+                                <label className={`text-xs ${themeStyles.textSub} block mb-1`}>Framing</label>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => updateStrategy({ teamFraming: 'portrait' })}
+                                    className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${strategy.teamFraming === 'portrait'
+                                      ? `${insetShadowClass} text-brand`
+                                      : `${btnShadowClass} ${themeStyles.textMain}`
+                                      }`}
+                                  >Portrait</button>
+                                  <button
+                                    onClick={() => updateStrategy({ teamFraming: 'action' })}
+                                    className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${strategy.teamFraming === 'action'
+                                      ? `${insetShadowClass} text-brand`
+                                      : `${btnShadowClass} ${themeStyles.textMain}`
+                                      }`}
+                                  >Action</button>
+                                </div>
+                              </div>
+
+                              {/* Name & Role */}
+                              <button
+                                onClick={() => updateStrategy({ showNameRole: !strategy.showNameRole })}
+                                className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition-all ${strategy.showNameRole
+                                  ? `${insetShadowClass} text-brand`
+                                  : `${btnShadowClass} ${themeStyles.textMain}`
+                                  }`}
+                              >Show Name & Role</button>
+
+                              {/* Vibe */}
+                              <div>
+                                <label className={`text-xs ${themeStyles.textSub} block mb-1`}>Vibe</label>
+                                <div className="flex gap-2">
+                                  {(['authority', 'friendly', 'creative'] as const).map(vibe => (
+                                    <button
+                                      key={vibe}
+                                      onClick={() => updateStrategy({ teamVibe: vibe })}
+                                      className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all capitalize ${strategy.teamVibe === vibe
+                                        ? `${insetShadowClass} text-brand`
+                                        : `${btnShadowClass} ${themeStyles.textMain}`
+                                        }`}
+                                    >{vibe}</button>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* No Subject Controls */}
+                          {subjectType === 'none' && (
+                            <div>
+                              <label className={`text-xs ${themeStyles.textSub} block mb-1`}>Copy Strategy</label>
+                              <div className="grid grid-cols-2 gap-2">
+                                {(['benefit', 'problem_solution', 'urgent', 'minimal'] as const).map(strat => (
+                                  <button
+                                    key={strat}
+                                    onClick={() => updateStrategy({ copyStrategy: strat })}
+                                    className={`py-2 px-3 rounded-xl text-xs font-bold transition-all ${strategy.copyStrategy === strat
+                                      ? `${insetShadowClass} text-brand`
+                                      : `${btnShadowClass} ${themeStyles.textMain}`
+                                      }`}
+                                  >{strat === 'problem_solution' ? 'Problem-Solution' : strat.charAt(0).toUpperCase() + strat.slice(1)}</button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Service Controls */}
+                          {subjectType === 'service' && (
+                            <div className="space-y-3">
+                              <div>
+                                <label className={`text-xs ${themeStyles.textSub} block mb-1`}>Service Framing</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                  {([
+                                    { id: 'in_action', label: 'In Action' },
+                                    { id: 'outcome', label: 'Outcome' },
+                                    { id: 'abstract', label: 'Abstract' }
+                                  ] as const).map(opt => (
+                                    <button
+                                      key={opt.id}
+                                      onClick={() => updateStrategy({ serviceFraming: opt.id })}
+                                      className={`py-2 px-3 rounded-xl text-xs font-bold transition-all ${strategy.serviceFraming === opt.id
+                                        ? `${insetShadowClass} text-brand`
+                                        : `${btnShadowClass} ${themeStyles.textMain}`
+                                        }`}
+                                    >{opt.label}</button>
+                                  ))}
+                                </div>
+                                <p className={`text-[10px] ${themeStyles.textSub} mt-1 opacity-60`}>
+                                  {strategy.serviceFraming === 'in_action' && 'Show the service being performed'}
+                                  {strategy.serviceFraming === 'outcome' && 'Focus on the result/transformation'}
+                                  {strategy.serviceFraming === 'abstract' && 'Conceptual representation'}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Location Controls */}
+                          {subjectType === 'location' && (
+                            <div className="space-y-3">
+                              <div>
+                                <label className={`text-xs ${themeStyles.textSub} block mb-1`}>Location Framing</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                  {([
+                                    { id: 'exterior', label: 'Exterior' },
+                                    { id: 'interior', label: 'Interior' },
+                                    { id: 'detail', label: 'Detail' },
+                                    { id: 'crowd', label: 'Crowd' }
+                                  ] as const).map(opt => (
+                                    <button
+                                      key={opt.id}
+                                      onClick={() => updateStrategy({ locationFraming: opt.id })}
+                                      className={`py-2 px-3 rounded-xl text-xs font-bold transition-all ${strategy.locationFraming === opt.id
+                                        ? `${insetShadowClass} text-brand`
+                                        : `${btnShadowClass} ${themeStyles.textMain}`
+                                        }`}
+                                    >{opt.label}</button>
+                                  ))}
+                                </div>
+                                <p className={`text-[10px] ${themeStyles.textSub} mt-1 opacity-60`}>
+                                  {strategy.locationFraming === 'exterior' && 'Showcase the storefront facade'}
+                                  {strategy.locationFraming === 'interior' && 'Warm interior atmosphere'}
+                                  {strategy.locationFraming === 'detail' && 'Architectural details, ambiance'}
+                                  {strategy.locationFraming === 'crowd' && 'Show activity, customers'}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* CTA Override */}
+                        <div>
+                          <label className={`text-xs ${themeStyles.textSub} block mb-1`}>CTA Override</label>
+                          <input
+                            type="text"
+                            value={strategy.customCta || ''}
+                            onChange={(e) => updateStrategy({ customCta: e.target.value })}
+                            placeholder="Leave empty for AI to decide"
+                            className={`w-full px-4 py-2 rounded-xl text-sm ${insetShadowClass} bg-transparent ${themeStyles.textMain} placeholder-gray-400 outline-none`}
+                          />
+                        </div>
+
+                        {/* Reset Button */}
+                        <button
+                          onClick={() => { onStrategyChange(DEFAULT_STRATEGY); setActiveMenu(null); }}
+                          className={`w-full py-2 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${btnShadowClass} ${themeStyles.textSub} hover:text-brand active:scale-95`}
+                        >
+                          <RotateCcw size={14} />
+                          Reset to Defaults
+                        </button>
+                      </div>
+                    )}
 
                   </div>
                 </div>
 
-                {/* RIGHT SIDE: The Inspector (Desktop Only, Complex Menus Only) */}
-                {isComplexMenu && (
+                {/* RIGHT SIDE: The Inspector (Desktop Only, Style/Subject ONLY - not Strategy) */}
+                {isComplexMenu && activeMenu !== 'strategy' && (
                   <div className="hidden md:flex w-[350px] shrink-0 flex-col p-6 pl-0">
                     <div className="flex justify-end">
                       <button onClick={() => setActiveMenu(null)} className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
@@ -391,21 +708,27 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
         </AnimatePresence>
 
         {/* Top Controls Grid */}
-        <div className="grid grid-cols-5 gap-2 sm:gap-3 px-1">
+        <div className="flex w-full gap-1 px-1">
 
           {/* Subject */}
-          <button
+          <motion.button
             onClick={() => setActiveMenu(activeMenu === 'subject' ? null : 'subject')}
-            className={`flex items-center justify-center gap-2 px-2 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-all truncate ${activeMenu === 'subject' || selectedSubject
-              ? `${insetShadowClass} text-brand`
-              : `${btnShadowClass} ${themeStyles.textMain} ${btnActiveShadowClass}`
+            initial="initial"
+            whileHover="hover"
+            whileTap="pressed"
+            animate={(activeMenu === 'subject' || selectedSubject) ? "pressed" : "initial"}
+            variants={variants}
+            transition={{ type: "tween", ease: "easeInOut", duration: 0.15 }}
+            className={`flex-1 flex items-center justify-center gap-2 px-2 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-colors duration-200 truncate ${activeMenu === 'subject' || selectedSubject
+              ? `text-brand`
+              : `${themeStyles.textMain}`
               }`}
           >
             {selectedSubject ? (
               subjects.find(s => s.id === selectedSubject)?.type === 'person' ? <User size={14} /> : <Box size={14} />
             ) : <Sparkles size={14} />}
             <span className="truncate hidden sm:inline">{activeSubjectLabel}</span>
-          </button>
+          </motion.button>
 
           {/* Preset - HIDDEN FOR SIMPLIFIED PIPELINE */}
           {/* <button
@@ -420,44 +743,76 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
           </button> */}
 
           {/* Style */}
-          <button
+          <motion.button
             onClick={() => setActiveMenu(activeMenu === 'style' ? null : 'style')}
-            className={`flex items-center justify-center gap-2 px-2 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-all truncate ${activeMenu === 'style'
-              ? `${insetShadowClass} text-brand`
-              : `${btnShadowClass} ${themeStyles.textMain} ${btnActiveShadowClass}`
+            initial="initial"
+            whileHover="hover"
+            whileTap="pressed"
+            animate={(activeMenu === 'style') ? "pressed" : "initial"}
+            variants={variants}
+            transition={{ type: "tween", ease: "easeInOut", duration: 0.15 }}
+            className={`flex-1 flex items-center justify-center gap-2 px-2 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-colors duration-200 truncate ${activeMenu === 'style'
+              ? `text-brand`
+              : `${themeStyles.textMain}`
               }`}
           >
             <Palette size={14} />
             <span className="truncate hidden sm:inline">{activeStyleName}</span>
-          </button>
+          </motion.button>
 
           {/* Ratio */}
-          <button
+          <motion.button
             onClick={() => setActiveMenu(activeMenu === 'ratio' ? null : 'ratio')}
-            className={`flex items-center justify-center gap-2 px-2 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-all truncate ${activeMenu === 'ratio'
-              ? `${insetShadowClass} text-brand`
-              : `${btnShadowClass} ${themeStyles.textMain} ${btnActiveShadowClass}`
+            initial="initial"
+            whileHover="hover"
+            whileTap="pressed"
+            animate={(activeMenu === 'ratio') ? "pressed" : "initial"}
+            variants={variants}
+            transition={{ type: "tween", ease: "easeInOut", duration: 0.15 }}
+            className={`flex-1 flex items-center justify-center gap-2 px-2 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-colors duration-200 truncate ${activeMenu === 'ratio'
+              ? `text-brand`
+              : `${themeStyles.textMain}`
               }`}
           >
             <Crop size={14} />
             <span className="truncate hidden sm:inline">{activeRatioLabel}</span>
-          </button>
+          </motion.button>
 
           {/* NEW: Model Tier Selector */}
-          <button
+          <motion.button
             onClick={() => setActiveMenu(activeMenu === 'model' ? null : 'model')}
-            className={`flex items-center justify-center gap-2 px-2 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-all truncate ${activeMenu === 'model'
-              ? `${insetShadowClass} text-brand`
-              : `${btnShadowClass} ${themeStyles.textMain} ${btnActiveShadowClass}`
+            initial="initial"
+            whileHover="hover"
+            whileTap="pressed"
+            animate={(activeMenu === 'model') ? "pressed" : "initial"}
+            variants={variants}
+            transition={{ type: "tween", ease: "easeInOut", duration: 0.15 }}
+            className={`flex-1 flex items-center justify-center gap-2 px-2 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-colors duration-200 truncate ${activeMenu === 'model'
+              ? `text-brand`
+              : `${themeStyles.textMain}`
               }`}
           >
             {getTierIcon()}
             <span className="truncate hidden sm:inline">{getTierLabel()}</span>
-          </button>
+          </motion.button>
 
-          {/* NEW: Model Tier Selector */}
-
-
+          {/* Strategy */}
+          <motion.button
+            onClick={() => setActiveMenu(activeMenu === 'strategy' ? null : 'strategy')}
+            initial="initial"
+            whileHover="hover"
+            whileTap="pressed"
+            animate={(activeMenu === 'strategy' || strategy.mode !== 'custom') ? "pressed" : "initial"}
+            variants={variants}
+            transition={{ type: "tween", ease: "easeInOut", duration: 0.15 }}
+            className={`flex-1 flex items-center justify-center gap-2 px-2 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-colors duration-200 truncate ${activeMenu === 'strategy' || strategy.mode !== 'custom'
+              ? `text-brand`
+              : `${themeStyles.textMain}`
+              }`}
+          >
+            <Target size={14} />
+            <span className="truncate hidden sm:inline">{activeStrategyLabel}</span>
+          </motion.button>
         </div>
 
         {/* Input Area */}
@@ -536,6 +891,6 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
         </form>
 
       </div>
-    </div>
+    </div >
   );
 };

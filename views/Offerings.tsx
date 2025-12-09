@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { Business, Offering, TeamMember } from '../types';
+import { Business, Offering, TeamMember, Location } from '../types';
 import { NeuCard, NeuInput, NeuButton, NeuTextArea, NeuDropdown, useThemeStyles, NeuBadge, NeuListBuilder } from '../components/NeuComponents';
 import { NeuImageUploader } from '../components/NeuImageUploader';
-import { ShoppingBag, Plus, Trash2, DollarSign, Tag, Edit2, Save, X, Sparkles, Target, List, Gift, Users, Briefcase } from 'lucide-react';
+import { ShoppingBag, Plus, Trash2, DollarSign, Tag, Edit2, Save, X, Sparkles, Target, List, Gift, Users, Briefcase, MapPin } from 'lucide-react';
 import { useNavigation } from '../context/NavigationContext';
 import { useNotification } from '../context/NotificationContext';
 import { GalaxyHeading } from '../components/GalaxyHeading';
@@ -18,19 +18,30 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
   const [localBusiness, setLocalBusiness] = useState<Business>(business);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const { isDirty, setDirty } = useNavigation();
+  const { isDirty, setDirty, registerSaveHandler } = useNavigation();
   const { notify } = useNotification();
   const [isSaving, setIsSaving] = useState(false);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const { styles } = useThemeStyles();
+  const localBusinessRef = React.useRef(localBusiness);
 
-  const [activeTab, setActiveTab] = useState<'products' | 'team'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'team' | 'locations'>('products');
   const [isTeamFormOpen, setIsTeamFormOpen] = useState(false);
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
   const [teamFormState, setTeamFormState] = useState<Partial<TeamMember>>({
     name: '',
     role: '',
     imageUrl: ''
+  });
+
+  // Location state
+  const [isLocationFormOpen, setIsLocationFormOpen] = useState(false);
+  const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
+  const [locationFormState, setLocationFormState] = useState<Partial<Location>>({
+    name: '',
+    description: '',
+    imageUrl: '',
+    additionalImages: []
   });
 
   const [formState, setFormState] = useState<Partial<Offering>>({
@@ -48,13 +59,30 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
   });
 
   useEffect(() => {
+    localBusinessRef.current = localBusiness;
+  }, [localBusiness]);
+
+  useEffect(() => {
     setLocalBusiness(business);
   }, [business]);
+
+  const handleSave = React.useCallback(async () => {
+    setIsSaving(true);
+    try {
+      await updateBusiness(localBusinessRef.current);
+      notify({ title: 'Offerings Saved', type: 'success' });
+    } catch (e) {
+      notify({ title: 'Save Failed', type: 'error' });
+    } finally {
+      setIsSaving(false);
+    }
+  }, [updateBusiness, notify]);
 
   useEffect(() => {
     const isChanged = JSON.stringify(business) !== JSON.stringify(localBusiness);
     setDirty(isChanged);
-  }, [business, localBusiness, setDirty]);
+    registerSaveHandler(isChanged ? handleSave : null);
+  }, [business, localBusiness, setDirty, registerSaveHandler, handleSave]);
 
   // Check for pending edit from Chat UI
   useEffect(() => {
@@ -67,18 +95,6 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
       }
     }
   }, [localBusiness.offerings]);
-
-  const handleSave = async () => {
-    setIsSaving(true);
-    try {
-      await updateBusiness(localBusiness);
-      notify({ title: 'Offerings Saved', type: 'success' });
-    } catch (e) {
-      notify({ title: 'Save Failed', type: 'error' });
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
   const resetForm = () => {
     setFormState({
@@ -234,6 +250,65 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
     }
   };
 
+  // --- LOCATION HANDLERS ---
+  const resetLocationForm = () => {
+    setLocationFormState({ name: '', description: '', imageUrl: '', additionalImages: [] });
+    setEditingLocationId(null);
+    setIsLocationFormOpen(false);
+  };
+
+  const handleEditLocationClick = (location: Location) => {
+    setLocationFormState({ ...location });
+    setEditingLocationId(location.id);
+    setIsLocationFormOpen(true);
+  };
+
+  const handleSaveLocation = () => {
+    if (!locationFormState.name) return;
+
+    const baseLocation: Location = {
+      id: editingLocationId || Date.now().toString(),
+      name: locationFormState.name!,
+      description: locationFormState.description || '',
+      imageUrl: locationFormState.imageUrl || '',
+      additionalImages: locationFormState.additionalImages || []
+    };
+
+    let newLocations = [...(localBusiness.locations || [])];
+    if (editingLocationId) {
+      newLocations = newLocations.map(l => l.id === editingLocationId ? baseLocation : l);
+      notify({ title: 'Location Updated', type: 'success' });
+    } else {
+      newLocations.push(baseLocation);
+      notify({ title: 'Location Added', type: 'success' });
+    }
+
+    setLocalBusiness(prev => ({ ...prev, locations: newLocations }));
+    resetLocationForm();
+  };
+
+  const handleDeleteLocation = (id: string) => {
+    if (confirm('Remove this location?')) {
+      setLocalBusiness(prev => ({
+        ...prev,
+        locations: prev.locations?.filter(l => l.id !== id) || []
+      }));
+    }
+  };
+
+  const addLocationImage = (url: string) => {
+    setLocationFormState(prev => ({
+      ...prev,
+      additionalImages: [...(prev.additionalImages || []), url]
+    }));
+  };
+
+  const removeLocationImage = (index: number) => {
+    setLocationFormState(prev => ({
+      ...prev,
+      additionalImages: (prev.additionalImages || []).filter((_, i) => i !== index)
+    }));
+  };
 
   const getCurrencySymbol = (code?: string) => {
     switch (code) {
@@ -287,14 +362,21 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
               <Plus size={18} /> Add Member
             </NeuButton>
           )}
+
+          {activeTab === 'locations' && !isLocationFormOpen && (
+            <NeuButton variant="primary" onClick={() => setIsLocationFormOpen(true)}>
+              <Plus size={18} /> Add Location
+            </NeuButton>
+          )}
         </div>
       </header>
 
       {/* Tab Switcher */}
-      <div className={`flex p-1 ${styles.bg} rounded-xl ${styles.shadowIn} max-w-sm mb-8`}>
+      <div className={`flex p-1 ${styles.bg} rounded-xl ${styles.shadowIn} max-w-md mb-8`}>
         {[
-          { id: 'products', label: 'Products & Services', icon: ShoppingBag },
-          { id: 'team', label: 'Team Members', icon: Users }
+          { id: 'products', label: 'Products', icon: ShoppingBag },
+          { id: 'team', label: 'Team', icon: Users },
+          { id: 'locations', label: 'Locations', icon: MapPin }
         ].map(tab => (
           <button
             key={tab.id}
@@ -475,6 +557,7 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
                         placeholder="Describe the outcome and experience..."
                         value={formState.description}
                         onChange={e => setFormState(prev => ({ ...prev, description: e.target.value }))}
+                        expandable
                         className="min-h-[80px]"
                       />
                     </div>
@@ -730,6 +813,162 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
                 </p>
                 <NeuButton variant="primary" onClick={() => setIsTeamFormOpen(true)}>
                   <Plus size={18} /> Add Team Member
+                </NeuButton>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {activeTab === 'locations' && (
+        <>
+          {isLocationFormOpen && (
+            <NeuCard className="animate-fade-in border-2 border-brand/20 ring-4 ring-brand/5 mb-8">
+              <div className="flex justify-between items-center mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-brand/10 rounded-lg">
+                    {editingLocationId ? <Edit2 className="text-brand" size={20} /> : <Plus className="text-brand" size={20} />}
+                  </div>
+                  <div>
+                    <h3 className={`text-xl font-bold ${styles.textMain}`}>
+                      {editingLocationId ? 'Edit Location' : 'Add Location'}
+                    </h3>
+                    <p className={`text-xs ${styles.textSub}`}>
+                      Upload photos of your storefront or physical space.
+                    </p>
+                  </div>
+                </div>
+                <button onClick={resetLocationForm} className="p-2 hover:bg-black/5 rounded-full transition-colors">
+                  <X size={20} className={styles.textSub} />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-8 mb-6">
+                <div className="md:col-span-4 space-y-4">
+                  <div>
+                    <label className={`block text-xs font-bold ${styles.textSub} mb-2 uppercase tracking-wider`}>Hero Image</label>
+                    <NeuImageUploader
+                      currentValue={locationFormState.imageUrl || ''}
+                      onUpload={(url) => setLocationFormState(prev => ({ ...prev, imageUrl: url }))}
+                      folder="locations"
+                    />
+                  </div>
+
+                  <div>
+                    <label className={`block text-xs font-bold ${styles.textSub} mb-2 uppercase tracking-wider`}>
+                      Additional Views ({(locationFormState.additionalImages || []).length}/3)
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(locationFormState.additionalImages || []).map((url, index) => (
+                        <div key={index} className="relative aspect-square rounded-lg overflow-hidden group border border-white/10">
+                          <img src={url} className="w-full h-full object-cover" />
+                          <button
+                            onClick={() => removeLocationImage(index)}
+                            className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all text-white"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      ))}
+                      {(locationFormState.additionalImages?.length || 0) < 3 && (
+                        <div className="aspect-square">
+                          <NeuImageUploader
+                            currentValue=""
+                            onUpload={addLocationImage}
+                            folder="locations/extras"
+                            compact
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="md:col-span-8 space-y-4">
+                  <div>
+                    <label className={`block text-xs font-bold ${styles.textSub} mb-1`}>Location Name</label>
+                    <NeuInput
+                      placeholder="e.g. Main Store, Downtown Branch"
+                      value={locationFormState.name}
+                      onChange={e => setLocationFormState(prev => ({ ...prev, name: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-xs font-bold ${styles.textSub} mb-1`}>Description / Vibe</label>
+                    <NeuTextArea
+                      placeholder="Describe the atmosphere, what makes this space special..."
+                      value={locationFormState.description}
+                      onChange={e => setLocationFormState(prev => ({ ...prev, description: e.target.value }))}
+                      expandable
+                      className="min-h-[100px]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-4 justify-end border-t pt-6 border-gray-200/10">
+                <NeuButton onClick={resetLocationForm}>Cancel</NeuButton>
+                <NeuButton variant="primary" onClick={handleSaveLocation}>
+                  {editingLocationId ? 'Update Location' : 'Add Location'}
+                </NeuButton>
+              </div>
+            </NeuCard>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {(localBusiness.locations || []).map(location => (
+              <NeuCard key={location.id} className="group relative overflow-hidden hover:shadow-lg transition-all duration-300">
+                <div className="aspect-video rounded-xl overflow-hidden bg-gray-100 mb-4 relative">
+                  {location.imageUrl ? (
+                    <img src={location.imageUrl} alt={location.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-gray-300">
+                      <MapPin size={48} />
+                    </div>
+                  )}
+                </div>
+
+                <h4 className={`font-bold ${styles.textMain} text-lg`}>{location.name}</h4>
+                <p className={`text-sm ${styles.textSub} line-clamp-2`}>{location.description || 'No description'}</p>
+
+                {(location.additionalImages?.length || 0) > 0 && (
+                  <div className="flex gap-1 mt-3">
+                    {location.additionalImages?.slice(0, 3).map((img, i) => (
+                      <div key={i} className="w-10 h-10 rounded overflow-hidden">
+                        <img src={img} className="w-full h-full object-cover" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className={`mt-4 pt-4 border-t ${styles.border} flex justify-end gap-3 opacity-60 group-hover:opacity-100 transition-all duration-300`}>
+                  <button
+                    onClick={() => handleEditLocationClick(location)}
+                    className={`text-blue-500 hover:text-blue-700 text-xs font-bold flex items-center gap-1 transition-colors`}
+                  >
+                    <Edit2 size={14} /> Edit
+                  </button>
+                  <button
+                    onClick={() => handleDeleteLocation(location.id)}
+                    className="text-red-400 hover:text-red-600 text-xs font-bold flex items-center gap-1 transition-colors"
+                  >
+                    <Trash2 size={14} /> Remove
+                  </button>
+                </div>
+              </NeuCard>
+            ))}
+
+            {(localBusiness.locations || []).length === 0 && !isLocationFormOpen && (
+              <div className={`col-span-1 md:col-span-2 text-center py-20 ${styles.textSub} border-2 border-dashed border-gray-300/20 rounded-3xl bg-black/5`}>
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <MapPin size={32} className="text-brand opacity-50" />
+                </div>
+                <p className="text-xl font-bold mb-2">No Locations Yet</p>
+                <p className="text-sm opacity-70 mb-8 max-w-md mx-auto">
+                  Add your storefront or physical locations to generate ads featuring your real space.
+                </p>
+                <NeuButton variant="primary" onClick={() => setIsLocationFormOpen(true)}>
+                  <Plus size={18} /> Add Location
                 </NeuButton>
               </div>
             )}

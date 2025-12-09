@@ -9,6 +9,7 @@ interface NavigationContextType {
   setDirty: (isDirty: boolean) => void;
   isDirty: boolean;
   confirmAction: (action: () => void) => void;
+  registerSaveHandler: (handler: (() => Promise<void>) | null) => void;
 }
 
 const NavigationContext = createContext<NavigationContextType | undefined>(undefined);
@@ -33,7 +34,13 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
   const [isDirty, setIsDirty] = useState(false);
   const [pendingView, setPendingView] = useState<ViewState | null>(null);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+  const [saveHandler, setSaveHandler] = useState<(() => Promise<void>) | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const registerSaveHandler = React.useCallback((handler: (() => Promise<void>) | null) => {
+    setSaveHandler(() => handler);
+  }, []);
 
   // Handle browser refresh / close tab
   useEffect(() => {
@@ -70,7 +77,7 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
     }
   };
 
-  const handleConfirm = () => {
+  const handleDiscard = () => {
     setIsDirty(false); // Force clean
 
     if (pendingView) {
@@ -84,6 +91,21 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
     setIsModalOpen(false);
   };
 
+  const handleSaveAndExit = async () => {
+    if (saveHandler) {
+      setIsSaving(true);
+      try {
+        await saveHandler();
+        handleDiscard(); // Reuse logic to proceed
+      } catch (error) {
+        console.error("Save failed during navigation", error);
+        // We stay open so they can retry or discard
+      } finally {
+        setIsSaving(false);
+      }
+    }
+  };
+
   const handleCancel = () => {
     setPendingView(null);
     setPendingAction(null);
@@ -91,20 +113,26 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
   };
 
   return (
-    <NavigationContext.Provider value={{ currentView, navigate, setDirty: setIsDirty, isDirty, confirmAction }}>
+    <NavigationContext.Provider value={{ currentView, navigate, setDirty: setIsDirty, isDirty, confirmAction, registerSaveHandler }}>
       {children}
 
       <NeuModal
         isOpen={isModalOpen}
         onClose={handleCancel}
         title="Unsaved Changes"
-        actionLabel="Discard & Leave"
-        onAction={handleConfirm}
-        variant="danger"
+        // Dynamic Props based on whether a Save Handler is available
+        actionLabel={saveHandler ? (isSaving ? "Saving..." : "Save & Exit") : "Discard & Leave"}
+        onAction={saveHandler ? handleSaveAndExit : handleDiscard}
+        variant={saveHandler ? "primary" : "danger"}
+        // Secondary Action (Discard) only if Save is available
+        secondaryActionLabel={saveHandler ? "Discard & Leave" : undefined}
+        onSecondaryAction={saveHandler ? handleDiscard : undefined}
+        secondaryVariant="danger"
       >
         <p>
-          You have unsaved changes in this section.
-          If you leave now, your progress will be lost.
+          {saveHandler
+            ? "You have unsaved changes. Do you want to save your progress before leaving?"
+            : "You have unsaved changes in this section. If you leave now, your progress will be lost."}
         </p>
       </NeuModal>
     </NavigationContext.Provider>

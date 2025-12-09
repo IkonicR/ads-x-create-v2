@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite & npx tsx server.ts",
+    "dev": "vite --host & npx tsx server.ts",
     "server": "npx tsx server.ts",
     "build": "vite build",
     "preview": "vite preview"
@@ -30,6 +30,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.17",
     "@types/node": "^22.14.0",
+    "@vercel/node": "^5.5.15",
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.22",
     "body-parser": "^2.2.1",

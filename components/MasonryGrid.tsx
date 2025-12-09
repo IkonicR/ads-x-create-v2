@@ -1,4 +1,5 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo } from 'react';
+import { useWindowSize } from '../hooks/useWindowSize';
 
 interface MasonryGridProps<T> {
   items: T[];
@@ -13,10 +14,18 @@ const MasonryGrid = <T,>({
   items,
   renderItem,
   getItemAspectRatio,
-  columns = 3,
+  columns: defaultColumns = 3,
   gap = 16,
   className = ''
 }: MasonryGridProps<T>) => {
+  const { width } = useWindowSize();
+
+  // Dynamic Column Logic
+  const columns = useMemo(() => {
+    if (width < 640) return 1; // Mobile
+    if (width < 1024) return 2; // Tablet
+    return defaultColumns; // Desktop (default)
+  }, [width, defaultColumns]);
 
   const columnWrapper = useMemo(() => {
     const cols: T[][] = Array.from({ length: columns }, () => []);

@@ -98,7 +98,6 @@ const styles: StylePreset[] = [
         description: "Soft matte clay on a clean studio backdrop.",
         imageUrl: "/artifacts/style_minimalist_studio_1764372951731.png", // Placeholder
         promptModifier: "Soft sculpted clay forms, Velvet matte surface, Subtle pores and dimples, Rounded edges and seams. High-end 3D render.",
-        logoMaterial: "Matte Clay Emboss",
         styleCues: ["Soft sculpted clay forms", "Velvet matte surface", "Subtle pores and dimples", "Rounded edges and seams"],
         avoid: ["Harsh reflections", "Glossy surfaces", "Sharp edges"]
     },
@@ -108,7 +107,6 @@ const styles: StylePreset[] = [
         description: "Poster serenity—deep field, soft shading.",
         imageUrl: "/artifacts/style_dark_mode_luxury_1764372963928.png", // Placeholder
         promptModifier: "Flat poster silhouettes, Deep single colour field, Broad soft interior shading, Mid century simplified forms.",
-        logoMaterial: "Screen Printed Ink",
         styleCues: ["Flat poster silhouettes", "Deep single colour field", "Broad soft interior shading", "Mid century simplified forms"],
         avoid: ["Glossy highlights", "Photorealism", "Complex textures"]
     },
@@ -118,7 +116,6 @@ const styles: StylePreset[] = [
         description: "Playful monoline on near-white.",
         imageUrl: "/artifacts/style_organic_natural_1764372992280.png", // Placeholder
         promptModifier: "Rounded monoline outlines, Near white paper background, Generous negative space, Halftone dots on hero.",
-        logoMaterial: "Monoline Vector",
         styleCues: ["Rounded monoline outlines", "Near white paper background", "Generous negative space", "Halftone dots on hero"],
         avoid: ["Gradients", "Complex shading", "Photorealism"]
     },
@@ -128,7 +125,6 @@ const styles: StylePreset[] = [
         description: "Punchy riso poster—bold spot inks.",
         imageUrl: "/artifacts/style_black_friday_1764373005763.png", // Placeholder
         promptModifier: "Light paper texture, Two to three spot inks, Deliberate misregistration, Halftone dot shading.",
-        logoMaterial: "Overprinted Ink",
         styleCues: ["Light paper texture", "Two to three spot inks", "Deliberate misregistration", "Halftone dot shading"],
         avoid: ["Soft airbrush glows", "Digital gradients", "Perfect registration"]
     }

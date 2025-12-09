@@ -11,17 +11,23 @@ interface NeuModalProps {
   children: React.ReactNode;
   actionLabel?: string;
   onAction?: () => void;
-  variant?: 'default' | 'danger';
+  variant?: 'default' | 'danger' | 'primary';
+  secondaryActionLabel?: string;
+  onSecondaryAction?: () => void;
+  secondaryVariant?: 'default' | 'danger' | 'primary';
 }
 
-export const NeuModal: React.FC<NeuModalProps> = ({ 
-  isOpen, 
-  onClose, 
-  title, 
-  children, 
-  actionLabel, 
+export const NeuModal: React.FC<NeuModalProps> = ({
+  isOpen,
+  onClose,
+  title,
+  children,
+  actionLabel,
   onAction,
-  variant = 'default' 
+  variant = 'default',
+  secondaryActionLabel,
+  onSecondaryAction,
+  secondaryVariant = 'default'
 }) => {
   const { styles } = useThemeStyles();
 
@@ -47,7 +53,7 @@ export const NeuModal: React.FC<NeuModalProps> = ({
             >
               <div className="flex justify-between items-start mb-6">
                 <h3 className={`text-2xl font-bold ${styles.textMain}`}>{title}</h3>
-                <button 
+                <button
                   onClick={onClose}
                   className={`p-2 rounded-full ${styles.bg} ${styles.shadowOut} hover:${styles.shadowIn} transition-all ${styles.textSub}`}
                 >
@@ -61,6 +67,13 @@ export const NeuModal: React.FC<NeuModalProps> = ({
 
               <div className="flex justify-end gap-4">
                 <NeuButton onClick={onClose}>Cancel</NeuButton>
+                {/* Secondary Action (e.g. Discard) */}
+                {secondaryActionLabel && onSecondaryAction && (
+                  <NeuButton variant={secondaryVariant} onClick={onSecondaryAction}>
+                    {secondaryActionLabel}
+                  </NeuButton>
+                )}
+                {/* Primary Action (e.g. Save) */}
                 {actionLabel && onAction && (
                   <NeuButton variant={variant} onClick={onAction}>
                     {actionLabel}
@@ -91,7 +104,7 @@ interface NeuToastProps {
 
 export const NeuToast: React.FC<NeuToastProps> = ({ toast, onClose }) => {
   const { styles } = useThemeStyles();
-  
+
   let icon = <Info size={20} className="text-blue-500" />;
   if (toast.type === 'success') icon = <CheckCircle size={20} className="text-green-500" />;
   if (toast.type === 'error') icon = <AlertCircle size={20} className="text-red-500" />;
@@ -112,15 +125,15 @@ export const NeuToast: React.FC<NeuToastProps> = ({ toast, onClose }) => {
         <h4 className={`font-bold text-sm ${styles.textMain}`}>{toast.title}</h4>
         {toast.message && <p className={`text-xs ${styles.textSub} mt-1`}>{toast.message}</p>}
       </div>
-      <button 
+      <button
         onClick={() => onClose(toast.id)}
         className={`text-gray-400 hover:text-gray-600 transition-colors`}
       >
         <X size={16} />
       </button>
-      
+
       {/* Progress Bar (Optional visual flair) */}
-      <motion.div 
+      <motion.div
         initial={{ width: "100%" }}
         animate={{ width: "0%" }}
         transition={{ duration: 5, ease: "linear" }}

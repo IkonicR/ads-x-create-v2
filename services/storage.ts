@@ -37,14 +37,20 @@ const DEFAULT_BUSINESS: Business = {
       { day: 'Fri', open: '07:00', close: '18:00', closed: false },
       { day: 'Sat', open: '08:00', close: '16:00', closed: false },
       { day: 'Sun', open: '00:00', close: '00:00', closed: true },
-    ]
+    ],
+    contacts: []
   },
   adPreferences: {
     targetAudience: 'Young professionals and coffee enthusiasts',
     goals: 'Drive in-store visits',
     complianceText: '',
     preferredCta: 'Order Now',
-    sloganUsage: 'Sometimes'
+    sloganUsage: 'Sometimes',
+    contactIds: [],
+    locationDisplay: 'full_address',
+    hoursDisplay: 'all_hours',
+    holidayMode: { isActive: false, name: '', hours: '' },
+    targetLanguage: 'English'
   },
   offerings: [
     { id: 'p1', name: 'Signature Espresso Blend', description: 'Notes of dark chocolate and cherry.', price: '$18', category: 'Coffee', active: true },
@@ -66,7 +72,9 @@ const DEFAULT_BUSINESS: Business = {
     painPoints: ['Burnt coffee', 'Unethical sourcing'],
     desires: ['A morning ritual', 'Sustainable choices']
   },
-  competitors: []
+  competitors: [],
+  visualMotifs: [],
+  locations: []
 };
 
 const DEFAULT_TASKS: Task[] = [
@@ -100,7 +108,10 @@ const mapBusinessFromDB = (row: any): Business => ({
   logoVariants: row.logo_variants,
   typography: row.typography,
   coreCustomerProfile: row.core_customer_profile,
-  competitors: row.competitors
+  competitors: row.competitors,
+  visualMotifs: row.visual_motifs || [],
+  locations: row.locations || [],
+  socialConfig: row.social_config || undefined // <--- GHL Integration
 });
 
 // Helper to map App Business to DB payload
@@ -129,12 +140,15 @@ const mapBusinessToDB = (business: Business) => ({
   logo_variants: business.logoVariants,
   typography: business.typography,
   core_customer_profile: business.coreCustomerProfile,
-  competitors: business.competitors
+  competitors: business.competitors,
+  visual_motifs: business.visualMotifs,
+  locations: business.locations,
+  social_config: business.socialConfig || null // <--- GHL Integration
 });
 
 export const StorageService = {
   getBusinesses: async (userId?: string): Promise<Business[]> => {
-    console.log("[Storage] Fetching businesses for user:", userId);
+
     let query = supabase.from('businesses').select('*');
 
     // SECURITY: Only show businesses owned by the user (if userId provided)
@@ -148,7 +162,7 @@ export const StorageService = {
       console.error('[Storage] Error fetching businesses:', error);
       return [];
     }
-    console.log("[Storage] Businesses found:", data?.length);
+
 
     if (!data || data.length === 0) {
       // Do NOT seed default business implicitly here anymore.
@@ -198,6 +212,121 @@ export const StorageService = {
     }
   },
 
+  async uploadSystemAsset(file: File, folder: string = 'styles'): Promise<string | null> {
+    try {
+      const fileExt = file.name.split('.').pop();
+      // Upload to a 'system' root folder
+      const fileName = `system/${folder}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('business-assets')
+        .upload(fileName, file);
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      const { data } = supabase.storage
+        .from('business-assets')
+        .getPublicUrl(fileName);
+
+      return data.publicUrl;
+    } catch (error) {
+      console.error('Error uploading system asset:', error);
+      return null;
+    }
+  },
+
+  async uploadGeneratedAsset(base64Data: string, businessId: string): Promise<string | null> {
+    try {
+      // 1. Convert Base64 to Blob
+      const base64Response = await fetch(base64Data);
+      const blob = await base64Response.blob();
+
+      // 2. Generate Filename
+      const fileName = `${businessId}/generated/${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
+
+      // 3. Upload to Supabase
+      const { error: uploadError } = await supabase.storage
+        .from('business-assets')
+        .upload(fileName, blob, {
+          contentType: 'image/png',
+          upsert: false
+        });
+
+      if (uploadError) throw uploadError;
+
+      // 4. Get Public URL
+      const { data } = supabase.storage
+        .from('business-assets')
+        .getPublicUrl(fileName);
+
+      return data.publicUrl;
+    } catch (error) {
+      console.error('Error uploading generated asset:', error);
+      return null;
+    }
+  },
+
+  async migrateBase64Assets(businessId: string): Promise<number> {
+    console.log(`[Migration] Starting migration for business: ${businessId}`);
+
+    let migratedCount = 0;
+    let hasMore = true;
+    const BATCH_SIZE = 5; // Process in small batches to avoid memory/timeout issues
+    let offset = 0;
+
+    while (hasMore) {
+      // 1. Fetch batch of assets (ID and Content only)
+      const { data: assets, error } = await supabase
+        .from('assets')
+        .select('id, content') // Only fetch what we need
+        .eq('business_id', businessId)
+        .order('created_at', { ascending: false }) // Fix: Prioritize newest assets (visible ones)
+        .range(offset, offset + BATCH_SIZE - 1);
+
+      if (error || !assets || assets.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      // 2. Iterate and check for Base64
+      for (const asset of assets) {
+        if (asset.content && asset.content.startsWith('data:image')) {
+          console.log(`[Migration] Migrating asset ${asset.id}...`);
+          try {
+            // 3. Upload to Storage
+            const publicUrl = await StorageService.uploadGeneratedAsset(asset.content, businessId);
+
+            if (publicUrl) {
+              // 4. Update DB
+              const { error: updateError } = await supabase
+                .from('assets')
+                .update({ content: publicUrl })
+                .eq('id', asset.id);
+
+              if (!updateError) {
+                migratedCount++;
+                console.log(`[Migration] Success: ${asset.id}`);
+              } else {
+                console.error(`[Migration] DB Update Failed for ${asset.id}:`, updateError);
+              }
+            }
+          } catch (err) {
+            console.error(`[Migration] Failed to migrate ${asset.id}:`, err);
+          }
+        }
+      }
+
+      offset += BATCH_SIZE;
+      // Safety break to prevent infinite loops if something goes wrong
+      if (offset > 1000) hasMore = false;
+    }
+
+    console.log(`[Migration] Complete. Migrated ${migratedCount} assets.`);
+    return migratedCount;
+  },
+
   async saveAsset(asset: Asset): Promise<void> {
     const { error } = await supabase
       .from('assets')
@@ -209,7 +338,10 @@ export const StorageService = {
         prompt: asset.prompt,
         style_preset: asset.stylePreset,
         aspect_ratio: asset.aspectRatio, // Save ratio
-        created_at: asset.createdAt
+        created_at: asset.createdAt,
+        style_id: asset.styleId,
+        subject_id: asset.subjectId,
+        model_tier: asset.modelTier
       });
 
     if (error) {
@@ -218,7 +350,7 @@ export const StorageService = {
   },
 
   getAssets: async (businessId: string, limit?: number, offset?: number): Promise<Asset[]> => {
-    console.log("[Storage] Fetching Assets...", { limit, offset });
+
     let query = supabase
       .from('assets')
       .select('*')
@@ -239,7 +371,7 @@ export const StorageService = {
       console.error('[Storage] Error fetching assets:', error);
       return [];
     }
-    console.log("[Storage] Assets found:", data?.length);
+
 
     return data.map(row => ({
       id: row.id,
@@ -248,7 +380,10 @@ export const StorageService = {
       prompt: row.prompt,
       createdAt: row.created_at,
       stylePreset: row.style_preset,
-      aspectRatio: row.aspect_ratio // Load ratio
+      aspectRatio: row.aspect_ratio, // Load ratio
+      styleId: row.style_id,
+      subjectId: row.subject_id,
+      modelTier: row.model_tier
     }));
   },
 
@@ -269,7 +404,7 @@ export const StorageService = {
   },
 
   getTasks: async (businessId: string): Promise<Task[]> => {
-    console.log("[Storage] Fetching Tasks...");
+
     const { data, error } = await supabase
       .from('tasks')
       .select('*')
@@ -279,7 +414,7 @@ export const StorageService = {
       console.error('[Storage] Error fetching tasks:', error);
       return DEFAULT_TASKS;
     }
-    console.log("[Storage] Tasks found:", data?.length);
+
 
     if (!data || data.length === 0) {
       // Return default tasks immediately (Do not seed DB to avoid blocking load)
@@ -399,18 +534,36 @@ export const StorageService = {
       return [];
     }
 
-    return data.map((row: any) => ({
-      id: row.id,
-      name: row.name,
-      description: row.description,
-      imageUrl: row.image_url,
-      promptModifier: row.prompt_modifier,
-      logoMaterial: row.logo_material,
-      config: row.config,
-      referenceImages: row.reference_images, // <--- Added
-      styleCues: row.style_cues,             // <--- Added
-      avoid: row.avoid                       // <--- Added
-    }));
+    return data.map((row: any) => {
+      // BACKWARD COMPATIBILITY:
+      // If reference_images_json exists, use it.
+      // If not, fall back to reference_images (text[]) and map to structure.
+      let refs = row.reference_images_json;
+
+      if (!refs || refs.length === 0) {
+        if (row.reference_images && row.reference_images.length > 0) {
+          refs = row.reference_images.map((url: string) => ({
+            id: url, // Use URL as ID for legacy
+            url: url,
+            isActive: true
+          }));
+        } else {
+          refs = [];
+        }
+      }
+
+      return {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        imageUrl: row.image_url,
+        promptModifier: row.prompt_modifier,
+        config: row.config, // V2 God-Tier config
+        referenceImages: refs,
+        styleCues: row.style_cues,
+        avoid: row.avoid
+      };
+    });
   },
 
   saveStyle: async (style: StylePreset & { sortOrder?: number, isActive?: boolean }): Promise<{ error: any }> => {
@@ -420,13 +573,15 @@ export const StorageService = {
       description: style.description,
       image_url: style.imageUrl,
       prompt_modifier: style.promptModifier,
-      logo_material: style.logoMaterial,
       sort_order: style.sortOrder,
       is_active: style.isActive,
-      config: style.config,
-      reference_images: style.referenceImages, // <--- Added
-      style_cues: style.styleCues,             // <--- Added
-      avoid: style.avoid                       // <--- Added
+      config: style.config, // V2 God-Tier config
+      reference_images_json: style.referenceImages, // <--- Save to JSONB
+      // We also save to the old column for safety if needed, or just leave it.
+      // Let's sync the old column with just URLs for other systems that might read it.
+      reference_images: style.referenceImages?.map(r => r.url) || [],
+      style_cues: style.styleCues,
+      avoid: style.avoid
     };
     const { error } = await supabase.from('styles').upsert(payload);
     if (error) console.error('Error saving style:', error);

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Business, TeamMember, Testimonial, BrandArchetype } from '../types';
+import { Business, TeamMember, Testimonial, BrandArchetype, VisualMotif } from '../types';
 import { NeuCard, NeuInput, NeuButton, NeuTextArea, useThemeStyles, NeuTabs, NeuBadge } from '../components/NeuComponents';
+import { NeuImageUploader } from '../components/NeuImageUploader';
 import { Palette, Mic2, Ban, Users, Plus, Trash2, Image as ImageIcon, Star, Type, Zap, Save, UploadCloud, Loader, Globe, Heart, Brain, Target, Shield, Layout, Sparkles, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigation } from '../context/NavigationContext';
@@ -18,7 +19,7 @@ interface BrandKitProps {
 
 const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
   const [localBusiness, setLocalBusiness] = useState<Business>(business);
-  const { isDirty, setDirty } = useNavigation();
+  const { isDirty, setDirty, registerSaveHandler } = useNavigation();
   const { notify } = useNotification();
   const [isSaving, setIsSaving] = useState(false);
   const [isLogoUploading, setIsLogoUploading] = useState(false);
@@ -29,29 +30,42 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
   // Local input states
   const [newUSP, setNewUSP] = useState('');
   const [newCompetitor, setNewCompetitor] = useState({ name: '', website: '' });
+  const [newMotif, setNewMotif] = useState<Partial<VisualMotif>>({ name: '', description: '', frequency: 'sometimes' });
 
   const { styles } = useThemeStyles();
+  const localBusinessRef = React.useRef(localBusiness);
 
   useEffect(() => {
     setLocalBusiness(business);
   }, [business]);
 
   useEffect(() => {
-    const isChanged = JSON.stringify(business) !== JSON.stringify(localBusiness);
-    setDirty(isChanged);
-  }, [business, localBusiness, setDirty]);
+    localBusinessRef.current = localBusiness;
+  }, [localBusiness]);
 
-  const handleSave = async () => {
+  const handleSave = React.useCallback(async () => {
     setIsSaving(true);
     try {
-      await updateBusiness(localBusiness);
+      await updateBusiness(localBusinessRef.current);
       notify({ title: 'Brand Kit Saved', type: 'success', message: 'Your brand identity has been updated.' });
     } catch (e) {
+      console.error(e);
       notify({ title: 'Save Failed', type: 'error' });
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [updateBusiness, notify]);
+
+  useEffect(() => {
+    const isChanged = JSON.stringify(business) !== JSON.stringify(localBusiness);
+    setDirty(isChanged);
+
+    if (isChanged) {
+      registerSaveHandler(handleSave);
+    } else {
+      registerSaveHandler(null);
+    }
+  }, [business, localBusiness, setDirty, registerSaveHandler, handleSave]);
 
   const updateLocal = (updates: Partial<Business>) => {
     setLocalBusiness(prev => ({ ...prev, ...updates }));
@@ -120,12 +134,13 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
     <div className="space-y-8 animate-fade-in">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <NeuCard>
-          <div className="flex items-center gap-3 mb-6">
+          <div className="flex items-center gap-3 mb-2">
             <div className={`p-3 rounded-full ${styles.bg} ${styles.shadowOut} text-brand`}>
               <Brain size={24} />
             </div>
             <h3 className={`text-lg font-bold ${styles.textMain}`}>Brand DNA</h3>
           </div>
+          <p className={`text-sm ${styles.textSub} mb-6`}>Your core purpose and reason for existing. This guides all AI-generated messaging.</p>
           <div className="space-y-4">
             <div>
               <label className={`text-sm font-bold ${styles.textSub} mb-2 block`}>Mission Statement</label>
@@ -133,6 +148,7 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
                 placeholder="Why does your company exist? What drives you?"
                 value={localBusiness.description}
                 onChange={(e) => updateLocal({ description: e.target.value })}
+                expandable
                 className="min-h-[100px]"
               />
             </div>
@@ -140,12 +156,13 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
         </NeuCard>
 
         <NeuCard>
-          <div className="flex items-center gap-3 mb-6">
+          <div className="flex items-center gap-3 mb-2">
             <div className={`p-3 rounded-full ${styles.bg} ${styles.shadowOut} text-yellow-500`}>
               <Zap size={24} />
             </div>
             <h3 className={`text-lg font-bold ${styles.textMain}`}>Differentiators (USPs)</h3>
           </div>
+          <p className={`text-sm ${styles.textSub} mb-4`}>What makes you different from competitors? The AI will highlight these in your ads.</p>
           <div className="flex flex-wrap gap-2 mb-4">
             {(localBusiness.usps || []).map((k, i) => (
               <span key={i} className="px-3 py-1 rounded-lg bg-yellow-100 border border-yellow-200 text-xs font-bold text-yellow-700 flex items-center gap-2">
@@ -158,17 +175,32 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
               </span>
             ))}
           </div>
-          <NeuInput
-            placeholder="Add USP and press Enter (e.g. Free Shipping)"
-            value={newUSP}
-            onChange={(e) => setNewUSP(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && newUSP.trim()) {
-                updateLocal({ usps: [...(localBusiness.usps || []), newUSP.trim()] });
-                setNewUSP('');
-              }
-            }}
-          />
+          <div className="flex gap-2">
+            <NeuInput
+              placeholder="Add a differentiator (e.g. Free Shipping)"
+              value={newUSP}
+              onChange={(e) => setNewUSP(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && newUSP.trim()) {
+                  updateLocal({ usps: [...(localBusiness.usps || []), newUSP.trim()] });
+                  setNewUSP('');
+                }
+              }}
+              className="flex-1"
+            />
+            <NeuButton
+              onClick={() => {
+                if (newUSP.trim()) {
+                  updateLocal({ usps: [...(localBusiness.usps || []), newUSP.trim()] });
+                  setNewUSP('');
+                }
+              }}
+              disabled={!newUSP.trim()}
+              className="px-3"
+            >
+              <Plus size={18} />
+            </NeuButton>
+          </div>
         </NeuCard>
       </div>
 
@@ -266,46 +298,35 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
             {/* Primary Logo */}
             <div className="flex flex-col h-full">
               <label className={`text-sm font-bold ${styles.textSub} mb-2 block`}>Primary Logo</label>
-              <div
-                className={`relative w-full aspect-video rounded-xl border-2 border-dashed transition-all flex flex-col items-center justify-center cursor-pointer overflow-hidden flex-1 min-h-[120px]
-                     ${styles.border} ${styles.bgAccent} hover:border-brand/50`}
-                onClick={() => document.getElementById('logo-upload')?.click()}
-              >
-                {isLogoUploading ? (
-                  <Loader className="animate-spin text-brand" />
-                ) : localBusiness.logoUrl ? (
-                  <img src={localBusiness.logoUrl} className="w-full h-full object-contain p-4" />
-                ) : (
-                  <div className="text-center p-4">
-                    <UploadCloud className="mx-auto mb-2 text-gray-400" />
-                    <span className="text-xs font-bold text-gray-500">Upload Primary Logo</span>
-                  </div>
-                )}
-                <input id="logo-upload" type="file" className="hidden" onChange={(e) => e.target.files && handleLogoUpload(e.target.files[0], 'logo')} />
-              </div>
+              <NeuImageUploader
+                currentValue={localBusiness.logoUrl || ''}
+                businessId={localBusiness.id}
+                folder="logos"
+                uploadMode="business"
+                onUpload={(url) => {
+                  if (typeof url === 'string') {
+                    updateLocal({ logoUrl: url });
+                  }
+                }}
+                className="flex-1"
+              />
             </div>
 
             {/* Wordmark (Upload) */}
             <div className="flex flex-col h-full">
               <label className={`text-sm font-bold ${styles.textSub} mb-2 block`}>Wordmark (Optional)</label>
-              <div
-                className={`relative w-full aspect-video rounded-xl border-2 border-dashed transition-all flex flex-col items-center justify-center cursor-pointer overflow-hidden flex-1 min-h-[120px]
-                     ${styles.border} ${styles.bgAccent} hover:border-brand/50`}
-                onClick={() => document.getElementById('wordmark-upload')?.click()}
-              >
-                {isWordmarkUploading ? (
-                  <Loader className="animate-spin text-brand" />
-                ) : localBusiness.logoVariants?.wordmark ? (
-                  <img src={localBusiness.logoVariants.wordmark} className="w-full h-full object-contain p-4" />
-                ) : (
-                  <div className="text-center p-4">
-                    <span className="text-xs font-bold text-gray-500 flex flex-col items-center gap-2">
-                      <UploadCloud size={14} /> Upload Wordmark
-                    </span>
-                  </div>
-                )}
-                <input id="wordmark-upload" type="file" className="hidden" onChange={(e) => e.target.files && handleLogoUpload(e.target.files[0], 'wordmark')} />
-              </div>
+              <NeuImageUploader
+                currentValue={localBusiness.logoVariants?.wordmark || ''}
+                businessId={localBusiness.id}
+                folder="logos"
+                uploadMode="business"
+                onUpload={(url) => {
+                  if (typeof url === 'string') {
+                    updateLocal({ logoVariants: { ...localBusiness.logoVariants, wordmark: url } });
+                  }
+                }}
+                className="flex-1"
+              />
             </div>
           </div>
         </NeuCard>
@@ -322,11 +343,6 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
         <TypographySelector
           value={localBusiness.typography || { headingFont: '', bodyFont: '', scale: 'medium' }}
           onChange={(val) => {
-            // Logic: If user selects "Let AI Decide" (empty string) for one, we can optionally set both.
-            // But user requested: "It should set to both, but allow manual override"
-            // So if I change one to empty, I should probably change the other to empty too?
-            // Or maybe just a helper button "Reset to AI"?
-            // Let's implement smart logic: if heading becomes empty, body becomes empty.
             if (val.headingFont === '' && localBusiness.typography?.headingFont !== '') {
               updateLocal({ typography: { ...val, bodyFont: '' } });
             } else {
@@ -334,6 +350,99 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
             }
           }}
         />
+      </NeuCard>
+
+      {/* Visual Motifs */}
+      <NeuCard>
+        <div className="flex items-center gap-3 mb-4">
+          <div className={`p-3 rounded-full ${styles.bg} ${styles.shadowOut} text-purple-500`}>
+            <Sparkles size={24} />
+          </div>
+          <div>
+            <h3 className={`text-lg font-bold ${styles.textMain}`}>Brand Signatures</h3>
+            <p className={`text-xs ${styles.textSub}`}>Keywords representing your brand's unique visual elements</p>
+          </div>
+        </div>
+        <p className={`text-sm ${styles.textSub} mb-6 p-3 rounded-lg ${styles.bgAccent} border ${styles.border}`}>
+          💡 <strong>Tip:</strong> Just type a keyword like "Whale", "Beach Sunset", or "Palm Tree". The AI will creatively incorporate it into your ads.
+        </p>
+
+        {/* Existing Motifs */}
+        <div className="space-y-3 mb-6">
+          {(localBusiness.visualMotifs || []).map((motif, idx) => (
+            <div
+              key={motif.id || idx}
+              className={`p-4 rounded-xl ${styles.bgAccent} border ${styles.border} flex justify-between items-start gap-4`}
+            >
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`font-bold ${styles.textMain}`}>{motif.name}</span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider
+                    ${motif.frequency === 'always' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                      motif.frequency === 'often' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                        motif.frequency === 'sometimes' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                          'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'}`}
+                  >
+                    {motif.frequency}
+                  </span>
+                </div>
+                {motif.description && <p className={`text-sm ${styles.textSub} mt-1`}>{motif.description}</p>}
+              </div>
+              <button
+                onClick={() => {
+                  const updated = (localBusiness.visualMotifs || []).filter((_, i) => i !== idx);
+                  updateLocal({ visualMotifs: updated });
+                }}
+                className="text-red-400 hover:text-red-600 p-1"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {/* Add New Motif */}
+        <div className={`p-4 rounded-xl border-2 border-dashed ${styles.border} space-y-3`}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <NeuInput
+              placeholder="Keyword (e.g. Whale, Beach, Palm Tree)"
+              value={newMotif.name || ''}
+              onChange={(e) => setNewMotif({ ...newMotif, name: e.target.value })}
+            />
+            <div className="flex gap-2">
+              {(['always', 'often', 'sometimes', 'contextual'] as const).map(freq => (
+                <button
+                  key={freq}
+                  onClick={() => setNewMotif({ ...newMotif, frequency: freq })}
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all capitalize
+                    ${newMotif.frequency === freq
+                      ? 'bg-brand text-white'
+                      : `${styles.bgAccent} ${styles.textSub} hover:bg-brand/10`
+                    }`}
+                >
+                  {freq}
+                </button>
+              ))}
+            </div>
+          </div>
+          <NeuButton
+            onClick={() => {
+              if (newMotif.name) {
+                const motif: VisualMotif = {
+                  id: `motif_${Date.now()}`,
+                  name: newMotif.name,
+                  frequency: newMotif.frequency || 'sometimes'
+                };
+                updateLocal({ visualMotifs: [...(localBusiness.visualMotifs || []), motif] });
+                setNewMotif({ name: '', description: '', frequency: 'sometimes' });
+              }
+            }}
+            disabled={!newMotif.name}
+            className="w-full"
+          >
+            <Plus size={16} className="mr-2" /> Add Signature
+          </NeuButton>
+        </div>
       </NeuCard>
     </div>
   );
@@ -479,6 +588,7 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
                 placeholder="e.g. Urban professionals, 25-40, who value sustainability and quality coffee..."
                 value={localBusiness.coreCustomerProfile?.demographics || ''}
                 onChange={(e) => updateLocal({ coreCustomerProfile: { ...localBusiness.coreCustomerProfile!, demographics: e.target.value } })}
+                expandable
                 className="min-h-[80px]"
               />
             </div>
@@ -493,6 +603,7 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
                 placeholder="e.g. They care about ethical sourcing, morning rituals, and supporting local businesses..."
                 value={localBusiness.coreCustomerProfile?.psychographics || ''}
                 onChange={(e) => updateLocal({ coreCustomerProfile: { ...localBusiness.coreCustomerProfile!, psychographics: e.target.value } })}
+                expandable
                 className="min-h-[80px]"
               />
             </div>

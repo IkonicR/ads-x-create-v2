@@ -6,12 +6,16 @@ import { populateDatabase } from '../../populate_db';
 // LogCard Component (Moved from AdminDashboard.tsx)
 const LogCard: React.FC<{ log: any, styles: any }> = ({ log, styles }) => {
     const [copied, setCopied] = useState(false);
+    const [viewMode, setViewMode] = useState<'prompt' | 'thoughts'>('prompt');
 
     const handleCopy = () => {
-        navigator.clipboard.writeText(log.prompt);
+        const textToCopy = viewMode === 'prompt' ? log.prompt : (log.metadata?.thoughts || '');
+        navigator.clipboard.writeText(textToCopy);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };
+
+    const hasThoughts = !!log.metadata?.thoughts;
 
     return (
         <NeuCard className="text-xs">
@@ -25,22 +29,44 @@ const LogCard: React.FC<{ log: any, styles: any }> = ({ log, styles }) => {
                         <span className={`font-bold ${styles.textMain} `}>{log.businesses?.name || log.business_id}</span>
                         <span className={`text-[10px] ${styles.textSub} font-mono opacity-50`}>{new Date(log.created_at).toLocaleString()}</span>
                     </div>
-                    <div className={`mt-1 font-mono text-[10px] ${styles.textSub} `}>Model: {log.model}</div>
+                    <div className={`mt-1 font-mono text-[10px] ${styles.textSub} flex items-center gap-2`}>
+                        <span>Model: {log.model}</span>
+                        <div className="flex bg-black/5 dark:bg-white/5 rounded-lg p-0.5 ml-2">
+                            <button
+                                onClick={() => setViewMode('prompt')}
+                                className={`px-2 py-0.5 rounded-md text-[9px] font-bold transition-all ${viewMode === 'prompt'
+                                    ? 'bg-white dark:bg-white/10 shadow-sm text-brand'
+                                    : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                                    }`}
+                            >
+                                PROMPT
+                            </button>
+                            <button
+                                onClick={() => setViewMode('thoughts')}
+                                className={`px-2 py-0.5 rounded-md text-[9px] font-bold transition-all ${viewMode === 'thoughts'
+                                    ? 'bg-white dark:bg-white/10 shadow-sm text-brand'
+                                    : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                                    }`}
+                            >
+                                THOUGHTS
+                            </button>
+                        </div>
+                    </div>
                 </div>
                 <button
                     onClick={handleCopy}
                     className="p-1.5 hover:bg-gray-100 dark:hover:bg-white/10 rounded transition-colors text-gray-400 hover:text-brand"
-                    title="Copy Prompt"
+                    title={`Copy ${viewMode === 'prompt' ? 'Prompt' : 'Thoughts'}`}
                 >
                     {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
                 </button>
             </div>
-            <div className={`p-3 rounded-lg bg-black/5 dark:bg-white/5 font-mono text-[10px] whitespace-pre-wrap ${styles.textSub} overflow-x-auto max-h-40`}>
-                {log.prompt}
+            <div className={`p-3 rounded-lg bg-black/5 dark:bg-white/5 font-mono text-[10px] whitespace-pre-wrap ${styles.textSub} overflow-x-auto max-h-60 transition-all`}>
+                {viewMode === 'prompt' ? log.prompt : (log.metadata?.thoughts || <span className="opacity-50 italic">No thoughts recorded for this generation.</span>)}
             </div>
             {log.metadata && (
-                <div className="mt-2 text-[9px] opacity-50 font-mono">
-                    {JSON.stringify(log.metadata)}
+                <div className="mt-2 text-[9px] opacity-50 font-mono truncate">
+                    {JSON.stringify({ ...log.metadata, thoughts: log.metadata.thoughts ? '(Hidden in UI)' : undefined })}
                 </div>
             )}
         </NeuCard>

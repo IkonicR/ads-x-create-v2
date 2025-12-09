@@ -71,7 +71,7 @@ export const NeuCard: React.FC<NeuCardProps> = ({ children, className, inset, fo
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       className={cn(
-        "rounded-3xl p-6 transition-shadow duration-300",
+        "rounded-3xl p-4 md:p-6 transition-shadow duration-300",
         styles.bg,
         inset ? styles.shadowIn : styles.shadowOut,
         styles.textMain,
@@ -144,7 +144,7 @@ export const NeuButton: React.FC<NeuButtonProps> = ({ children, className, activ
       whileTap="pressed"
       animate={active ? "pressed" : "initial"}
       variants={variants}
-      transition={{ type: "tween", ease: "easeInOut", duration: 0.3 }}
+      transition={{ type: "tween", ease: "easeInOut", duration: 0.15 }}
       className={cn(
         baseStyles,
         styles.bg,
@@ -181,25 +181,125 @@ export const NeuInput: React.FC<NeuInputProps> = ({ className, ...props }) => {
   );
 };
 
-interface NeuTextAreaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> { }
+interface NeuTextAreaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+  /** Enables the expand/collapse feature */
+  expandable?: boolean;
+  /** Character count to trigger show of expand icon (default: 150) */
+  expandThreshold?: number;
+  /** Height when collapsed - mobile (default: 100px) */
+  collapsedHeightMobile?: string;
+  /** Height when collapsed - desktop (default: 120px) */
+  collapsedHeightDesktop?: string;
+  /** Height when expanded - mobile (default: 200px) */
+  expandedHeightMobile?: string;
+  /** Height when expanded - desktop (default: 280px) */
+  expandedHeightDesktop?: string;
+}
 
-export const NeuTextArea: React.FC<NeuTextAreaProps> = ({ className, ...props }) => {
+export const NeuTextArea: React.FC<NeuTextAreaProps> = ({
+  className,
+  expandable = false,
+  expandThreshold = 150,
+  collapsedHeightMobile = '100px',
+  collapsedHeightDesktop = '120px',
+  expandedHeightMobile = '200px',
+  expandedHeightDesktop = '280px',
+  value,
+  ...props
+}) => {
   const { theme } = useTheme();
   const styles = THEMES[theme];
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
+  // Detect mobile breakpoint
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Calculate if we should show the expand button
+  const charCount = value?.toString().length ?? 0;
+  const showExpandButton = expandable && charCount > expandThreshold;
+
+  // Get responsive heights
+  const collapsedHeight = isMobile ? collapsedHeightMobile : collapsedHeightDesktop;
+  const expandedHeight = isMobile ? expandedHeightMobile : expandedHeightDesktop;
+  const currentHeight = isExpanded ? expandedHeight : collapsedHeight;
+
+  // If not expandable, render the simple version
+  if (!expandable) {
+    return (
+      <textarea
+        className={cn(
+          "w-full rounded-xl px-4 py-3 outline-none transition-all min-h-[100px]",
+          styles.bg,
+          styles.shadowIn,
+          styles.textMain,
+          styles.inputPlaceholder,
+          "focus:ring-2 focus:ring-brand/20",
+          className
+        )}
+        value={value}
+        {...props}
+      />
+    );
+  }
+
+  // Expandable version
   return (
-    <textarea
-      className={cn(
-        "w-full rounded-xl px-4 py-3 outline-none transition-all min-h-[100px]",
-        styles.bg,
-        styles.shadowIn,
-        styles.textMain,
-        styles.inputPlaceholder,
-        "focus:ring-2 focus:ring-brand/20",
-        className
-      )}
-      {...props}
-    />
+    <div className="relative">
+      <motion.div
+        animate={{ height: currentHeight }}
+        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        className="overflow-hidden"
+      >
+        <textarea
+          className={cn(
+            "w-full h-full rounded-xl px-4 py-3 outline-none transition-all resize-none",
+            styles.bg,
+            styles.shadowIn,
+            styles.textMain,
+            styles.inputPlaceholder,
+            "focus:ring-2 focus:ring-brand/20",
+            // Extra padding at bottom-right for the expand button
+            showExpandButton && "pb-10",
+            className
+          )}
+          value={value}
+          {...props}
+        />
+      </motion.div>
+
+      {/* Expand/Collapse Button */}
+      <AnimatePresence>
+        {showExpandButton && (
+          <motion.button
+            type="button"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            transition={{ duration: 0.15 }}
+            onClick={() => setIsExpanded(!isExpanded)}
+            className={cn(
+              "absolute bottom-2 right-2 p-1.5 rounded-lg transition-colors",
+              "hover:bg-black/5 dark:hover:bg-white/10",
+              styles.textSub
+            )}
+            aria-label={isExpanded ? "Collapse" : "Expand"}
+          >
+            <motion.div
+              animate={{ rotate: isExpanded ? 180 : 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <ChevronDown size={18} />
+            </motion.div>
+          </motion.button>
+        )}
+      </AnimatePresence>
+    </div>
   );
 };
 

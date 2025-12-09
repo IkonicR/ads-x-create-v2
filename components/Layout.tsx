@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { OrbitalDock } from './OrbitalDock/DockContainer';
+import { MobileDock } from './OrbitalDock/MobileDock';
 import { BusinessSelector } from './BusinessSelector';
 import { Business } from '../types';
 
@@ -28,13 +29,16 @@ export const Layout: React.FC<LayoutProps> = ({
 
       {/* Main Content Area */}
       {/* Main Content Area */}
-      <div className="fixed inset-0 z-10 overflow-y-auto custom-scrollbar pl-24 pr-4 py-8">
-        <BusinessSelector
-          business={business}
-          businesses={businesses}
-          onSwitch={switchBusiness}
-          onAdd={toggleNewBusiness}
-        />
+      {/* Main Content Area */}
+      <div className="fixed inset-0 z-10 overflow-y-auto custom-scrollbar pl-0 md:pl-24 pr-4 py-8 pb-24 md:pb-8">
+        <div className="hidden md:block">
+          <BusinessSelector
+            business={business}
+            businesses={businesses}
+            onSwitch={switchBusiness}
+            onAdd={toggleNewBusiness}
+          />
+        </div>
 
         <div className="max-w-7xl mx-auto pt-16">
           {children || <Outlet />}
@@ -44,6 +48,12 @@ export const Layout: React.FC<LayoutProps> = ({
       {/* Navigation Dock (Always on top) */}
       <div className="relative z-50">
         <OrbitalDock />
+        <MobileDock
+          business={business}
+          businesses={businesses}
+          onSwitch={switchBusiness}
+          onAdd={toggleNewBusiness}
+        />
       </div>
 
     </div>

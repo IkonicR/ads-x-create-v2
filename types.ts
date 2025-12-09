@@ -22,6 +22,20 @@ export interface Business {
   currency: string; // e.g. "USD", "EUR", "GBP"
   credits: number;
   role: 'Owner' | 'Editor' | 'Viewer';
+
+  // --- SOCIAL MEDIA INTEGRATION (GHL) ---
+  socialConfig?: {
+    ghlLocationId?: string;      // GHL Sub-account Location ID
+    ghlAccessToken?: string;     // Private Integration Token (per sub-account)
+    onboardingStatus: 'pending' | 'connected' | 'failed';
+    connectedAccounts?: {        // Cached from GHL API
+      platform: string;          // 'facebook', 'instagram', etc.
+      name: string;              // '@businessname' or 'Page Name'
+      accountId: string;         // GHL account ID
+      connectedAt?: string;
+    }[];
+  };
+
   colors: {
     primary: string;
     secondary: string;
@@ -46,6 +60,7 @@ export interface Business {
   adPreferences: AdPreferences;
   offerings: Offering[];
   teamMembers: TeamMember[];
+  locations: Location[];
   inspirationImages: string[];
 
   // Brand Identity
@@ -67,6 +82,9 @@ export interface Business {
   };
   competitors: { name: string; website: string }[]; // <--- NEW
 
+  // Visual Motifs (Brand Signatures)
+  visualMotifs: VisualMotif[];
+
   // Legacy / Misc
   fontName: string; // Deprecated in favor of typography.headingFont
   usps: string[];
@@ -83,6 +101,75 @@ export interface TypographySettings {
   headingFont: string; // e.g. "Playfair Display"
   bodyFont: string;    // e.g. "Roboto"
   scale: 'small' | 'medium' | 'large';
+}
+
+// ============================================================================
+// STRATEGY SIDEBAR TYPES
+// ============================================================================
+
+// Visual Motifs - Recurring brand elements (e.g., whales, anchors)
+export interface VisualMotif {
+  id: string;
+  name: string;           // Simple keyword: "Whale", "Beach Sunset", "Green Cross"
+  description?: string;   // Optional detailed directive (rarely used)
+  referenceImageUrl?: string;
+  frequency: 'always' | 'often' | 'sometimes' | 'contextual';
+}
+
+// Subject types for dynamic sidebar controls
+export type SubjectType = 'product' | 'service' | 'person' | 'location' | 'none';
+
+// Framing options per subject type
+export type ProductFraming = 'hero' | 'lifestyle';
+export type ServiceFraming = 'in_action' | 'outcome' | 'abstract';
+export type TeamFraming = 'portrait' | 'action';
+export type LocationFraming = 'exterior' | 'interior' | 'detail' | 'crowd';
+export type TeamVibe = 'authority' | 'friendly' | 'creative';
+
+// Copy strategy options
+export type CopyStrategy = 'benefit' | 'problem_solution' | 'urgent' | 'minimal';
+
+// Campaign preset identifiers
+export type CampaignMode = 'flash_sale' | 'awareness' | 'local' | 'educational' | 'custom';
+
+// The full generation strategy state
+export interface GenerationStrategy {
+  mode: CampaignMode;
+
+  // Product-specific
+  productFraming?: ProductFraming;
+  showPrice: boolean;
+  showPromo: boolean;
+  strictLikeness: boolean;
+
+  // Team-specific
+  teamFraming?: TeamFraming;
+  showNameRole: boolean;
+  teamVibe?: TeamVibe;
+
+  // Service-specific
+  serviceFraming?: ServiceFraming;
+
+  // Location-specific
+  locationFraming?: LocationFraming;
+
+  // Universal
+  copyStrategy: CopyStrategy;
+  customCta?: string;
+
+  // Footer/Trust Stack
+  trustStack: {
+    website: boolean;
+    location: boolean;
+    phone: boolean;
+    hours: boolean;
+  };
+
+  // Visual Motifs (IDs of selected motifs)
+  selectedMotifIds: string[];
+
+  // Slogan override
+  sloganPlacement: 'auto' | 'header' | 'footer' | 'hidden';
 }
 
 export interface SystemPrompts {
@@ -102,6 +189,14 @@ export interface TeamMember {
   name: string;
   role: string;
   imageUrl: string; // Base64 or URL
+}
+
+export interface Location {
+  id: string;
+  name: string;
+  description: string;
+  imageUrl: string;
+  additionalImages: string[];
 }
 
 export interface ContactMethod {
@@ -201,6 +296,9 @@ export interface Asset {
   stylePreset?: string;
   aspectRatio?: string; // Persisted ratio (e.g. "16:9")
   businessId?: string; // Link to business
+  styleId?: string; // Link to style preset ID
+  subjectId?: string; // Link to subject/offering ID
+  modelTier?: 'flash' | 'pro' | 'ultra';
 }
 
 export type AssetStatus = 'generating' | 'loading_image' | 'complete';
@@ -211,32 +309,95 @@ export interface ExtendedAsset extends Asset {
   // We can keep it clean.
 }
 
+export interface StyleReferenceImage {
+  id: string;
+  url: string;
+  isActive: boolean;
+}
+
+// ============================================================================
+// V2 GOD-TIER PRODUCTION PRESET SCHEMA (schemaVersion: 3.0)
+// Universal Creative Engine - ALL FIELDS ARE FLEXIBLE STRINGS
+// ============================================================================
+
+// 1. MEDIUM CONTROLLER - The Core Engine
+export interface MediumExecutionDetails {
+  // Photography
+  cameraSystem?: string; // e.g. "Hasselblad Medium Format", "Sony A7R IV", "Analog Portra 400"
+  shotStyle?: string; // e.g. "Studio Product", "Lifestyle Editorial", "Action Freeze"
+  // 3D Render
+  renderEngine?: string; // e.g. "Octane", "Unreal Engine 5", "Blender Cycles"
+  style?: string; // e.g. "Hyperrealistic", "Clay Maquette", "Low-Poly Stylized"
+  // Illustration
+  technique?: string; // e.g. "Watercolor wash", "Digital concept art", "Cel-shaded anime"
+  brushwork?: string; // e.g. "Smooth blended", "Textured impasto", "Loose expressive"
+  // Vector
+  vectorStyle?: string; // e.g. "Flat minimalist", "Gradient mesh", "Isometric"
+  complexity?: string; // e.g. "Simple shapes", "Highly detailed"
+}
+
+export interface MediumController {
+  medium: string; // e.g. "Photography", "3D Render", "Digital Illustration", "Vector Art", "Mixed Media"
+  executionDetails: MediumExecutionDetails;
+}
+
+// 2. VIEWPOINT - Universal Composition & Framing
+export interface Viewpoint {
+  shotType: string; // e.g. "ECU (Extreme Close-Up)", "Medium Shot", "Wide Shot", "Overhead Flatlay"
+  angle: string; // e.g. "Eye-Level", "Low-Angle Hero", "High-Angle", "Dutch Angle"
+  perspective: string; // e.g. "Ultra-Wide 14mm", "Standard 50mm", "Telephoto 135mm", "Orthographic"
+  depthOfField: string; // e.g. "Extremely Shallow f/1.4", "Shallow f/2.8", "Deep Focus f/16"
+  framingRule: string; // e.g. "Centered Dominance", "Rule of Thirds", "Golden Ratio", "Negative Space"
+}
+
+// 3. BRAND APPLICATION - The Commercial Imperative (Logo Treatment)
+export interface BrandApplication {
+  integrationMethod: string; // e.g. "Surface Decal", "Embossed", "3D Object", "Floating Element", "Light Projection"
+  materiality: string; // e.g. "Polished Chrome", "Brushed Metal", "Neon Tubing", "Gold Foil", "Holographic"
+  lightingInteraction: string; // e.g. "Standard", "Backlit", "Self-Luminous/Glowing"
+  prominence: string; // e.g. "Subtle", "Integrated", "Dominant Focal Point"
+}
+
+// 4. LIGHTING & ATMOSPHERE - Mood and Shape
+export interface LightingConfig {
+  style: string; // e.g. "Three-Point Studio", "Rembrandt", "Split Dramatic", "High-Key", "Low-Key Chiaroscuro"
+  quality: string; // e.g. "Hard Sharp", "Soft Diffused", "Specular Highlights"
+  contrast: string; // e.g. "Flat 1:1", "Soft 2:1", "Dramatic 4:1", "Intense 8:1"
+  temperature: string; // e.g. "2700K Tungsten Warm", "5600K Daylight", "7000K Cool Overcast"
+  atmospherics: string; // e.g. "Clear Crisp", "Light Haze", "Volumetric Fog", "Dust Particles", "Lens Flare"
+}
+
+// 5. AESTHETICS & FINISH - The Final Polish
+export interface AestheticsConfig {
+  colorGrade: string; // e.g. "Neutral", "Teal and Orange", "Desaturated Grit", "High Vibrancy", "Vintage Film"
+  clarity: string; // e.g. "Soft Dreamy", "Standard", "Crisp High-Frequency"
+  textureOverlay: string; // e.g. "None", "Fine Film Grain", "Digital Noise", "Halftone", "Canvas"
+  primarySurfaceMaterial: string; // e.g. "Matte", "High-Gloss", "Metallic", "Subsurface Scattering", "Glass"
+}
+
+// THE MASTER CONFIG OBJECT
+export interface ProductionPresetConfig {
+  schemaVersion: '3.0';
+  mediumController: MediumController;
+  viewpoint: Viewpoint;
+  brandApplication: BrandApplication;
+  lighting: LightingConfig;
+  aesthetics: AestheticsConfig;
+}
+
+// UPDATED: StylePreset with V2 God-Tier Config
 export interface StylePreset {
   id: string;
   name: string;
   description: string;
   imageUrl: string;
-  promptModifier: string;
-  logoMaterial: string; // e.g. "Neon", "Gold Foil", "Matte"
-  config?: {
-    layout: string; // e.g. "split_vertical_60_40", "hero_center"
-    camera: string; // e.g. "Straight-on", "Isometric"
-    lighting: string; // e.g. "Soft diffused"
-    negative_space: string; // e.g. "Top left 30%"
-    text_slots: {
-      role: 'headline' | 'subhead' | 'body' | 'cta' | 'price';
-      position?: string; // "top_left", "bottom_center"
-      style?: string; // "bold_sans", "handwritten"
-      count?: number; // For list items
-    }[];
-  }; // <--- Fix: Add missing property
+  promptModifier: string; // Legacy fallback / simple override
+  config?: ProductionPresetConfig; // <--- V2 GOD-TIER CONFIG
   sortOrder?: number;
   isActive?: boolean;
-  referenceImages?: string[]; // Array of URLs for style reference
-  styleCues?: string[]; // <--- NEW: Positive style reinforcements
-  avoid?: string[]; // <--- NEW: Negative constraints
-  logoPlacement?: string; // <--- NEW: Instructions for logo placement
-  textMaterial?: string; // <--- NEW: Material for text rendering (e.g. "Neon", "Gold Foil")
+  referenceImages?: StyleReferenceImage[];
+  styleCues?: string[];
+  avoid?: string[];
 }
 
 export interface LinkedEntity {

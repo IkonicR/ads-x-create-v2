@@ -8,15 +8,15 @@ interface GalaxyHeadingProps {
 }
 
 // Default "Hero" styles for the Galaxy Heading system
-const DEFAULT_CLASSES = "text-5xl md:text-6xl font-extrabold tracking-tight pb-2 leading-tight";
+const DEFAULT_CLASSES = "text-3xl md:text-5xl lg:text-6xl font-extrabold tracking-tight pb-2 leading-tight";
 
 // Helper to generate a random starfield texture data URL
 const generateStarTexture = (
-  width: number, 
-  height: number, 
-  count: number, 
-  colors: string[], 
-  minSize: number, 
+  width: number,
+  height: number,
+  count: number,
+  colors: string[],
+  minSize: number,
   maxSize: number
 ): string => {
   const scale = typeof window !== 'undefined' ? window.devicePixelRatio || 2 : 2;
@@ -58,13 +58,13 @@ export const GalaxyHeading: React.FC<GalaxyHeadingProps> = ({ text, className, m
 
   useEffect(() => {
     // Define Palettes
-    
+
     // For "Light on Dark" (e.g. Login Screen), we force white/bright base.
     // For Default, we respect the theme.
     const forceBright = mode === 'light-on-dark';
-    
+
     // Layer 1 (Background): White/Grey
-    const colors1 = (isDark || forceBright) 
+    const colors1 = (isDark || forceBright)
       ? ['rgba(255,255,255,0.9)', 'rgba(200,200,200,0.9)'] // Bright/White
       : ['rgba(50,50,50,0.8)', 'rgba(80,80,80,0.8)'];     // Dark/Grey
 
@@ -105,8 +105,8 @@ export const GalaxyHeading: React.FC<GalaxyHeadingProps> = ({ text, className, m
   return (
     <div className={`relative inline-block`}>
       {/* Layer 1 (Base) */}
-      <h2 
-        className={`m-0 p-0 ${(isDark || forceBright) ? 'bg-white' : 'bg-black'} ${finalClass}`} 
+      <h2
+        className={`m-0 p-0 ${(isDark || forceBright) ? 'bg-white' : 'bg-black'} ${finalClass}`}
         style={{
           ...baseStyle,
           position: 'relative',
@@ -116,11 +116,11 @@ export const GalaxyHeading: React.FC<GalaxyHeadingProps> = ({ text, className, m
         }}
       >
         {text}
-        
+
         {/* Layer 2 Overlay */}
-        <span 
-          className="absolute inset-0 pointer-events-none" 
-          aria-hidden="true" 
+        <span
+          className="absolute inset-0 pointer-events-none"
+          aria-hidden="true"
           style={{
             ...baseStyle,
             backgroundImage: `url(${bgImages.layer2})`,
@@ -132,9 +132,9 @@ export const GalaxyHeading: React.FC<GalaxyHeadingProps> = ({ text, className, m
         </span>
 
         {/* Layer 3 Overlay */}
-        <span 
-          className="absolute inset-0 pointer-events-none" 
-          aria-hidden="true" 
+        <span
+          className="absolute inset-0 pointer-events-none"
+          aria-hidden="true"
           style={{
             ...baseStyle,
             backgroundImage: `url(${bgImages.layer3})`,

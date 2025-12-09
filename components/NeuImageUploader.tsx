@@ -1,15 +1,16 @@
-
 import React, { useState, useRef } from 'react';
 import { Upload, X, Image as ImageIcon, File } from 'lucide-react';
 import { useThemeStyles } from './NeuComponents';
 import { StorageService } from '../services/storage';
 
 interface NeuImageUploaderProps {
-  currentValue: string;
+  currentValue?: string; // Optional because we might be in "add more" mode
   onUpload: (url: string | string[]) => void;
   folder?: string;
   className?: string;
   multiple?: boolean;
+  uploadMode?: 'business' | 'system';
+  businessId?: string;
 }
 
 export const NeuImageUploader: React.FC<NeuImageUploaderProps> = ({
@@ -17,7 +18,9 @@ export const NeuImageUploader: React.FC<NeuImageUploaderProps> = ({
   onUpload,
   folder = 'misc',
   className,
-  multiple = false
+  multiple = false,
+  uploadMode = 'business',
+  businessId
 }) => {
   const { styles } = useThemeStyles();
   const [isDragging, setIsDragging] = useState(false);
@@ -49,6 +52,12 @@ export const NeuImageUploader: React.FC<NeuImageUploaderProps> = ({
   };
 
   const processFiles = async (files: FileList) => {
+    if (uploadMode === 'business' && !businessId) {
+      console.error('Business ID is required for business uploads');
+      alert('System Error: Missing Business ID');
+      return;
+    }
+
     setLoading(true);
     try {
       const validUrls: string[] = [];
@@ -61,7 +70,13 @@ export const NeuImageUploader: React.FC<NeuImageUploaderProps> = ({
         }
 
         try {
-          const url = await StorageService.uploadBusinessAsset(file, 'system_assets', folder);
+          let url: string | null = null;
+          if (uploadMode === 'system') {
+            url = await StorageService.uploadSystemAsset(file, folder);
+          } else {
+            url = await StorageService.uploadBusinessAsset(file, businessId!, folder);
+          }
+
           if (url) validUrls.push(url);
         } catch (err) {
           console.error(`Failed to upload ${file.name}`, err);
@@ -137,7 +152,7 @@ export const NeuImageUploader: React.FC<NeuImageUploaderProps> = ({
             flex flex-col items-center justify-center py-8 gap-3
             ${isDragging
               ? 'border-brand bg-brand/5 scale-[0.99]'
-              : `${styles.bg} ${styles.shadowIn} border-transparent hover:border-brand/30`
+              : `${styles.bgAccent} ${styles.shadowIn} ${styles.border} hover:border-brand/50`
             }
           `}
         >

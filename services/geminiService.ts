@@ -1,5 +1,5 @@
 import { GoogleGenAI, GenerateContentResponse, Chat, FunctionDeclaration, Type, Part } from "@google/genai";
-import { Business, StylePreset } from '../types';
+import { Business, StylePreset, GenerationStrategy } from '../types';
 import { PromptFactory } from './prompts';
 import { getSymbolFromCurrency } from '../utils/currency';
 import { supabase } from './supabase';
@@ -97,14 +97,17 @@ export const generateImage = async (
   stylePreset?: StylePreset,
   subjectContext?: {
     type: string;
+    name?: string; // Product/Person name
     imageUrl: string;
     preserveLikeness: boolean;
     promotion?: string;
     benefits?: string[];
     targetAudience?: string;
+    price?: string;
   },
   aspectRatio: string = "1:1",
-  modelTier: 'flash' | 'pro' | 'ultra' = 'pro'
+  modelTier: 'flash' | 'pro' | 'ultra' = 'pro',
+  strategy?: GenerationStrategy // NEW: Strategy override
 ): Promise<string> => {
   const ai = getAiClient();
   if (!ai) throw new Error("Gemini API Key not found");
@@ -121,16 +124,26 @@ export const generateImage = async (
     visualPrompt,
     business.voice.keywords || [],
     (stylePreset?.avoid || []).join(', '),
-    stylePreset?.logoMaterial,
-    stylePreset?.logoPlacement,
+    undefined, // logoMaterial - now handled by config.brandApplication
+    undefined, // logoPlacement - now handled by config.brandApplication
     subjectContext?.promotion, // Promotion
     subjectContext?.benefits, // Benefits
-    subjectContext?.targetAudience || business.adPreferences?.targetAudience, // Target Audience (Subject specific overrides global)
+    subjectContext?.targetAudience || business.adPreferences?.targetAudience, // Target Audience
     subjectContext?.preserveLikeness || false, // Preserve Likeness
-    stylePreset
+    stylePreset,
+    subjectContext?.price, // Price
+    subjectContext?.name, // Product/Person Name
+    strategy // Strategy override
   );
 
+  console.log("[Gemini] Strategy Override:", strategy);
   console.log("[Gemini] Generated Prompt:", finalPrompt);
+
+  // DEBUG BYPASS: Skip API call if prompt starts with 'debug:'
+  if (prompt.toLowerCase().startsWith('debug:')) {
+    console.log("[Gemini] DEBUG MODE: Skipping Image Generation");
+    return "https://placehold.co/1024x1024/png?text=DEBUG+MODE";
+  }
 
   // 3. Select Model
   let modelName = 'gemini-3-pro-image-preview'; // Default to Pro
@@ -143,10 +156,9 @@ export const generateImage = async (
     await supabase.from('generation_logs').insert({
       business_id: business.id,
       prompt: prompt,
-      mega_prompt: finalPrompt,
       model: modelName,
       status: 'started',
-      metadata: { aspectRatio }
+      metadata: { aspectRatio, mega_prompt: finalPrompt }
     });
 
     // Prepare Parts
@@ -174,13 +186,26 @@ export const generateImage = async (
 
     // 3. Style Reference (Image #3 or #2 or #1)
     if (stylePreset?.referenceImages && stylePreset.referenceImages.length > 0) {
-      // Use the first one as the primary anchor for now, or loop if model supports multiple style inputs well
-      // For the "Job Ticket" logic, it expects one main style anchor.
-      const refUrl = stylePreset.referenceImages[0];
-      const styleImagePart = await urlToBase64(refUrl);
-      if (styleImagePart) {
-        parts.push({ inlineData: { mimeType: "image/png", data: styleImagePart } });
-        parts.push({ text: " [REFERENCE IMAGE: STYLE] " });
+      // Filter for ACTIVE images only
+      const activeRefs = stylePreset.referenceImages.filter(r => {
+        // Handle legacy string array if mixed (though storage service should map it)
+        if (typeof r === 'string') return true;
+        return r.isActive;
+      });
+
+      if (activeRefs.length > 0) {
+        // Use the first ACTIVE one as the primary anchor for now
+        // Or loop if model supports multiple style inputs well.
+        // For the "Job Ticket" logic, it expects one main style anchor, but we could potentially send more.
+        // Let's stick to the first active one for the main reference to avoid token overload/confusion.
+        const firstRef = activeRefs[0];
+        const refUrl = typeof firstRef === 'string' ? firstRef : firstRef.url;
+
+        const styleImagePart = await urlToBase64(refUrl);
+        if (styleImagePart) {
+          parts.push({ inlineData: { mimeType: "image/png", data: styleImagePart } });
+          parts.push({ text: " [REFERENCE IMAGE: STYLE] " });
+        }
       }
     } else if (stylePreset?.imageUrl) {
       const styleImagePart = await urlToBase64(stylePreset.imageUrl);
@@ -216,10 +241,18 @@ export const generateImage = async (
     const candidate = response.candidates?.[0];
 
     let resultImage = "";
+    let thoughts = "";
+
     for (const part of candidate?.content?.parts || []) {
       if (part.inlineData) {
         resultImage = `data:image/png;base64,${part.inlineData.data}`;
-        break;
+      }
+      // @ts-ignore - 'thought' property might not be in the strict type definition yet
+      if (part.thought) {
+        // Thoughts can be text
+        if (part.text) {
+          thoughts += part.text + "\n";
+        }
       }
     }
 
@@ -243,7 +276,8 @@ export const generateImage = async (
         aspectRatio,
         stylePresetId: stylePreset?.id,
         subjectContext,
-        modelTier
+        modelTier,
+        thoughts: thoughts.trim() // Capture the thoughts
       }
     });
 

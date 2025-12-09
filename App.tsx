@@ -6,6 +6,7 @@ import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { NavigationProvider, useNavigation } from './context/NavigationContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { AssetProvider, useAssets } from './context/AssetContext';
 import Layout from './components/Layout';
 import Onboarding from './views/Onboarding';
 import UserOnboarding from './views/UserOnboarding';
@@ -21,6 +22,7 @@ import AdminDashboard from './views/AdminDashboard';
 import ChatInterface from './views/ChatInterface';
 import UserProfile from './views/UserProfile';
 import DesignLab from './views/DesignLab';
+import GlobalLoader from './components/GlobalLoader';
 import { GalaxyHeading } from './components/GalaxyHeading';
 
 // Helper to map URL paths to ViewState (for the Sidebar)
@@ -72,10 +74,11 @@ const MainLayout: React.FC<any> = (props) => {
 };
 
 const AppContent: React.FC = () => {
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, authChecked, profileChecked } = useAuth();
   const { theme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
+  const { addAsset, setBusinessId } = useAssets();
 
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [activeBusinessId, setActiveBusinessId] = useState<string>('');
@@ -84,7 +87,7 @@ const AppContent: React.FC = () => {
   const currentView = getViewStateFromPath(location.pathname);
 
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [assets, setAssets] = useState<Asset[]>([]);
+
   const [pendingAssets, setPendingAssets] = useState<ExtendedAsset[]>([]);
   const [loadingData, setLoadingData] = useState(true);
 
@@ -110,12 +113,12 @@ const AppContent: React.FC = () => {
           setActiveBusinessId(targetBusinessId);
 
           // Initial Fetch
-          const [loadedTasks, loadedAssets] = await Promise.all([
-            StorageService.getTasks(targetBusinessId),
-            StorageService.getRecentAssets(targetBusinessId, 10) // Optimization: Only fetch recent
-          ]);
+          const loadedTasks = await StorageService.getTasks(targetBusinessId);
           setTasks(loadedTasks);
-          setAssets(loadedAssets);
+
+          // Sync Asset Context
+          // Sync Asset Context
+          setBusinessId(targetBusinessId);
 
           // Redirect logic: If we are at root '/', go to Dashboard or Onboarding
           if (location.pathname === '/') {
@@ -177,34 +180,29 @@ const AppContent: React.FC = () => {
   }
 
   // --- AUTHENTICATION GATES ---
-  if (loading || loadingData) {
-    const bgClass = theme === 'dark' ? 'bg-neu-dark' : 'bg-neu-light';
-    return (
-      <div className={`min-h-screen flex flex-col items-center justify-center gap-8 ${bgClass} transition-colors duration-300`}>
-        <div className="scale-110">
-          <GalaxyHeading text="ADS X CREATE" className="text-4xl md:text-6xl tracking-tighter" />
-        </div>
-        <div className="flex flex-col items-center gap-2">
-          <div className="w-12 h-1 rounded-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 animate-pulse" />
-          <div className="text-xs font-bold tracking-[0.3em] opacity-40 uppercase animate-pulse">
-            Loading Studio
-          </div>
-        </div>
-      </div>
-    );
+  // Wait until auth check, profile check, AND data load are all complete
+  if (!authChecked || !profileChecked || loadingData) {
+    return <GlobalLoader />;
   }
 
   if (!user) return <Login />;
   // If user exists but has no profile (or onboarding not done), force onboarding
   if (user && (!profile || !profile.onboarding_completed)) return <UserOnboarding />;
 
+  // Compute activeBusiness - if user has businesses but this is null, they need to go to onboarding
+  const activeBusiness = businesses.find(b => b.id === activeBusinessId) || null;
+
+  // EDGE CASE: If user has businesses but activeBusiness is somehow null,
+  // show loader to prevent flash (this shouldn't happen but guards against race conditions)
+  if (businesses.length > 0 && !activeBusiness) {
+    return <GlobalLoader />;
+  }
+
   // The wrapper function for navigation context
   const handleSetView = (newView: ViewState) => {
     const path = getPathFromViewState(newView);
     navigate(path);
   };
-
-  const activeBusiness = businesses.find(b => b.id === activeBusinessId) || null;
 
   const handleBusinessCreate = async (newBusinessData: Partial<Business>) => {
     if (!user) return;
@@ -235,14 +233,14 @@ const AppContent: React.FC = () => {
 
       // Clear data immediately to prevent ghosting
       setTasks([]);
-      setAssets([]);
+      // Clear data immediately to prevent ghosting
+      setTasks([]);
 
-      const [loadedTasks, loadedAssets] = await Promise.all([
-        StorageService.getTasks(id),
-        StorageService.getRecentAssets(id, 10) // Optimization: Only fetch recent
-      ]);
+      // Update Context
+      setBusinessId(id);
+
+      const loadedTasks = await StorageService.getTasks(id);
       setTasks(loadedTasks);
-      setAssets(loadedAssets);
       // Stay on current view
     } catch (error) {
       console.error("Error switching business", error);
@@ -273,27 +271,10 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const handleAddAsset = async (asset: Asset) => {
-    // Optimistic Update: Update UI immediately
-    setAssets(prev => [asset, ...prev]);
+  // handleAddAsset removed - Generator uses Context directly
+  // handleDeleteAsset removed - Generator uses Context directly
 
-    // Background Save: Fire and forget (or handle error silently)
-    try {
-      await StorageService.saveAsset({ ...asset, businessId: activeBusinessId });
-    } catch (error) {
-      console.error("Background save failed for asset", asset.id, error);
-      // Optional: Revert state or show toast if save fails
-    }
-  }
 
-  const handleDeleteAsset = async (assetId: string) => {
-    try {
-      await StorageService.deleteAsset(assetId);
-      setAssets(prev => prev.filter(a => a.id !== assetId));
-    } catch (error) {
-      console.error("Failed to delete asset", error);
-    }
-  };
 
   const handleUpdateTasks = async (newTasks: Task[]) => {
     await StorageService.saveTasks(newTasks, activeBusinessId);
@@ -327,7 +308,6 @@ const AppContent: React.FC = () => {
                 <Dashboard
                   business={activeBusiness}
                   tasks={tasks}
-                  recentAssets={assets.slice(0, 4)}
                   onNavigate={handleSetView}
                 />
               } />
@@ -345,18 +325,8 @@ const AppContent: React.FC = () => {
                   business={activeBusiness}
                   deductCredit={deductCredit}
                   updateCredits={updateCredits}
-                  addAsset={handleAddAsset}
-                  deleteAsset={handleDeleteAsset}
-                  assets={assets}
                   pendingAssets={pendingAssets}
                   setPendingAssets={setPendingAssets}
-                  loadMoreAssets={async () => {
-                    const moreAssets = await StorageService.getAssets(activeBusiness.id, 10, assets.length);
-                    if (moreAssets.length > 0) {
-                      setAssets(prev => [...prev, ...moreAssets]);
-                    }
-                    return moreAssets.length;
-                  }}
                 />
               } />
               <Route path="/tasks" element={
@@ -392,9 +362,11 @@ const App: React.FC = () => {
     <ThemeProvider>
       <NotificationProvider>
         <AuthProvider>
-          <Router>
-            <AppContent />
-          </Router>
+          <AssetProvider>
+            <Router>
+              <AppContent />
+            </Router>
+          </AssetProvider>
         </AuthProvider>
       </NotificationProvider>
     </ThemeProvider>

@@ -37,9 +37,9 @@ View your app: [https://ads-x-create-v2.vercel.app](https://ads-x-create-v2.verc
 
 4.  **Run the App:**
     ```bash
-    npx vercel dev
+    npm run dev
     ```
-    *Note: Do not use `npm run dev` as it will not start the backend API functions.*
+    *Note: Use `npx vercel dev` instead if you need to test serverless API routes (e.g., `/api/extract-website`).*
 
 ## Deployment
 

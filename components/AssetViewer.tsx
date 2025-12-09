@@ -1,25 +1,40 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Asset } from '../types';
-import { useThemeStyles, NeuButton } from './NeuComponents';
+import { Asset, Business } from '../types';
+import { useThemeStyles, NeuButton, NeuInput } from './NeuComponents';
 import { GalaxyCanvas } from './GalaxyCanvas';
-import { X, Download, Trash2, Copy, Share2, Maximize2, ZoomIn, Search, MessageCircle, History, Send } from 'lucide-react';
+import { X, Download, Trash2, Copy, Share2, Maximize2, ZoomIn, Search, MessageCircle, History, Send, Calendar, Instagram, Facebook, Linkedin, Sparkles, Clock, Check, AlertCircle } from 'lucide-react';
 import { downloadImage } from '../utils/download';
+import { SocialService, ConnectedAccount, SchedulePostPayload } from '../services/socialService';
 
 interface AssetViewerProps {
   asset: Asset | null;
   onClose: () => void;
   onDelete?: (id: string) => void;
   onRefine?: (instruction: string) => void;
+  onReuse?: (asset: Asset, mode: 'prompt_only' | 'all') => void;
+  business?: Business; // For social config
 }
 
-export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDelete, onRefine }) => {
+export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDelete, onRefine, onReuse, business }) => {
   const { styles, theme } = useThemeStyles();
   const isDark = theme === 'dark';
 
   // Tabs State
-  const [activeTab, setActiveTab] = useState<'details' | 'refine'>('details');
+  const [activeTab, setActiveTab] = useState<'details' | 'refine' | 'social'>('details');
+
+  // Social Tab State
+  const [caption, setCaption] = useState('');
+  const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('');
+  const [isPostingNow, setIsPostingNow] = useState(true);
+  const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
+  const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
+  const [isScheduling, setIsScheduling] = useState(false);
+  const [scheduleResult, setScheduleResult] = useState<{ success?: boolean; error?: string } | null>(null);
+  const [isGeneratingCaption, setIsGeneratingCaption] = useState(false);
 
   // Zoom State
   const [isZoomed, setIsZoomed] = useState(false);
@@ -32,6 +47,29 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
   // Galaxy Colors - Deep Space Portal
   const galaxyBg = '#050505';
   const galaxyStars = ['#ffffff', '#A5B4FC', '#60a5fa', '#F472B6'];
+
+  // Social feature availability
+  const hasSocialConfig = !!business?.socialConfig?.ghlLocationId;
+
+  // Load connected accounts when Social tab is activated
+  useEffect(() => {
+    if (activeTab === 'social' && hasSocialConfig && connectedAccounts.length === 0) {
+      loadConnectedAccounts();
+    }
+  }, [activeTab]);
+
+  const loadConnectedAccounts = async () => {
+    if (!business?.socialConfig?.ghlLocationId) return;
+    setIsLoadingAccounts(true);
+    try {
+      const response = await fetch(`/api/ghl/accounts?locationId=${business.socialConfig.ghlLocationId}`);
+      const data = await response.json();
+      setConnectedAccounts(data.accounts || []);
+    } catch (e) {
+      console.error('Failed to load accounts:', e);
+    }
+    setIsLoadingAccounts(false);
+  };
 
   const handleDownload = () => {
     if (asset) {
@@ -48,7 +86,7 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isZoomed || !imageContainerRef.current) return;
+    if (!imageContainerRef.current) return;
 
     const { left, top, width, height } = imageContainerRef.current.getBoundingClientRect();
     const x = (e.clientX - left) / width;
@@ -59,6 +97,64 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
 
   const toggleZoom = () => {
     setIsZoomed(!isZoomed);
+  };
+
+  // Platform icon helper
+  const getPlatformIcon = (platform: string) => {
+    switch (platform.toLowerCase()) {
+      case 'instagram': return <Instagram size={16} />;
+      case 'facebook': return <Facebook size={16} />;
+      case 'linkedin': return <Linkedin size={16} />;
+      default: return <Share2 size={16} />;
+    }
+  };
+
+  // Toggle account selection
+  const toggleAccountSelection = (accountId: string) => {
+    setSelectedAccounts(prev =>
+      prev.includes(accountId)
+        ? prev.filter(id => id !== accountId)
+        : [...prev, accountId]
+    );
+  };
+
+  // Schedule/Post handler
+  const handleSchedulePost = async () => {
+    if (!business?.socialConfig?.ghlLocationId) return;
+    if (selectedAccounts.length === 0) {
+      setScheduleResult({ error: 'Please select at least one platform' });
+      return;
+    }
+    if (!asset?.content) return;
+
+    setIsScheduling(true);
+    setScheduleResult(null);
+
+    try {
+      const payload: any = {
+        locationId: business.socialConfig.ghlLocationId,
+        accountIds: selectedAccounts,
+        caption: caption,
+        mediaUrls: [asset.content],
+      };
+
+      if (!isPostingNow && scheduleDate && scheduleTime) {
+        payload.scheduledAt = new Date(`${scheduleDate}T${scheduleTime}`).toISOString();
+      }
+
+      const response = await fetch('/api/ghl/post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json();
+      setScheduleResult(result);
+    } catch (e: any) {
+      setScheduleResult({ error: e.message || 'Failed to schedule post' });
+    }
+
+    setIsScheduling(false);
   };
 
   if (!asset) return null;
@@ -97,11 +193,12 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
           >
 
             {/* Close Button (Floating) */}
+            {/* Close Button (Floating) */}
             <button
               onClick={onClose}
-              className={`absolute top-4 right-4 z-50 p-2 rounded-full transition-transform hover:rotate-90 active:scale-95 ${styles.bg} ${styles.shadowOut} ${styles.textSub} hover:text-red-500`}
+              className={`absolute top-4 right-4 z-50 p-2 rounded-full transition-transform active:scale-95 group ${styles.bg} ${styles.shadowOut} ${styles.textSub} hover:text-red-500`}
             >
-              <X size={20} />
+              <X size={20} className="transition-transform duration-300 group-hover:rotate-90" />
             </button>
 
             {/* Left: The Asset (The "View") */}
@@ -126,9 +223,8 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
                   alt={asset.prompt}
                   className="max-w-full max-h-full object-contain rounded-xl transition-transform duration-100 ease-out"
                   style={{
-                    transform: isZoomed
-                      ? `scale(2.5) translate(${(0.5 - mousePos.x) * 100}px, ${(0.5 - mousePos.y) * 100}px)`
-                      : 'scale(1)'
+                    transformOrigin: `${mousePos.x * 100}% ${mousePos.y * 100}%`,
+                    transform: isZoomed ? 'scale(2.5)' : 'scale(1)'
                   }}
                 />
               </motion.div>
@@ -156,6 +252,19 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
                 >
                   Refine & Edit
                   {activeTab === 'refine' && (
+                    <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand rounded-full" />
+                  )}
+                </button>
+                <button
+                  onClick={() => setActiveTab('social')}
+                  className={`pb-3 text-sm font-bold transition-colors relative flex items-center gap-1.5 ${activeTab === 'social' ? `text-brand` : `${styles.textSub} hover:${styles.textMain}`
+                    } ${!hasSocialConfig ? 'opacity-40 cursor-not-allowed' : ''}`}
+                  disabled={!hasSocialConfig}
+                  title={!hasSocialConfig ? 'Social not configured for this business' : 'Schedule to social media'}
+                >
+                  <Share2 size={14} />
+                  Social
+                  {activeTab === 'social' && (
                     <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand rounded-full" />
                   )}
                 </button>
@@ -208,18 +317,25 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
                       )}
 
                       {/* Metadata */}
+                      {/* Metadata */}
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className={`text-xs font-bold uppercase tracking-wider mb-1 block ${styles.textSub}`}>Created</label>
                           <span className={`text-sm font-medium ${styles.textMain}`}>{new Date(asset.createdAt).toLocaleDateString()}</span>
                         </div>
                         <div>
-                          <label className={`text-xs font-bold uppercase tracking-wider mb-1 block ${styles.textSub}`}>ID</label>
-                          <span className={`text-sm font-medium truncate block ${styles.textMain} opacity-50`}>#{asset.id.slice(-6)}</span>
+                          <label className={`text-xs font-bold uppercase tracking-wider mb-1 block ${styles.textSub}`}>Model</label>
+                          <span className={`text-sm font-medium ${styles.textMain} uppercase`}>{asset.modelTier || 'Pro'}</span>
                         </div>
+                        {asset.subjectId && (
+                          <div className="col-span-2">
+                            <label className={`text-xs font-bold uppercase tracking-wider mb-1 block ${styles.textSub}`}>Subject ID</label>
+                            <span className={`text-xs font-mono ${styles.textMain} opacity-70`}>{asset.subjectId}</span>
+                          </div>
+                        )}
                       </div>
                     </motion.div>
-                  ) : (
+                  ) : activeTab === 'refine' ? (
                     <motion.div
                       key="refine"
                       initial={{ opacity: 0, x: 20 }}
@@ -260,7 +376,143 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
                         </div>
                       </div>
                     </motion.div>
-                  )}
+                  ) : activeTab === 'social' ? (
+                    <motion.div
+                      key="social"
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      className="h-full flex flex-col space-y-4"
+                    >
+                      {/* Caption */}
+                      <div>
+                        <label className={`text-xs font-bold uppercase tracking-wider mb-2 block ${styles.textSub}`}>
+                          Caption
+                        </label>
+                        <div className={`relative rounded-2xl ${styles.shadowIn} overflow-hidden`}>
+                          <textarea
+                            value={caption}
+                            onChange={(e) => setCaption(e.target.value)}
+                            placeholder="Write your post caption..."
+                            className={`w-full pl-4 pr-4 py-3 bg-transparent outline-none text-sm ${styles.textMain} placeholder-gray-400 resize-none`}
+                            rows={3}
+                          />
+                        </div>
+                        <button
+                          onClick={() => setIsGeneratingCaption(true)}
+                          disabled={isGeneratingCaption}
+                          className={`mt-2 flex items-center gap-1.5 text-xs font-bold ${styles.textSub} hover:text-brand transition-colors`}
+                        >
+                          <Sparkles size={12} /> AI Suggest (Coming Soon)
+                        </button>
+                      </div>
+
+                      {/* Connected Accounts */}
+                      <div>
+                        <label className={`text-xs font-bold uppercase tracking-wider mb-2 block ${styles.textSub}`}>
+                          Post To
+                        </label>
+                        {isLoadingAccounts ? (
+                          <div className={`p-4 rounded-2xl ${styles.shadowIn} text-center ${styles.textSub} text-sm`}>
+                            Loading accounts...
+                          </div>
+                        ) : connectedAccounts.length === 0 ? (
+                          <div className={`p-4 rounded-2xl ${styles.shadowIn} text-center`}>
+                            <p className={`text-sm ${styles.textSub}`}>No accounts connected yet</p>
+                            <p className={`text-xs ${styles.textSub} mt-1 opacity-60`}>
+                              Connect accounts in Settings → Connected Accounts
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {connectedAccounts.map((account) => (
+                              <button
+                                key={account.id}
+                                onClick={() => toggleAccountSelection(account.id)}
+                                className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${selectedAccounts.includes(account.id)
+                                  ? 'bg-brand/10 border-2 border-brand'
+                                  : `${styles.shadowIn} border-2 border-transparent`
+                                  }`}
+                              >
+                                <div className={`p-2 rounded-full ${styles.bg} ${styles.shadowOut}`}>
+                                  {getPlatformIcon(account.platform)}
+                                </div>
+                                <div className="flex-1 text-left">
+                                  <p className={`text-sm font-bold ${styles.textMain}`}>{account.name}</p>
+                                  <p className={`text-xs ${styles.textSub} capitalize`}>{account.platform}</p>
+                                </div>
+                                {selectedAccounts.includes(account.id) && (
+                                  <Check size={18} className="text-brand" />
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Timing */}
+                      <div>
+                        <label className={`text-xs font-bold uppercase tracking-wider mb-2 block ${styles.textSub}`}>
+                          When
+                        </label>
+                        <div className="flex gap-2 mb-3">
+                          <button
+                            onClick={() => setIsPostingNow(true)}
+                            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${isPostingNow ? 'bg-brand text-white' : `${styles.shadowOut} ${styles.textSub}`
+                              }`}
+                          >
+                            Post Now
+                          </button>
+                          <button
+                            onClick={() => setIsPostingNow(false)}
+                            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 ${!isPostingNow ? 'bg-brand text-white' : `${styles.shadowOut} ${styles.textSub}`
+                              }`}
+                          >
+                            <Clock size={12} /> Schedule
+                          </button>
+                        </div>
+                        {!isPostingNow && (
+                          <div className="grid grid-cols-2 gap-2">
+                            <input
+                              type="date"
+                              value={scheduleDate}
+                              onChange={(e) => setScheduleDate(e.target.value)}
+                              className={`px-3 py-2 rounded-xl text-sm ${styles.shadowIn} ${styles.textMain} bg-transparent`}
+                            />
+                            <input
+                              type="time"
+                              value={scheduleTime}
+                              onChange={(e) => setScheduleTime(e.target.value)}
+                              className={`px-3 py-2 rounded-xl text-sm ${styles.shadowIn} ${styles.textMain} bg-transparent`}
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Result Message */}
+                      {scheduleResult && (
+                        <div className={`p-3 rounded-xl text-sm flex items-center gap-2 ${scheduleResult.success
+                          ? 'bg-green-500/10 text-green-500'
+                          : 'bg-red-500/10 text-red-500'
+                          }`}>
+                          {scheduleResult.success ? <Check size={16} /> : <AlertCircle size={16} />}
+                          {scheduleResult.success ? 'Post scheduled successfully!' : scheduleResult.error}
+                        </div>
+                      )}
+
+                      {/* Action Button */}
+                      <div className="mt-auto pt-4">
+                        <NeuButton
+                          className="w-full py-4"
+                          variant="primary"
+                          onClick={handleSchedulePost}
+                          disabled={isScheduling || selectedAccounts.length === 0}
+                        >
+                          {isScheduling ? 'Scheduling...' : isPostingNow ? 'Post Now' : 'Schedule Post'}
+                        </NeuButton>
+                      </div>
+                    </motion.div>
+                  ) : null}
                 </AnimatePresence>
 
               </div>
@@ -290,6 +542,24 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
                       </NeuButton>
                     )}
                   </div>
+
+                  {/* Reuse Actions */}
+                  {onReuse && (
+                    <div className="pt-4 border-t border-white/5 grid grid-cols-2 gap-3">
+                      <button
+                        onClick={() => onReuse(asset, 'prompt_only')}
+                        className={`py-3 rounded-xl text-xs font-bold transition-all ${styles.bg} ${styles.shadowOut} ${styles.textMain} hover:text-brand active:scale-95`}
+                      >
+                        Reuse Prompt
+                      </button>
+                      <button
+                        onClick={() => onReuse(asset, 'all')}
+                        className={`py-3 rounded-xl text-xs font-bold transition-all bg-brand text-white shadow-lg shadow-brand/30 hover:scale-[1.02] active:scale-95`}
+                      >
+                        Reuse Everything
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 

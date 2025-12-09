@@ -11,6 +11,7 @@ The application is a modern SPA using React 19, hosted on Vercel.
     *   `NavigationContext`: Intercepts navigation to prevent data loss (Dirty State).
     *   `NotificationContext`: Global toast system.
     *   `AuthContext`: Manages user authentication via Supabase.
+    *   `AssetContext`: Manages generated assets state and caching.
 
 ### 2. Data Layer (Supabase)
 We use Supabase as a Backend-as-a-Service.
@@ -55,7 +56,12 @@ Located in `services/prompts.ts`, we dynamically assemble a structured "Job Tick
 
 ### Image Generation
 *   **Location:** `services/prompts.ts` (Client-side).
-*   **To Modify:** Edit the `createImagePrompt` function.
+*   **To Modify:** 
+    *   **Option A (Code):** Edit the `createImagePrompt` function in `services/prompts.ts`.
+    *   **Option B (Admin):** Go to **Admin HQ > Brain Logic > Image Generator**.
+        *   The text box allows you to override the *template* of the Job Ticket.
+        *   **Important:** You must keep the `{{PLACEHOLDERS}}` (like `{{BUSINESS_NAME}}`, `{{VISUAL_PROMPT}}`) intact, or the dynamic injection will fail.
+        *   Use "Reset to Default" to revert to the codebase version.
 
 ---
 
@@ -67,14 +73,15 @@ Located in `services/prompts.ts`, we dynamically assemble a structured "Job Tick
     *   `products/`: Reference images for offerings.
     *   `system_assets/`: Admin-uploaded thumbnails for Presets/Styles.
 
-### 5. Business Profile Logic (`views/BusinessProfile.tsx`)
-The profile is the "Source of Truth" for the AI. We use intelligent UI patterns to capture structured data.
+### 5. Offerings Management (`views/Offerings.tsx`)
+The Offerings view manages Products, Team Members, and Locations — all of which feed into the AI generation pipeline.
 *   **Offerings (Products/Services):**
-    *   **Data:** Name, Price, Description, Image.
-    *   **Data:** Name, Price, Description, Image.
+    *   **Data:** Name, Price, Description, Image, Additional Images.
     *   **Preserve Product Integrity:** A `preserveLikeness` boolean flag.
         *   **True:** "Use real product image" (blended).
         *   **False:** "Stylize" (creative adaptation).
+*   **Team Members:** Name, Role, Image.
+*   **Locations:** Name, Description, Image, Additional Images.
 
 ## Business Model & Pricing
 

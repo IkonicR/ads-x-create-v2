@@ -11,6 +11,8 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { GalaxyHeading } from '../components/GalaxyHeading';
 import { INDUSTRY_OPTIONS } from '../constants/industries';
 import { OperatingModelSelector } from '../components/OperatingModelSelector';
+import { ConnectedAccountsCard } from '../components/ConnectedAccountsCard';
+import { Share2 } from 'lucide-react';
 
 interface BusinessProfileProps {
   business: Business;
@@ -19,7 +21,7 @@ interface BusinessProfileProps {
 
 const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusiness }) => {
   const [localBusiness, setLocalBusiness] = useState<Business>(business);
-  const { isDirty, setDirty } = useNavigation();
+  const { isDirty, setDirty, registerSaveHandler } = useNavigation();
   const { notify } = useNotification();
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('profile');
@@ -30,6 +32,7 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
   const [newContact, setNewContact] = useState<Partial<import('../types').ContactMethod>>({ type: 'phone', value: '', label: '', isPrimary: false });
 
   const { styles } = useThemeStyles();
+  const localBusinessRef = React.useRef(localBusiness);
 
   // --- MIGRATION LOGIC: Legacy -> New Contacts ---
   useEffect(() => {
@@ -59,25 +62,30 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
   }, []); // Run once on mount
 
   useEffect(() => {
+    localBusinessRef.current = localBusiness;
+  }, [localBusiness]);
+
+  useEffect(() => {
     setLocalBusiness(business);
   }, [business]);
 
-  useEffect(() => {
-    const isChanged = JSON.stringify(business) !== JSON.stringify(localBusiness);
-    setDirty(isChanged);
-  }, [business, localBusiness, setDirty]);
-
-  const handleSave = async () => {
+  const handleSave = React.useCallback(async () => {
     setIsSaving(true);
     try {
-      await updateBusiness(localBusiness);
+      await updateBusiness(localBusinessRef.current);
       notify({ title: 'Profile Saved', type: 'success', message: 'Business information updated.' });
     } catch (e) {
       notify({ title: 'Save Failed', type: 'error' });
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [updateBusiness, notify]);
+
+  useEffect(() => {
+    const isChanged = JSON.stringify(business) !== JSON.stringify(localBusiness);
+    setDirty(isChanged);
+    registerSaveHandler(isChanged ? handleSave : null);
+  }, [business, localBusiness, setDirty, registerSaveHandler, handleSave]);
 
   const updateProfile = (updates: Partial<typeof localBusiness.profile>) => {
     setLocalBusiness(prev => ({
@@ -628,6 +636,14 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
             <h4 className={`text-md font-bold ${styles.textMain} mb-4`}>Voice & Legal</h4>
             <div className="space-y-4">
               <div>
+                <label className={`block text-sm font-bold ${styles.textSub} mb-1`}>Campaign Goal</label>
+                <NeuInput
+                  value={localBusiness.adPreferences.goals || ''}
+                  onChange={e => updateAdPrefs('goals', e.target.value)}
+                  placeholder="e.g. Drive sales, Build awareness, Promote event"
+                />
+              </div>
+              <div>
                 <label className={`block text-sm font-bold ${styles.textSub} mb-1`}>Language</label>
                 <div className="space-y-2">
                   <NeuDropdown
@@ -922,6 +938,7 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
           tabs={[
             { id: 'profile', label: 'Profile & Contact', icon: <Globe size={16} /> },
             { id: 'ads', label: 'Ad Preferences', icon: <Megaphone size={16} /> },
+            { id: 'social', label: 'Social Accounts', icon: <Share2 size={16} /> },
           ]}
         />
       </div>
@@ -930,6 +947,14 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
       <div className="min-h-[500px]">
         {activeTab === 'profile' && renderProfileTab()}
         {activeTab === 'ads' && renderAdsTab()}
+        {activeTab === 'social' && (
+          <div className="space-y-8 animate-fade-in max-w-2xl">
+            <ConnectedAccountsCard
+              business={localBusiness}
+              onBusinessUpdate={(updated) => setLocalBusiness(updated)}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

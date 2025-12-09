@@ -8,17 +8,16 @@ import MasonryGrid from '../components/MasonryGrid';
 import { ControlDeck } from '../components/ControlDeck';
 import { useThemeStyles, NeuButton } from '../components/NeuComponents';
 import { NeuConfirmModal } from '../components/NeuConfirmModal';
-import { Business, Asset, ExtendedAsset, StylePreset, AssetStatus } from '../types';
+import { Business, Asset, ExtendedAsset, StylePreset, AssetStatus, GenerationStrategy, SubjectType } from '../types';
+import { DEFAULT_STRATEGY } from '../constants/campaignPresets';
 import { generateImage } from '../services/geminiService';
 import { StorageService } from '../services/storage';
+import { useAssets } from '../context/AssetContext';
 
 interface GeneratorProps {
   business: Business;
   deductCredit?: (amount: number) => void; // Deprecated
   updateCredits?: (newBalance: number) => void; // NEW
-  addAsset: (asset: Asset) => void;
-  deleteAsset?: (id: string) => void;
-  assets: Asset[];
   // Props for lifted state (so we don't lose generation progress on tab switch)
   pendingAssets: ExtendedAsset[];
   setPendingAssets: React.Dispatch<React.SetStateAction<ExtendedAsset[]>>;
@@ -29,9 +28,6 @@ const Generator: React.FC<GeneratorProps> = ({
   business,
   deductCredit,
   updateCredits,
-  addAsset,
-  deleteAsset,
-  assets,
   pendingAssets,
   setPendingAssets,
   loadMoreAssets
@@ -39,6 +35,16 @@ const Generator: React.FC<GeneratorProps> = ({
   // const [loading, setLoading] = useState(false); // REMOVED for Concurrency
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const { styles, theme } = useThemeStyles();
+
+  // Strategy State (managed here, passed to ControlDeck)
+  const [strategy, setStrategy] = useState<GenerationStrategy>(DEFAULT_STRATEGY);
+  const { assets, addAsset, deleteAsset, loadAssets, hasMore, loading } = useAssets();
+
+  // Load more assets via context pagination
+  const handleLoadMore = useCallback(async () => {
+    if (!business.id || loading || !hasMore) return;
+    await loadAssets(business.id);
+  }, [business.id, loading, hasMore, loadAssets]);
 
   // Configuration State
   const [aestheticStyles, setAestheticStyles] = useState<StylePreset[]>([]);
@@ -58,18 +64,28 @@ const Generator: React.FC<GeneratorProps> = ({
   type GenerateArgs = [string, string, string, string, 'flash' | 'pro' | 'ultra'];
   const [pendingGeneratePayload, setPendingGeneratePayload] = useState<GenerateArgs | null>(null);
 
+  // Restore State for Control Deck
+  const [restoreState, setRestoreState] = useState<{
+    prompt: string;
+    styleId: string;
+    ratio: string;
+    subjectId: string;
+    modelTier: 'flash' | 'pro' | 'ultra';
+    timestamp: number;
+  } | null>(null);
+
   // Infinite Scroll State
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!loadMoreAssets || !sentinelRef.current) return;
+    if (!sentinelRef.current) return;
 
     const observer = new IntersectionObserver(async (entries) => {
-      if (entries[0].isIntersecting && !isLoadingMore) {
+      if (entries[0].isIntersecting && !isLoadingMore && hasMore && !loading) {
         setIsLoadingMore(true);
         try {
-          await loadMoreAssets();
+          await handleLoadMore();
         } catch (error) {
           console.error("Error loading more assets:", error);
         } finally {
@@ -81,14 +97,14 @@ const Generator: React.FC<GeneratorProps> = ({
     observer.observe(sentinelRef.current);
 
     return () => observer.disconnect();
-  }, [loadMoreAssets, isLoadingMore]);
+  }, [handleLoadMore, isLoadingMore, hasMore, loading]);
 
   // Derived Subjects from Business Data
   const subjects = useMemo(() => {
     const items: {
       id: string;
       name: string;
-      type: 'product' | 'person';
+      type: 'product' | 'service' | 'person' | 'location';
       imageUrl?: string;
       price?: string;
       description?: string;
@@ -99,13 +115,14 @@ const Generator: React.FC<GeneratorProps> = ({
       targetAudience?: string;
     }[] = [];
 
-    // Products
+    // Products (check category for service vs product)
     if (business.offerings) {
       business.offerings.forEach(offering => {
+        const isService = offering.category?.toLowerCase().includes('service');
         items.push({
           id: offering.id,
           name: offering.name,
-          type: 'product',
+          type: isService ? 'service' : 'product',
           imageUrl: offering.imageUrl,
           price: offering.price,
           description: offering.description,
@@ -121,6 +138,19 @@ const Generator: React.FC<GeneratorProps> = ({
     if (business.teamMembers) {
       business.teamMembers.forEach(member => {
         items.push({ id: member.id, name: member.name, type: 'person', imageUrl: member.imageUrl });
+      });
+    }
+
+    // Locations
+    if (business.locations) {
+      business.locations.forEach(location => {
+        items.push({
+          id: location.id,
+          name: location.name,
+          type: 'location',
+          imageUrl: location.imageUrl,
+          description: location.description
+        });
       });
     }
 
@@ -167,13 +197,15 @@ const Generator: React.FC<GeneratorProps> = ({
 
     const cost = COST_MAP[modelTier];
 
-    if (business.credits < cost) {
+    const isDebug = prompt.toLowerCase().startsWith('debug:');
+
+    if (!isDebug && business.credits < cost) {
       alert(`Not enough credits! You need ${cost} credits for ${modelTier === 'ultra' ? 'Ultra 4K' : modelTier === 'pro' ? 'Pro' : 'Flash'} generation.`);
       return;
     }
 
     // setLoading(true); // REMOVED for Concurrency
-    if (deductCredit) {
+    if (deductCredit && !isDebug) {
       deductCredit(cost); // <--- DEDUCT CREDITS NOW
     }
 
@@ -196,7 +228,10 @@ const Generator: React.FC<GeneratorProps> = ({
       createdAt: new Date().toISOString(),
       localStatus: 'generating',
       aspectRatio: ratio,
-      stylePreset: stylePreset?.name
+      stylePreset: stylePreset?.name,
+      styleId: styleId,
+      subjectId: subjectId,
+      modelTier: modelTier
     };
 
     setPendingAssets(prev => [newPendingAsset, ...prev]);
@@ -212,19 +247,25 @@ const Generator: React.FC<GeneratorProps> = ({
           preserveLikeness: subject.preserveLikeness || false
         } : undefined, // subjectContext
         ratio, // Pass Aspect Ratio
-        modelTier === 'flash' ? 'pro' : modelTier // Ensure 'flash' is mapped to 'pro' if it somehow slips through
+        modelTier === 'flash' ? 'pro' : modelTier, // Ensure 'flash' is mapped to 'pro' if it somehow slips through
+        strategy // NEW: Pass strategy override
       );
 
       // Fix: Check if result is a valid data URL string
       if (result && typeof result === 'string' && result.startsWith('data:image')) {
         // 3. Success
+
+        // UPLOAD TO STORAGE (Phase 1 Fix)
+        const publicUrl = await StorageService.uploadGeneratedAsset(result, business.id);
+        if (!publicUrl) throw new Error("Failed to upload generated asset to storage.");
+
         // Strip localStatus to ensure it renders as a completed AssetCard
         const { localStatus, ...rest } = newPendingAsset;
 
         const finalAsset: Asset = {
           ...rest,
           id: tempId, // REUSE ID for seamless transition
-          content: result, // Use result directly
+          content: publicUrl, // Use URL, not base64
         };
 
         // CRITICAL FIX: Save to DB immediately to prevent data loss on refresh
@@ -239,7 +280,7 @@ const Generator: React.FC<GeneratorProps> = ({
         // Update pending asset to complete, but keep it in pending list for animation
         setPendingAssets(prev => prev.map(a =>
           a.id === tempId
-            ? { ...a, localStatus: 'complete', content: result }
+            ? { ...a, localStatus: 'complete', content: publicUrl } // Update with URL
             : a
         ));
 
@@ -309,7 +350,8 @@ const Generator: React.FC<GeneratorProps> = ({
       newPrompt,
       styleId,
       currentAsset.aspectRatio || '1:1',
-      '',
+
+      currentAsset.subjectId || '',
       'ultra'
     );
   }, [selectedAsset, aestheticStyles, executeGenerate]);
@@ -327,7 +369,10 @@ const Generator: React.FC<GeneratorProps> = ({
       prompt: pending.prompt,
       createdAt: pending.createdAt,
       stylePreset: pending.stylePreset,
-      aspectRatio: pending.aspectRatio
+      aspectRatio: pending.aspectRatio,
+      styleId: pending.styleId,
+      subjectId: pending.subjectId,
+      modelTier: pending.modelTier
     };
 
     // Add to main list
@@ -336,6 +381,29 @@ const Generator: React.FC<GeneratorProps> = ({
     // Remove from pending list
     setPendingAssets(prev => prev.filter(a => a.id !== id));
   }, [pendingAssets, addAsset, setPendingAssets]);
+
+  const handleReuse = useCallback((asset: Asset, mode: 'prompt_only' | 'all') => {
+    if (mode === 'prompt_only') {
+      setRestoreState({
+        prompt: asset.prompt,
+        styleId: '',
+        ratio: '1:1',
+        subjectId: '',
+        modelTier: 'pro',
+        timestamp: Date.now()
+      });
+    } else {
+      setRestoreState({
+        prompt: asset.prompt,
+        styleId: asset.styleId || '',
+        ratio: asset.aspectRatio || '1:1',
+        subjectId: asset.subjectId || '',
+        modelTier: asset.modelTier || 'pro',
+        timestamp: Date.now()
+      });
+    }
+    setSelectedAsset(null); // Close viewer
+  }, []);
 
 
 
@@ -413,17 +481,17 @@ const Generator: React.FC<GeneratorProps> = ({
           />
         )}
 
-        {/* Infinite Scroll Sentinel */}
-        {loadMoreAssets && (
-          <div
-            ref={sentinelRef}
-            className="h-20 flex items-center justify-center opacity-50"
-          >
-            {isLoadingMore && (
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-500"></div>
-            )}
-          </div>
-        )}
+        {/* Infinite Scroll Sentinel - Disabled for now in Generator to avoid context conflict */}
+        {/* {loadMoreAssets && ( */}
+        <div
+          ref={sentinelRef}
+          className="h-20 flex items-center justify-center opacity-50"
+        >
+          {isLoadingMore && (
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-500"></div>
+          )}
+        </div>
+        {/* )} */}
       </div>
 
       {/* The Control Deck */}
@@ -432,6 +500,10 @@ const Generator: React.FC<GeneratorProps> = ({
         styles={aestheticStyles}
         subjects={subjects}
         activeCount={pendingAssets.length}
+        restoreState={restoreState}
+        strategy={strategy}
+        onStrategyChange={setStrategy}
+        visualMotifs={business.visualMotifs || []}
       />
 
       {/* Asset Viewer Lightbox */}
@@ -440,6 +512,8 @@ const Generator: React.FC<GeneratorProps> = ({
         onClose={() => setSelectedAsset(null)}
         onDelete={(id) => { handleDelete(id); setSelectedAsset(null); }}
         onRefine={handleRefine}
+        onReuse={handleReuse}
+        business={business}
       />
 
       {/* Ultra Generation Confirmation Modal */}
@@ -469,7 +543,6 @@ const Generator: React.FC<GeneratorProps> = ({
         }}
         confirmVariant="primary"
       />
-
     </div>
   );
 };

@@ -23,7 +23,10 @@ if (!supabaseUrl || !supabaseKey) {
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   global: {
     fetch: (url, options) => {
-      return fetch(url, { ...options, signal: AbortSignal.timeout(10000) }); // 10s timeout
+      // SMART TIMEOUT: 60s for Storage (Uploads), 20s for DB (Safety)
+      const isStorage = url.toString().includes('/storage/v1/');
+      const timeout = isStorage ? 60000 : 20000;
+      return fetch(url, { ...options, signal: AbortSignal.timeout(timeout) });
     }
   }
 });

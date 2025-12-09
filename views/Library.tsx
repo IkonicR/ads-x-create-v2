@@ -1,11 +1,12 @@
 
-import React from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { Asset } from '../types';
 import { StorageService } from '../services/storage';
 import { NeuCard, NeuButton, useThemeStyles } from '../components/NeuComponents';
 import MasonryGrid from '../components/MasonryGrid';
 import { Download, Search, Filter, ExternalLink, Copy } from 'lucide-react';
 import { GalaxyHeading } from '../components/GalaxyHeading';
+import { useAssets } from '../context/AssetContext';
 
 interface LibraryProps {
   businessId: string;
@@ -13,37 +14,48 @@ interface LibraryProps {
 
 const Library: React.FC<LibraryProps> = ({ businessId }) => {
   const { styles } = useThemeStyles();
-  const [assets, setAssets] = React.useState<Asset[]>([]);
-  const [offset, setOffset] = React.useState(0);
-  const [hasMore, setHasMore] = React.useState(true);
-  const [loading, setLoading] = React.useState(false);
-  const LIMIT = 12;
+  const { assets, loading, hasMore, loadAssets, currentBusinessId } = useAssets();
 
-  const loadAssets = async (reset = false) => {
-    if (loading) return;
-    setLoading(true);
+  // Infinite Scroll State
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-    try {
-      const currentOffset = reset ? 0 : offset;
-      const newAssets = await StorageService.getAssets(businessId, LIMIT, currentOffset);
-
-      if (newAssets.length < LIMIT) {
-        setHasMore(false);
-      }
-
-      setAssets(prev => reset ? newAssets : [...prev, ...newAssets]);
-      setOffset(prev => reset ? LIMIT : prev + LIMIT);
-    } catch (error) {
-      console.error("Failed to load assets", error);
-    } finally {
-      setLoading(false);
+  // Initial Load - Only if empty or business changed
+  useEffect(() => {
+    // If we have assets and the business ID hasn't changed, don't reload.
+    if (assets.length > 0 && currentBusinessId === businessId) {
+      return;
     }
-  };
+    loadAssets(businessId);
+  }, [businessId, loadAssets, assets.length, currentBusinessId]);
 
-  // Initial Load
-  React.useEffect(() => {
-    loadAssets(true);
-  }, [businessId]);
+  // Infinite Scroll Handler
+  const handleLoadMore = useCallback(async () => {
+    if (!businessId || loading || !hasMore) return;
+    await loadAssets(businessId);
+  }, [businessId, loading, hasMore, loadAssets]);
+
+  // IntersectionObserver for Infinite Scroll
+  useEffect(() => {
+    if (!sentinelRef.current) return;
+
+    const observer = new IntersectionObserver(async (entries) => {
+      if (entries[0].isIntersecting && !isLoadingMore && hasMore && !loading) {
+        setIsLoadingMore(true);
+        try {
+          await handleLoadMore();
+        } catch (error) {
+          console.error("Error loading more assets:", error);
+        } finally {
+          setIsLoadingMore(false);
+        }
+      }
+    }, { rootMargin: '200px' });
+
+    observer.observe(sentinelRef.current);
+
+    return () => observer.disconnect();
+  }, [handleLoadMore, isLoadingMore, hasMore, loading]);
 
   return (
     <div className="space-y-8 pb-10">
@@ -95,17 +107,29 @@ const Library: React.FC<LibraryProps> = ({ businessId }) => {
         </div>
       )}
 
-      {/* Load More Button */}
-      {hasMore && (
-        <div className="flex justify-center pt-8">
-          <NeuButton
-            onClick={() => loadAssets(false)}
-            disabled={loading}
-            className="min-w-[200px]"
-          >
-            {loading ? 'Loading...' : 'Load More'}
-          </NeuButton>
-        </div>
+      {/* Infinite Scroll Sentinel */}
+      <div
+        ref={sentinelRef}
+        className="h-20 flex items-center justify-center opacity-50"
+      >
+        {(isLoadingMore || loading) && hasMore && (
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-500"></div>
+        )}
+      </div>
+
+      {/* Load More Button - Fallback (hidden when infinite scroll works) */}
+      {hasMore && !isLoadingMore && !loading && (
+        <noscript>
+          <div className="flex justify-center pt-8">
+            <NeuButton
+              onClick={() => loadAssets(businessId)}
+              disabled={loading}
+              className="min-w-[200px]"
+            >
+              Load More
+            </NeuButton>
+          </div>
+        </noscript>
       )}
     </div>
   );

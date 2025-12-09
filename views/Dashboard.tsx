@@ -9,7 +9,6 @@ import { GalaxyHeading } from '../components/GalaxyHeading';
 interface DashboardProps {
   business: Business;
   tasks: Task[];
-  recentAssets: Asset[];
   onNavigate: (view: any) => void;
 }
 
@@ -23,8 +22,12 @@ const data = [
   { name: 'Sun', gens: 6 },
 ];
 
-const Dashboard: React.FC<DashboardProps> = ({ business, tasks, recentAssets, onNavigate }) => {
+import { useAssets } from '../context/AssetContext';
+
+const Dashboard: React.FC<DashboardProps> = ({ business, tasks, onNavigate }) => {
   const { styles, theme } = useThemeStyles();
+  const { assets } = useAssets();
+  const recentAssets = assets.slice(0, 4);
   const isDark = theme === 'dark';
 
   return (

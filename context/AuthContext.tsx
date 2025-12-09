@@ -9,6 +9,8 @@ interface AuthContextType {
   user: User | null;
   profile: UserProfile | null;
   loading: boolean;
+  authChecked: boolean;
+  profileChecked: boolean; // True once profile fetch completes (or no user)
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -21,6 +23,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [profileChecked, setProfileChecked] = useState(false);
 
   const refreshProfile = async () => {
     if (session?.user) {
@@ -30,7 +34,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    console.log("Auth: Starting Session Check...");
+
 
     // Check active sessions and subscribe to auth changes
     const getSession = async () => {
@@ -40,22 +44,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.error("Auth: Session Error", error);
           throw error;
         }
-        console.log("Auth: Session Result", session ? "User Found" : "No User");
+
 
         setSession(session);
         const currentUser = session?.user ?? null;
         setUser(currentUser);
 
         if (currentUser) {
-          // Fire and forget - don't await
-          StorageService.getUserProfile(currentUser.id)
-            .then(p => setProfile(p))
-            .catch(e => console.error("Auth: Profile Fetch Error", e));
+          // AWAIT profile fetch - don't proceed until we know profile state
+          try {
+            const p = await StorageService.getUserProfile(currentUser.id);
+            setProfile(p);
+          } catch (e) {
+            console.error("Auth: Profile Fetch Error", e);
+          } finally {
+            setProfileChecked(true);
+          }
+        } else {
+          // No user = no profile to fetch
+          setProfileChecked(true);
         }
       } catch (error) {
         console.error("Auth: Fatal Error", error);
+        setProfileChecked(true); // Still mark as checked on error
       } finally {
-        console.log("Auth: Finished Loading");
+        setAuthChecked(true);
         setLoading(false);
       }
     };
@@ -63,7 +76,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     getSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      console.log("Auth: State Changed", _event);
+
       setSession(session);
 
       const currentUser = session?.user ?? null;
@@ -75,12 +88,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (currentUser) {
-        // Fire and forget - don't await
+        // Fetch profile on auth change
         StorageService.getUserProfile(currentUser.id)
-          .then(p => setProfile(p))
-          .catch(e => console.error("Auth: Profile Fetch Error", e));
+          .then(p => {
+            setProfile(p);
+            setProfileChecked(true);
+          })
+          .catch(e => {
+            console.error("Auth: Profile Fetch Error", e);
+            setProfileChecked(true);
+          });
       } else {
         setProfile(null);
+        setProfileChecked(true);
       }
 
       // GUARANTEED TO RUN
@@ -114,10 +134,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     user,
     profile,
     loading,
+    authChecked,
+    profileChecked,
     signInWithGoogle,
     signOut,
     refreshProfile
-  }), [session, user, profile, loading]);
+  }), [session, user, profile, loading, authChecked, profileChecked]);
 
   return (
     <AuthContext.Provider value={value}>
