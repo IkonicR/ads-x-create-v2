@@ -38,7 +38,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         // Call GHL to get connected accounts
         const ghlResponse = await fetch(
-            `https://services.leadconnectorhq.com/social-media-posting/oauth/accounts?locationId=${locationId}`,
+            `https://services.leadconnectorhq.com/social-media-posting/${locationId}/accounts`,
             {
                 headers: {
                     'Authorization': `Bearer ${integration.access_token}`,
