@@ -34,16 +34,16 @@ VITE_SUPABASE_URL=https://afzrfcqidscibmgptkcl.supabase.co
 VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmenJmY3FpZHNjaWJtZ3B0a2NsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM4MDEzMzYsImV4cCI6MjA3OTM3NzMzNn0.ESSxfwK045eFKgbStvO044RZkpvFKhx822TWNx6C3Gg
 
 # Server-side Only (Privileged)
-SUPABASE_SECRET_KEY=sb_secret_zpvTwFENBsD6FfFyEveRsw_mIePoFj7
-GHL_CLIENT_ID=693810a3890d023eb434ed2e-miyjrfk3
-GHL_CLIENT_SECRET=bc77b6d9-4564-409b-a4bc-5aec3c0f19f9
+SUPABASE_SECRET_KEY=sb_secret_xxxxxxxxxxxxxxxxxxxx
+GHL_CLIENT_ID=xxxxxxxxxxxxxxxxxxxx
+GHL_CLIENT_SECRET=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 
 # AI & APIs
-VITE_GEMINI_API_KEY=AIzaSyCtmBycY-9OhrWkozyaiOKwzgOpUJHyJ_M
-GOOGLE_GENERATIVE_AI_API_KEY=AIzaSyCtmBycY-9OhrWkozyaiOKwzgOpUJHyJ_M
-VITE_GOOGLE_MAPS_KEY=AIzaSyD1vBI1lqV-tIQxFGKCWR3JbNNuRFldp7U
-DEEPSEEK_API_KEY=sk-befbf27aade84637a148be112f16a9ac
-FIRECRAWL_API_KEY=fc-909c038811664e6eb7e520335c8da296
+VITE_GEMINI_API_KEY=AIzaSyxxxxxxxxxxxxxxxxxxxx
+GOOGLE_GENERATIVE_AI_API_KEY=AIzaSyxxxxxxxxxxxxxxxxxxxx
+VITE_GOOGLE_MAPS_KEY=AIzaSyxxxxxxxxxxxxxxxxxxxx
+DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxx
+FIRECRAWL_API_KEY=fc-xxxxxxxxxxxxxxxxxxxx
 ```
 
 > **NOTE:** The `SUPABASE_SECRET_KEY` is a modern replacement for the service role key. It bypasses RLS and should ONLY be used in serverless API routes (`api/ghl/*`).
