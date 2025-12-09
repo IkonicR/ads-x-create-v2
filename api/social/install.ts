@@ -2,7 +2,7 @@
  * GHL Install Endpoint
  * Returns the OAuth URL to install the GHL app on a sub-account
  * 
- * Usage: GET /api/ghl/install?businessId=xxx
+ * Usage: GET /api/social/install?businessId=xxx
  */
 
 
@@ -36,7 +36,7 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
         ? `https://${process.env.VERCEL_URL}`
         : 'http://localhost:3000';
 
-    const redirectUri = `${baseUrl}/api/ghl/callback`;
+    const redirectUri = `${baseUrl}/api/social/callback`;
 
     // Build the OAuth URL (white-labeled via leadconnectorhq.com)
     const params = new URLSearchParams({

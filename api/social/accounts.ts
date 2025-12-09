@@ -2,7 +2,7 @@
  * GHL Accounts Endpoint
  * Lists connected social media accounts for a location
  * 
- * Usage: GET /api/ghl/accounts?locationId=xxx
+ * Usage: GET /api/social/accounts?locationId=xxx
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';

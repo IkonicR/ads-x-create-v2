@@ -58,7 +58,7 @@ export const ConnectedAccountsCard: React.FC<ConnectedAccountsCardProps> = ({
         setError(null);
 
         try {
-            const response = await fetch(`/api/ghl/accounts?locationId=${business.socialConfig.ghlLocationId}`);
+            const response = await fetch(`/api/social/accounts?locationId=${business.socialConfig.ghlLocationId}`);
             const data = await response.json();
 
             if (data.error) {
@@ -81,7 +81,7 @@ export const ConnectedAccountsCard: React.FC<ConnectedAccountsCardProps> = ({
 
         try {
             // Call our backend proxy to get the OAuth URL
-            const response = await fetch('/api/ghl/social-oauth', {
+            const response = await fetch('/api/social/social-oauth', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -147,7 +147,7 @@ export const ConnectedAccountsCard: React.FC<ConnectedAccountsCardProps> = ({
         setError(null);
 
         try {
-            const response = await fetch(`/api/ghl/install?businessId=${business.id}`);
+            const response = await fetch(`/api/social/install?businessId=${business.id}`);
             const data = await response.json();
 
             if (data.url) {

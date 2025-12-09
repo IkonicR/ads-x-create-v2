@@ -62,7 +62,7 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
     if (!business?.socialConfig?.ghlLocationId) return;
     setIsLoadingAccounts(true);
     try {
-      const response = await fetch(`/api/ghl/accounts?locationId=${business.socialConfig.ghlLocationId}`);
+      const response = await fetch(`/api/social/accounts?locationId=${business.socialConfig.ghlLocationId}`);
       const data = await response.json();
       setConnectedAccounts(data.accounts || []);
     } catch (e) {
@@ -142,7 +142,7 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
         payload.scheduledAt = new Date(`${scheduleDate}T${scheduleTime}`).toISOString();
       }
 
-      const response = await fetch('/api/ghl/post', {
+      const response = await fetch('/api/social/post', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

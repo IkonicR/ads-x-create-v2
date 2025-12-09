@@ -23,7 +23,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const baseUrl = process.env.VERCEL_URL
         ? `https://${process.env.VERCEL_URL}`
         : 'http://localhost:3000';
-    const redirectUri = `${baseUrl}/api/ghl/callback`;
+    const redirectUri = `${baseUrl}/api/social/callback`;
 
     try {
         // Exchange code for tokens

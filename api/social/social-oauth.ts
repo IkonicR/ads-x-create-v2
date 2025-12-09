@@ -8,7 +8,7 @@
  * 1. It requires Authorization headers
  * 2. window.open() cannot set headers
  * 
- * Usage: POST /api/ghl/social-oauth
+ * Usage: POST /api/social/social-oauth
  * Body: { locationId: string, platform: 'instagram' | 'facebook' | 'linkedin' }
  */
 

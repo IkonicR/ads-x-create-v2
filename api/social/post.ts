@@ -2,7 +2,7 @@
  * GHL Post Endpoint
  * Schedules a social media post via GHL
  * 
- * Usage: POST /api/ghl/post
+ * Usage: POST /api/social/post
  * Body: { locationId, accountIds, caption, mediaUrls, scheduledAt? }
  */
 
