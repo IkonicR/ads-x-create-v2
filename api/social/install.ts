@@ -31,12 +31,8 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
 
     const { businessId } = req.query;
 
-    // Determine redirect URI based on environment
-    const baseUrl = process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : 'http://localhost:3000';
-
-    const redirectUri = `${baseUrl}/api/social/callback`;
+    // HARDCODED: Must match exactly what's in GHL Marketplace App settings
+    const redirectUri = 'https://ads-x-create-v2.vercel.app/api/social/callback';
 
     // Build the OAuth URL (white-labeled via leadconnectorhq.com)
     const params = new URLSearchParams({
