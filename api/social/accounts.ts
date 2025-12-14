@@ -8,7 +8,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+// Compatible with both Vercel and Express
+export default async function handler(req: any, res: any) {
     if (req.method !== 'GET') {
         return res.status(405).json({ error: 'Method not allowed' });
     }
@@ -36,12 +37,54 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             return res.status(404).json({ error: 'No GHL integration found', accounts: [] });
         }
 
+        let accessToken = integration.access_token;
+
+        // Helper: Refresh Token (Inline for serverless)
+        async function refreshGHLToken(refreshToken: string) {
+            try {
+                const response = await fetch('https://services.leadconnectorhq.com/oauth/token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        client_id: process.env.GHL_CLIENT_ID!,
+                        client_secret: process.env.GHL_CLIENT_SECRET!,
+                        grant_type: 'refresh_token',
+                        refresh_token: refreshToken,
+                    }),
+                });
+                if (!response.ok) return null;
+                return await response.json();
+            } catch { return null; }
+        }
+
+        // Check Expiry
+        if (new Date(integration.expires_at) < new Date()) {
+            console.log('[GHL Accounts] Token expired. Refreshing...');
+            const refreshed = await refreshGHLToken(integration.refresh_token);
+
+            if (refreshed) {
+                // Update DB
+                await supabase.from('ghl_integrations').update({
+                    access_token: refreshed.access_token,
+                    refresh_token: refreshed.refresh_token,
+                    expires_at: new Date(Date.now() + refreshed.expires_in * 1000).toISOString(),
+                    updated_at: new Date().toISOString(),
+                }).eq('location_id', locationId);
+
+                accessToken = refreshed.access_token;
+                console.log('[GHL Accounts] Token refreshed.');
+            } else {
+                console.error('[GHL Accounts] Refresh failed.');
+                return res.status(401).json({ error: 'Token expired. Please reconnect account.' });
+            }
+        }
+
         // Call GHL to get connected accounts
         const ghlResponse = await fetch(
             `https://services.leadconnectorhq.com/social-media-posting/${locationId}/accounts`,
             {
                 headers: {
-                    'Authorization': `Bearer ${integration.access_token}`,
+                    'Authorization': `Bearer ${accessToken}`,
                     'Version': '2021-07-28',
                 },
             }

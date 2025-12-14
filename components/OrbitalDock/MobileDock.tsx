@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../../context/ThemeContext';
 import { useNavigation } from '../../context/NavigationContext';
+import { useAuth } from '../../context/AuthContext';
 import {
     LayoutDashboard,
     Zap,
@@ -14,7 +15,8 @@ import {
     Settings,
     LockKeyhole,
     Menu,
-    X
+    X,
+    Calendar
 } from 'lucide-react';
 import { ViewState, Business } from '../../types';
 import { Check, Plus, Moon, Sun, ChevronLeft } from 'lucide-react';
@@ -94,9 +96,11 @@ export const MobileDock: React.FC<MobileDockProps> = ({
 }) => {
     const { theme, toggleTheme } = useTheme();
     const { navigate, currentView } = useNavigation();
+    const { profile } = useAuth();
     const isDark = theme === 'dark';
     const [isVaultOpen, setIsVaultOpen] = useState(false);
     const [vaultMode, setVaultMode] = useState<'menu' | 'switcher'>('menu');
+    const isAdmin = profile?.is_admin === true;
 
     const handleToggleVault = () => {
         if (isVaultOpen) {
@@ -134,7 +138,7 @@ export const MobileDock: React.FC<MobileDockProps> = ({
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
                             onClick={handleToggleVault}
-                            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] md:hidden"
+                            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] md:hidden"
                         />
 
                         {/* Sheet */}
@@ -144,7 +148,7 @@ export const MobileDock: React.FC<MobileDockProps> = ({
                             animate={{ y: 0 }}
                             exit={{ y: "100%" }}
                             transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                            className={`fixed bottom-0 left-0 right-0 z-[70] rounded-t-[2rem] p-6 pb-32 ${vaultStyles} md:hidden border-t border-white/10 shadow-[0_-20px_50px_rgba(0,0,0,0.5)] overflow-hidden`}
+                            className={`fixed bottom-0 left-0 right-0 z-[101] rounded-t-[2rem] p-6 pb-32 ${vaultStyles} md:hidden border-t border-white/10 shadow-[0_-20px_50px_rgba(0,0,0,0.5)] overflow-hidden`}
                         >
                             <div className="w-12 h-1.5 bg-gray-300 dark:bg-gray-700 rounded-full mx-auto mb-6 opacity-50" />
 
@@ -160,6 +164,7 @@ export const MobileDock: React.FC<MobileDockProps> = ({
                                     >
                                         <VaultItem icon={Palette} label="Brand Kit" onClick={() => handleNav(ViewState.BRAND_KIT)} />
                                         <VaultItem icon={Briefcase} label="Tasks" onClick={() => handleNav(ViewState.TASKS)} />
+                                        <VaultItem icon={Calendar} label="Planner" onClick={() => handleNav(ViewState.PLANNER)} />
 
                                         {/* Business Switcher Tile (Top Right) */}
                                         <button
@@ -183,7 +188,9 @@ export const MobileDock: React.FC<MobileDockProps> = ({
                                         <VaultItem icon={User} label="Profile" onClick={() => handleNav(ViewState.PROFILE)} />
 
                                         <VaultItem icon={Settings} label="Settings" onClick={() => handleNav(ViewState.USER_PROFILE)} />
-                                        <VaultItem icon={LockKeyhole} label="Admin" onClick={() => handleNav(ViewState.ADMIN)} />
+                                        {isAdmin && (
+                                            <VaultItem icon={LockKeyhole} label="Admin" onClick={() => handleNav(ViewState.ADMIN)} />
+                                        )}
 
                                         {/* Theme Toggle Tile */}
                                         <button
@@ -285,7 +292,7 @@ export const MobileDock: React.FC<MobileDockProps> = ({
             </AnimatePresence>
 
             {/* THE TACTICAL STRIP (Bottom Bar) */}
-            <div className={`fixed bottom-0 left-0 right-0 z-[80] md:hidden pb-safe`}>
+            <div className={`fixed bottom-0 left-0 right-0 z-40 md:hidden pb-safe`}>
                 <div className={`flex items-center justify-around px-2 pb-2 pt-2 transition-all duration-500 ease-in-out ${dockStyles}`}>
 
                     <MobileKey

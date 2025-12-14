@@ -13,7 +13,10 @@ import { ConfigTab } from './admin/ConfigTab';
 import { AccountsTab } from './admin/AccountsTab';
 import { LogsTab } from './admin/LogsTab';
 
+import { useAuth } from '../context/AuthContext';
+
 const AdminDashboard: React.FC<{ onBusinessUpdated?: (business: Business) => void }> = ({ onBusinessUpdated }) => {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'roadmap' | 'brain' | 'credits' | 'config' | 'logs'>('roadmap');
 
   // Roadmap State
@@ -55,10 +58,13 @@ const AdminDashboard: React.FC<{ onBusinessUpdated?: (business: Business) => voi
   useEffect(() => {
     if (activeTab === 'roadmap' && notes.length === 0) StorageService.getAdminNotes().then(setNotes);
     if (activeTab === 'brain') StorageService.getSystemPrompts().then(p => p && setPrompts(p));
-    if (activeTab === 'credits' && businesses.length === 0) StorageService.getBusinesses().then(setBusinesses);
+    // Pass user.id to getBusinesses
+    if (activeTab === 'credits' && businesses.length === 0 && user?.id) {
+      StorageService.getBusinesses(user.id).then(setBusinesses);
+    }
     if (activeTab === 'config' && stylesList.length === 0) StorageService.getStyles().then(setStylesList);
     if (activeTab === 'logs' && logs.length === 0) StorageService.getGenerationLogs().then(setLogs);
-  }, [activeTab]);
+  }, [activeTab, user?.id]);
 
   // Initial Load
   useEffect(() => {
@@ -68,7 +74,8 @@ const AdminDashboard: React.FC<{ onBusinessUpdated?: (business: Business) => voi
   const handleRefresh = async () => {
     if (activeTab === 'roadmap') await StorageService.getAdminNotes().then(setNotes);
     if (activeTab === 'brain') await StorageService.getSystemPrompts().then(p => p && setPrompts(p));
-    if (activeTab === 'credits') await StorageService.getBusinesses().then(setBusinesses);
+    // Pass user.id to getBusinesses
+    if (activeTab === 'credits' && user?.id) await StorageService.getBusinesses(user.id).then(setBusinesses);
     if (activeTab === 'config') await StorageService.getStyles().then(setStylesList);
     if (activeTab === 'logs') await StorageService.getGenerationLogs().then(setLogs);
   };

@@ -12,6 +12,7 @@ interface AuthContextType {
   authChecked: boolean;
   profileChecked: boolean; // True once profile fetch completes (or no user)
   signInWithGoogle: () => Promise<void>;
+  signInWithEmail: (email: string, password: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -120,6 +121,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (error) console.error('Error signing in with Google:', error.message);
   };
 
+  const signInWithEmail = async (email: string, password: string): Promise<{ error?: string }> => {
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+    if (error) {
+      console.error('Error signing in with email:', error.message);
+      return { error: error.message };
+    }
+    return {};
+  };
+
   const signOut = async () => {
     await StorageService.signOut();
     setSession(null);
@@ -137,6 +150,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     authChecked,
     profileChecked,
     signInWithGoogle,
+    signInWithEmail,
     signOut,
     refreshProfile
   }), [session, user, profile, loading, authChecked, profileChecked]);

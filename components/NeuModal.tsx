@@ -1,8 +1,16 @@
 
 import React from 'react';
+import ReactDOM from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useThemeStyles, NeuButton } from './NeuComponents';
 import { X, AlertTriangle, Info, CheckCircle, AlertCircle } from 'lucide-react';
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+// Utility for class merging (duplicated to avoid circular dep or non-exported issues)
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
 
 interface NeuModalProps {
   isOpen: boolean;
@@ -17,7 +25,7 @@ interface NeuModalProps {
   secondaryVariant?: 'default' | 'danger' | 'primary';
 }
 
-export const NeuModal: React.FC<NeuModalProps> = ({
+export const NeuModal: React.FC<NeuModalProps & { className?: string }> = ({
   isOpen,
   onClose,
   title,
@@ -27,11 +35,14 @@ export const NeuModal: React.FC<NeuModalProps> = ({
   variant = 'default',
   secondaryActionLabel,
   onSecondaryAction,
-  secondaryVariant = 'default'
+  secondaryVariant = 'default',
+  className = ''
 }) => {
   const { styles } = useThemeStyles();
 
-  return (
+  if (!isOpen) return null;
+
+  return ReactDOM.createPortal(
     <AnimatePresence>
       {isOpen && (
         <>
@@ -41,7 +52,7 @@ export const NeuModal: React.FC<NeuModalProps> = ({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
+            className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
           >
             {/* Modal Content */}
             <motion.div
@@ -49,9 +60,16 @@ export const NeuModal: React.FC<NeuModalProps> = ({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
               onClick={(e) => e.stopPropagation()} // Prevent close on click inside
-              className={`w-full max-w-md rounded-3xl p-8 ${styles.bg} ${styles.shadowOut} border ${styles.border}`}
+              // Use cn() to allow padding/width overrides from className prop to win
+              className={cn(
+                "w-full max-w-md rounded-3xl p-8 border",
+                styles.bg,
+                styles.shadowOut,
+                styles.border,
+                className
+              )}
             >
-              <div className="flex justify-between items-start mb-6">
+              <div className="flex justify-between items-start mb-6 px-1">
                 <h3 className={`text-2xl font-bold ${styles.textMain}`}>{title}</h3>
                 <button
                   onClick={onClose}
@@ -65,26 +83,26 @@ export const NeuModal: React.FC<NeuModalProps> = ({
                 {children}
               </div>
 
-              <div className="flex justify-end gap-4">
-                <NeuButton onClick={onClose}>Cancel</NeuButton>
-                {/* Secondary Action (e.g. Discard) */}
-                {secondaryActionLabel && onSecondaryAction && (
-                  <NeuButton variant={secondaryVariant} onClick={onSecondaryAction}>
-                    {secondaryActionLabel}
-                  </NeuButton>
-                )}
-                {/* Primary Action (e.g. Save) */}
-                {actionLabel && onAction && (
-                  <NeuButton variant={variant} onClick={onAction}>
-                    {actionLabel}
-                  </NeuButton>
-                )}
-              </div>
+              {(actionLabel || secondaryActionLabel) && (
+                <div className="flex justify-end gap-4">
+                  {secondaryActionLabel && onSecondaryAction && (
+                    <NeuButton variant={secondaryVariant} onClick={onSecondaryAction}>
+                      {secondaryActionLabel}
+                    </NeuButton>
+                  )}
+                  {actionLabel && onAction && (
+                    <NeuButton variant={variant} onClick={onAction}>
+                      {actionLabel}
+                    </NeuButton>
+                  )}
+                </div>
+              )}
             </motion.div>
           </motion.div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 };
 
@@ -95,6 +113,7 @@ export interface Toast {
   title: string;
   message?: string;
   type: 'success' | 'error' | 'warning' | 'info';
+  link?: string;
 }
 
 interface NeuToastProps {

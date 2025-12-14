@@ -107,26 +107,35 @@ export async function discoverPages(url: string): Promise<{ success: boolean; pa
 
 /**
  * Extract business data from a website URL
- * @param url - The website URL to extract data from
- * @param mode - 'single' for one page, 'full' for multi-page crawl
+ * @param urlOrUrls - Single URL string or array of URLs for selective extraction
+ * @param mode - 'single' for one page, 'full' for multi-page crawl, 'select' for batch URLs
  * @param onProgress - Callback for progress updates
  * @returns Extraction result with business data
  */
 export async function extractWebsite(
-    url: string,
-    mode: 'single' | 'full' = 'single',
+    urlOrUrls: string | string[],
+    mode: 'single' | 'full' | 'select' = 'single',
     onProgress?: (state: ExtractionState) => void
 ): Promise<ExtractionResult> {
-    // Validate URL
+    // Validate URL(s)
     onProgress?.({ progress: 'validating', message: 'Validating URL...' });
 
-    // Normalize URL first (add https:// if missing)
-    let normalizedUrl = url.trim();
-    if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
-        normalizedUrl = `https://${normalizedUrl}`;
-    }
+    // Normalize URL(s)
+    const isArray = Array.isArray(urlOrUrls);
+    const normalizedUrls = isArray
+        ? urlOrUrls.map(u => {
+            const trimmed = u.trim();
+            return trimmed.startsWith('http://') || trimmed.startsWith('https://') ? trimmed : `https://${trimmed}`;
+        })
+        : undefined;
 
-    // Now validate the normalized URL
+    const normalizedUrl = isArray
+        ? normalizedUrls![0]
+        : urlOrUrls.trim().startsWith('http://') || urlOrUrls.trim().startsWith('https://')
+            ? urlOrUrls.trim()
+            : `https://${urlOrUrls.trim()}`;
+
+    // Validate the primary URL
     try {
         new URL(normalizedUrl);
     } catch {
@@ -138,7 +147,9 @@ export async function extractWebsite(
     // Start extraction
     const crawlMessage = mode === 'single'
         ? 'Reading this page...'
-        : 'Crawling your website...';
+        : mode === 'select'
+            ? `Scraping ${normalizedUrls?.length || 1} pages...`
+            : 'Crawling your website...';
     onProgress?.({ progress: 'crawling', message: crawlMessage });
 
     try {
@@ -147,15 +158,24 @@ export async function extractWebsite(
             ? 'http://localhost:3000/api/extract-website'
             : '/api/extract-website';
 
+        // Build request body based on mode
+        const requestBody: { url?: string; urls?: string[]; mode: string } = { mode };
+
+        if (mode === 'select' && normalizedUrls) {
+            requestBody.urls = normalizedUrls;
+        } else {
+            requestBody.url = normalizedUrl;
+        }
+
         const response = await fetch(apiUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ url: normalizedUrl, mode }),
+            body: JSON.stringify(requestBody),
         });
 
-        // Update progress to analyzing (we don't have real server-side progress, so we estimate)
+        // Update progress to analyzing
         onProgress?.({ progress: 'analyzing', message: 'Extracting brand identity...' });
 
         if (!response.ok) {
@@ -224,15 +244,8 @@ export function extractedDataToBusiness(
             displayStyle: 'standard',
         });
     }
-    if (extracted.profile?.address && (operatingMode === 'storefront' || operatingMode === 'appointment')) {
-        contacts.push({
-            id: 'extracted-address',
-            type: 'address',
-            value: extracted.profile.address,
-            isPrimary: false,
-            displayStyle: 'standard',
-        });
-    }
+    // NOTE: Address is NOT added to contacts - it's stored in profile.address
+    // and uses adPreferences.locationDisplay for visibility control
 
     return {
         name: extracted.name || '',
@@ -249,7 +262,7 @@ export function extractedDataToBusiness(
         voice: {
             sliders: { identity: 50, style: 50, emotion: 50 },
             archetype: mapArchetype(extracted.voice?.archetypeInferred),
-            tonePills: extracted.voice?.tonePillsInferred || [],
+            tonePills: sanitizeTonePills(extracted.voice?.tonePillsInferred || []),
             keywords: extracted.voice?.keywords || [],
             slogan: extracted.slogan || '',
             negativeKeywords: [],
@@ -269,7 +282,11 @@ export function extractedDataToBusiness(
             goals: '',
             complianceText: '',
             preferredCta: '',
-            sloganUsage: 'Sometimes',
+            sloganProminence: 'standard',
+            businessNameProminence: 'standard',
+            contactProminence: 'standard',
+            locationProminence: 'standard',
+            hoursProminence: 'standard',
             contactIds: contacts.map(c => c.id),
             locationDisplay: locationDisplay as any,
             hoursDisplay: 'hidden',
@@ -315,4 +332,45 @@ function mapArchetype(archetypeString?: string): Business['voice']['archetype'] 
     );
 
     return found || 'Unset';
+}
+
+/**
+ * Valid tone pills - must match BrandKit.tsx exactly
+ */
+const VALID_TONE_PILLS = [
+    // Style
+    'Bold', 'Premium', 'Minimal', 'Playful', 'Modern', 'Classic', 'Elegant', 'Timeless', 'Sophisticated', 'Luxurious', 'Refined', 'Curated',
+    // Tone
+    'Professional', 'Creative', 'Energetic', 'Witty', 'Urgent', 'Calm', 'Warm', 'Approachable', 'Sincere', 'Trustworthy',
+    // Relation
+    'Friendly', 'Exclusive', 'Rebellious', 'Community Focused', 'Authoritative', 'Supportive', 'Personable', 'Welcoming',
+    // Intellect
+    'Educational', 'Insightful', 'Analytical', 'Geeky', 'Direct', 'Informative', 'Expert'
+];
+
+/**
+ * Sanitize and normalize tone pills from extraction
+ * - Removes emojis
+ * - Matches against valid list (case-insensitive)
+ * - Limits to 4 max
+ */
+function sanitizeTonePills(extracted: string[]): string[] {
+    if (!extracted || !Array.isArray(extracted)) return [];
+
+    // Regex to strip all emoji characters
+    const emojiRegex = /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}]/gu;
+
+    const normalized = extracted
+        .map(pill => {
+            // Strip emojis and trim whitespace
+            const cleaned = pill.replace(emojiRegex, '').trim();
+            // Find case-insensitive match in valid list
+            return VALID_TONE_PILLS.find(valid =>
+                valid.toLowerCase() === cleaned.toLowerCase()
+            );
+        })
+        .filter((pill): pill is string => pill !== undefined)
+        .slice(0, 4); // Enforce max 4
+
+    return normalized;
 }

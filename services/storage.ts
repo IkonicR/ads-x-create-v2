@@ -45,7 +45,11 @@ const DEFAULT_BUSINESS: Business = {
     goals: 'Drive in-store visits',
     complianceText: '',
     preferredCta: 'Order Now',
-    sloganUsage: 'Sometimes',
+    sloganProminence: 'standard',
+    businessNameProminence: 'standard',
+    contactProminence: 'standard',
+    locationProminence: 'standard',
+    hoursProminence: 'standard',
     contactIds: [],
     locationDisplay: 'full_address',
     hoursDisplay: 'all_hours',
@@ -111,7 +115,9 @@ const mapBusinessFromDB = (row: any): Business => ({
   competitors: row.competitors,
   visualMotifs: row.visual_motifs || [],
   locations: row.locations || [],
-  socialConfig: row.social_config || undefined // <--- GHL Integration
+  socialConfig: row.social_config || undefined, // <--- GHL Integration
+  socialSettings: row.social_settings || undefined, // <--- Social Posting Settings
+  exportPresets: row.export_presets || [] // <--- Export Presets
 });
 
 // Helper to map App Business to DB payload
@@ -143,35 +149,69 @@ const mapBusinessToDB = (business: Business) => ({
   competitors: business.competitors,
   visual_motifs: business.visualMotifs,
   locations: business.locations,
-  social_config: business.socialConfig || null // <--- GHL Integration
+  social_config: business.socialConfig || null, // <--- GHL Integration
+  social_settings: business.socialSettings || null, // <--- Social Posting Settings
+  export_presets: business.exportPresets || null // <--- Export Presets
 });
 
 export const StorageService = {
   getBusinesses: async (userId?: string): Promise<Business[]> => {
-
-    let query = supabase.from('businesses').select('*');
-
-    // SECURITY: Only show businesses owned by the user (if userId provided)
-    if (userId) {
-      query = query.eq('owner_id', userId);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('[Storage] Error fetching businesses:', error);
+    if (!userId) {
+      // No user = no businesses (security)
+      console.log('[Storage] No userId provided, returning empty');
       return [];
     }
 
+    console.log('[Storage] Fetching businesses for user:', userId);
 
-    if (!data || data.length === 0) {
-      // Do NOT seed default business implicitly here anymore.
-      // If user has no businesses, App should redirect to Onboarding.
-      // Returning empty array is correct.
+    // 1. Get businesses where user is owner
+    const { data: ownedBusinesses, error: ownedError } = await supabase
+      .from('businesses')
+      .select('*')
+      .eq('owner_id', userId);
+
+    if (ownedError) {
+      console.error('[Storage] Error fetching owned businesses:', ownedError);
+    }
+
+    // 2. Get businesses where user is a member (via business_members)
+    const { data: membershipData, error: memberError } = await supabase
+      .from('business_members')
+      .select('business_id')
+      .eq('user_id', userId);
+
+    if (memberError) {
+      console.error('[Storage] Error fetching memberships:', memberError);
+    }
+
+    let memberBusinesses: any[] = [];
+    if (membershipData && membershipData.length > 0) {
+      const memberBusinessIds = membershipData.map(m => m.business_id);
+      const { data: businesses, error: bizError } = await supabase
+        .from('businesses')
+        .select('*')
+        .in('id', memberBusinessIds);
+
+      if (bizError) {
+        console.error('[Storage] Error fetching member businesses:', bizError);
+      } else {
+        memberBusinesses = businesses || [];
+      }
+    }
+
+    // 3. Merge and deduplicate by ID
+    const allBusinesses = [...(ownedBusinesses || []), ...memberBusinesses];
+    const uniqueBusinesses = allBusinesses.filter(
+      (biz, index, self) => index === self.findIndex(b => b.id === biz.id)
+    );
+
+    console.log(`[Storage] Found ${uniqueBusinesses.length} businesses (${ownedBusinesses?.length || 0} owned, ${memberBusinesses.length} as member)`);
+
+    if (!uniqueBusinesses || uniqueBusinesses.length === 0) {
       return [];
     }
 
-    return data.map(mapBusinessFromDB);
+    return uniqueBusinesses.map(mapBusinessFromDB);
   },
 
   saveBusiness: async (business: Business, userId?: string): Promise<void> => {
@@ -182,8 +222,29 @@ export const StorageService = {
       payload.owner_id = userId;
     }
 
-    const { error } = await supabase.from('businesses').upsert(payload);
-    if (error) console.error('Error saving business:', error);
+    const { data, error } = await supabase
+      .from('businesses')
+      .upsert(payload)
+      .select('id'); // Request return of ID to verify update happened
+
+    if (error) {
+      console.error('Error saving business:', error);
+      throw error;
+    }
+
+    // CHECK FOR SILENT FAILURE (RLS)
+    if (!data || data.length === 0) {
+      console.error('[Storage] Save failed silently: 0 rows updated. Likely permission/RLS issue.');
+      throw new Error('You do not have permission to update this business profile.');
+    }
+  },
+
+  deleteBusiness: async (businessId: string): Promise<void> => {
+    const { error } = await supabase.from('businesses').delete().eq('id', businessId);
+    if (error) {
+      console.error('Error deleting business:', error);
+      throw error;
+    }
   },
 
   // --- Assets ---

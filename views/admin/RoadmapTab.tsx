@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AdminNote, LinkedEntity } from '../../types';
-import { NeuCard, NeuButton, NeuTextArea, NeuDropdown, NeuListBuilder } from '../../components/NeuComponents';
+import { NeuCard, NeuButton, NeuTextArea, NeuDropdown, NeuTagInput } from '../../components/NeuComponents';
 import { Plus, Square, RotateCcw, CheckSquare, X, Link, ChevronLeft, ChevronRight, Building2, LayoutTemplate, Palette, Filter, Trash2, Bug, Map, Lightbulb } from 'lucide-react';
 
 interface RoadmapTabProps {
@@ -118,9 +118,10 @@ export const RoadmapTab: React.FC<RoadmapTabProps> = ({
                         </div>
 
                         <div className="pt-2 border-t border-gray-200/10">
-                            <NeuListBuilder
+                            <NeuTagInput
                                 items={newNoteTags}
                                 onItemsChange={setNewNoteTags}
+                                suggestions={allTags}
                                 placeholder="Add tag..."
                                 title="Tags"
                             />
@@ -276,9 +277,10 @@ export const RoadmapTab: React.FC<RoadmapTabProps> = ({
 
                                                     {/* Tags Edit */}
                                                     <div className="pt-2 border-t border-gray-200/10">
-                                                        <NeuListBuilder
+                                                        <NeuTagInput
                                                             items={note.tags || []}
                                                             onItemsChange={(tags) => handleUpdateNote(note.id, { tags })}
+                                                            suggestions={allTags}
                                                             placeholder="Add tag..."
                                                             title="Tags"
                                                         />

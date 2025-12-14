@@ -1,0 +1,1 @@
+ALTER TABLE admin_notes ADD COLUMN IF NOT EXISTS links JSONB DEFAULT '[]'::jsonb;

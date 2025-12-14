@@ -1,6 +1,7 @@
 
 import { Business, ProductionPresetConfig, GenerationStrategy } from '../types';
 import { StorageService } from './storage';
+import { formatBusinessHours } from '../utils/formatters';
 
 // ============================================================================
 // V2 GOD-TIER PROMPT WEAVER
@@ -157,37 +158,53 @@ const ConfigWeaver = {
 };
 
 /**
- * Build Slogan Block based on sloganUsage preference
+ * Build Slogan Block based on sloganProminence preference
  */
-function buildSloganBlock(sloganUsage: string, slogan: string): string {
-  if (!slogan) return '';
-
-  if (sloganUsage === 'Always') {
-    return `    *   **SLOGAN:** Include the slogan: "${slogan}". This is MANDATORY.`;
-  } else if (sloganUsage === 'Sometimes') {
-    return `    *   **SLOGAN:** Include "${slogan}" ONLY if layout permits.`;
-  }
-  return ''; // 'Never' returns empty
+function buildSloganBlock(prominence: string, slogan: string): string {
+  if (!slogan || prominence === 'hidden') return '';
+  return slogan;
 }
 
 /**
- * Build Mandatory Elements Block (Contact, Location, Hours)
+ * Build Mandatory Elements Block (Contact, Location, Hours) with prominence
  */
 function buildMandatoryElementsBlock(
-  contactString: string,
+  slogan: string,
+  contactValue: string,
   locationLabel: string,
-  hoursLabel: string
+  hoursLabel: string,
+  showBusinessName: boolean,
+  business: Business,
+  prominence: {
+    businessName: string;
+    contact: string;
+    location: string;
+    hours: string;
+  }
 ): string {
   const lines: string[] = [];
 
-  if (contactString) {
-    lines.push(`    *   **CONTACT:** Render small: "${contactString}"`);
+  // Helper to get prominence hint
+  const getHint = (level: string) => {
+    if (level === 'prominent') return ' (featured)';
+    if (level === 'subtle') return ' (secondary)';
+    return '';
+  };
+
+  if (slogan) {
+    lines.push(`    *   ${slogan}`);
   }
-  if (locationLabel) {
-    lines.push(`    *   **LOCATION:** Render small: "${locationLabel}"`);
+  if (locationLabel && prominence.location !== 'hidden') {
+    lines.push(`    *   **Location${getHint(prominence.location)}:** ${locationLabel}`);
   }
-  if (hoursLabel) {
-    lines.push(`    *   **HOURS:** Render small: "${hoursLabel}"`);
+  if (hoursLabel && prominence.hours !== 'hidden') {
+    lines.push(`    *   **Hours${getHint(prominence.hours)}:** ${hoursLabel}`);
+  }
+  if (contactValue && prominence.contact !== 'hidden') {
+    lines.push(`    *   **Contact${getHint(prominence.contact)}:** ${contactValue}`);
+  }
+  if (showBusinessName && prominence.businessName !== 'hidden') {
+    lines.push(`    *   **Branding${getHint(prominence.businessName)}:** Include "${business.name}"`);
   }
 
   return lines.join('\n');
@@ -516,14 +533,17 @@ export const PromptFactory = {
 
     const cta = prefs?.preferredCta || ''; // Empty = let AI decide
     const compliance = prefs?.complianceText || '';
-    const sloganUsage = prefs?.sloganUsage || 'Sometimes';
+    const sloganProminence = prefs?.sloganProminence || 'standard';
 
     // --- STRATEGY OVERRIDES ---
     // If strategy is set, use its values. Otherwise, fall back to defaults.
     const effectiveShowPrice = strategy?.showPrice !== undefined ? strategy.showPrice : true;
     const effectiveShowPromo = strategy?.showPromo !== undefined ? strategy.showPromo : true;
     // Custom CTA: use strategy's if it has a value (not empty string), otherwise fall back to Ad Preferences
-    const effectiveCta = (strategy?.customCta && strategy.customCta.trim() !== '') ? strategy.customCta : cta;
+    let effectiveCta = (strategy?.customCta && strategy.customCta.trim() !== '') ? strategy.customCta : cta;
+    if (effectiveCta.toLowerCase() === 'learn more') {
+      effectiveCta = '';
+    }
     const effectiveFraming = strategy?.productFraming || 'hero'; // Default to hero
     const effectiveTeamFraming = strategy?.teamFraming || 'portrait';
     const effectiveStrictLikeness = strategy?.strictLikeness !== undefined ? strategy.strictLikeness : preserveLikeness;
@@ -579,37 +599,53 @@ export const PromptFactory = {
 
     // --- HOURS LOGIC ---
     let hoursLabel = "";
-    if (prefs?.holidayMode?.isActive) {
+
+    // For non-storefront modes, respect the showHours toggle
+    const isStorefront = business.profile.operatingMode === 'storefront' || !business.profile.operatingMode;
+    const shouldShowHours = isStorefront || business.profile.showHours === true;
+
+    if (!shouldShowHours) {
+      hoursLabel = ""; // Toggle is OFF - no hours in prompt
+    } else if (prefs?.holidayMode?.isActive) {
       hoursLabel = `SPECIAL EVENT: ${prefs.holidayMode.name} (${prefs.holidayMode.hours})`;
     } else {
-      switch (prefs?.hoursDisplay) {
-        case 'custom_text':
-          hoursLabel = prefs.hoursText || "Contact for hours";
-          break;
-        case 'all_hours':
-          hoursLabel = "Standard Business Hours";
-          break;
-        case 'weekends_only':
-          hoursLabel = "Open Weekends";
-          break;
-        case 'custom_selection':
-          hoursLabel = `Open ${prefs.hoursDisplayDays?.join(', ') || 'Selected Days'}`;
-          break;
-        case 'hidden':
-          hoursLabel = "";
-          break;
-        default:
-          hoursLabel = "Standard Hours";
+      // Hardened Login: Check for hidden FIRST
+      if (prefs?.hoursDisplay === 'hidden') {
+        hoursLabel = ""; // Strict hidden
+      } else {
+        switch (prefs?.hoursDisplay) {
+          case 'custom_text':
+            hoursLabel = prefs.hoursText || "Contact for hours";
+            break;
+          case 'all_hours':
+            hoursLabel = formatBusinessHours(business.profile.hours);
+            break;
+          case 'weekends_only':
+            // Filter to only Sat/Sun and format
+            const weekendHours = (business.profile.hours || []).filter(h => ['Sat', 'Sun'].includes(h.day));
+            hoursLabel = formatBusinessHours(weekendHours, { includeClosed: true });
+            break;
+          case 'custom_selection':
+            const selectedDays = prefs.hoursDisplayDays || [];
+            const selectedHours = (business.profile.hours || []).filter(h => selectedDays.includes(h.day));
+            hoursLabel = formatBusinessHours(selectedHours, { includeClosed: true });
+            break;
+          default:
+            // Fallback only if undefined or unknown (safest default)
+            hoursLabel = formatBusinessHours(business.profile.hours);
+        }
       }
     }
 
     let sloganInstruction = "";
-    if (sloganUsage === 'Always') {
-      sloganInstruction = `MANDATORY: You MUST include the slogan "${business.voice.slogan}" prominently.`;
-    } else if (sloganUsage === 'Never') {
-      sloganInstruction = `DO NOT use the slogan.`;
-    } else {
-      sloganInstruction = `Use the slogan "${business.voice.slogan}" if it fits the layout naturally.`;
+    if (sloganProminence !== 'hidden' && business.voice.slogan) {
+      if (sloganProminence === 'prominent') {
+        sloganInstruction = `Brand Slogan (featured): "${business.voice.slogan}"`;
+      } else if (sloganProminence === 'subtle') {
+        sloganInstruction = `Brand Slogan (secondary): "${business.voice.slogan}"`;
+      } else {
+        sloganInstruction = `Brand Slogan: "${business.voice.slogan}"`;
+      }
     }
 
     // Text Material Logic
@@ -644,7 +680,7 @@ export const PromptFactory = {
         .replace('{{BUSINESS_NAME}}', business.name)
         .replace('{{INDUSTRY}}', business.industry)
         .replace('{{SLOGAN}}', business.voice.slogan || '')
-        .replace('{{USAGE_RULE}}', sloganUsage)
+        .replace('{{USAGE_RULE}}', sloganProminence)
         .replace('{{USP_1}}', business.usps?.[0] || '') // Legacy support
         .replace('{{USP_2}}', business.usps?.[1] || '') // Legacy support
         .replace('{{USP_3}}', business.usps?.[2] || '') // Legacy support
@@ -712,11 +748,27 @@ export const PromptFactory = {
       subjectType = 'location';
     }
 
+    const showBusinessName = prefs?.showBusinessName !== false; // Default true
+    const negativeConstraints = !showBusinessName ? `Do NOT include the text "${business.name}" in the image.` : '';
+
     // Build dynamic blocks using V3.2 helpers
     const paletteString = buildPaletteString(business.colors);
     const fontDesc = mapFontToDescription(business.typography?.headingFont || '');
-    const sloganBlock = buildSloganBlock(sloganUsage, business.voice.slogan || '');
-    const mandatoryElementsBlock = buildMandatoryElementsBlock(contactInfo, locationLabel, hoursLabel);
+    const sloganBlock = buildSloganBlock(sloganProminence, business.voice.slogan || '');
+    const mandatoryElementsBlock = buildMandatoryElementsBlock(
+      sloganInstruction,
+      contactInfo,
+      locationLabel,
+      hoursLabel,
+      showBusinessName,
+      business,
+      {
+        businessName: prefs?.businessNameProminence || 'standard',
+        contact: prefs?.contactProminence || 'standard',
+        location: prefs?.locationProminence || 'standard',
+        hours: prefs?.hoursProminence || 'standard'
+      }
+    );
 
     // Format price with currency symbol
     const currencySymbol = business.currency === 'ZAR' ? 'R'
@@ -777,15 +829,18 @@ export const PromptFactory = {
       : '';
 
     // --- BRAND SIGNATURES (Visual Motifs) ---
-    // Simple keywords the AI can creatively incorporate
-    const motifs = business.visualMotifs || [];
-    let brandSignaturesLine = '';
-    if (motifs.length > 0) {
-      const motifList = motifs.map(m => `${m.name} (${m.frequency})`).join(', ');
-      brandSignaturesLine = `*   **Brand Signatures:** Creatively incorporate: ${motifList}.`;
-    }
+    // Simple keywords the AI can creatively incorporate (respecting prominence)
+    const motifs = (business.visualMotifs || [])
+      .filter(m => m.prominence !== 'hidden')
+      .map(m => {
+        if (m.prominence === 'prominent') return `${m.name} (featured)`;
+        if (m.prominence === 'subtle') return `${m.name} (secondary)`;
+        return m.name;
+      });
 
-    // Build asset list for reference
+    const brandSignaturesLine = motifs.length
+      ? `*   **Brand Signatures:** Creatively incorporate: ${motifs.join(', ')}.`
+      : '';   // Build asset list for reference
     const assets: Array<{ type: 'subject' | 'logo' | 'style'; label: string; preserveLikeness?: boolean }> = [];
     if (hasProduct) {
       assets.push({ type: 'subject', label: 'Product', preserveLikeness });
@@ -869,7 +924,7 @@ ${brandSignaturesLine}
 *   **Language:** ${targetLanguage}.
 *   **HEADLINE:** [MISSING] -> Address the Hook/User Request.
 *   **BODY COPY:** [MISSING] -> Supporting text (keep legible).
-*   **CTA:** ${effectiveCta ? `"${effectiveCta}"` : '[MISSING] -> Write appropriate CTA.'}.
+*   **CTA:** ${effectiveCta ? `"${effectiveCta}"` : '[MISSING] -> Write a high-converting, specific CTA.'}.
 *   **MANDATORY ELEMENTS:**
 ${sloganBlock}
 ${mandatoryElementsBlock}
@@ -882,6 +937,7 @@ ${v2ProductionBlock}
 2.  **ASSET HANDLING:**
 ${assetMapping || '    *   No specific assets. Create a relevant scene.'}
 3.  **COMPOSITION:** ${compositionDirective}
+${negativeConstraints ? `4.  **NEGATIVE CONSTRAINTS:** ${negativeConstraints}` : ''}
 
 /// GENERATE ///
 Execute. High fidelity. 8k resolution.

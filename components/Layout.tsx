@@ -30,7 +30,7 @@ export const Layout: React.FC<LayoutProps> = ({
       {/* Main Content Area */}
       {/* Main Content Area */}
       {/* Main Content Area */}
-      <div className="fixed inset-0 z-10 overflow-y-auto custom-scrollbar pl-0 md:pl-24 pr-4 py-8 pb-24 md:pb-8">
+      <div className="fixed inset-0 overflow-y-auto custom-scrollbar px-4 md:pl-24 md:pr-4 py-8 pb-24 md:pb-8">
         <div className="hidden md:block">
           <BusinessSelector
             business={business}
@@ -46,7 +46,7 @@ export const Layout: React.FC<LayoutProps> = ({
       </div>
 
       {/* Navigation Dock (Always on top) */}
-      <div className="relative z-50">
+      <div className="relative z-40">
         <OrbitalDock />
         <MobileDock
           business={business}

@@ -89,6 +89,10 @@ export interface Business {
   fontName: string; // Deprecated in favor of typography.headingFont
   usps: string[];
   testimonials: Testimonial[];
+
+  // Extended settings (optional for backward compat)
+  socialSettings?: Record<string, any>;
+  exportPresets?: Record<string, any>;
 }
 
 export type BrandArchetype =
@@ -113,7 +117,8 @@ export interface VisualMotif {
   name: string;           // Simple keyword: "Whale", "Beach Sunset", "Green Cross"
   description?: string;   // Optional detailed directive (rarely used)
   referenceImageUrl?: string;
-  frequency: 'always' | 'often' | 'sometimes' | 'contextual';
+  frequency?: 'always' | 'often' | 'sometimes' | 'contextual';
+  prominence?: 'subtle' | 'moderate' | 'dominant' | 'prominent' | 'hidden'; // Used by prompts.ts
 }
 
 // Subject types for dynamic sidebar controls
@@ -229,6 +234,7 @@ export interface BusinessProfile {
   timezone?: string;
   hours: { day: string; open: string; close: string; closed: boolean }[];
   website?: string;
+  showHours?: boolean; // Used by prompts.ts
 
   // --- NEW: CONTACT HUB ---
   contacts: ContactMethod[];
@@ -239,7 +245,7 @@ export interface AdPreferences {
   goals: string;
   complianceText: string;
   preferredCta: string;
-  sloganUsage: 'Always' | 'Sometimes' | 'Never';
+  sloganUsage?: 'Always' | 'Sometimes' | 'Never'; // DEPRECATED: Use sloganProminence instead
 
   // --- NEW: VISIBILITY CONTROLS ---
   // contactMethods: ('website' | 'phone' | 'whatsapp' | 'email' | 'address')[]; // DEPRECATED
@@ -260,6 +266,14 @@ export interface AdPreferences {
   };
 
   targetLanguage: string; // e.g. "English"
+
+  // --- PROMINENCE CONTROLS (used by prompts.ts) ---
+  sloganProminence?: 'subtle' | 'moderate' | 'prominent' | 'standard' | 'hidden';
+  showBusinessName?: boolean;
+  businessNameProminence?: 'subtle' | 'moderate' | 'prominent' | 'standard' | 'hidden';
+  contactProminence?: 'subtle' | 'moderate' | 'prominent' | 'standard' | 'hidden';
+  locationProminence?: 'subtle' | 'moderate' | 'prominent' | 'standard' | 'hidden';
+  hoursProminence?: 'subtle' | 'moderate' | 'prominent' | 'standard' | 'hidden';
 }
 
 export interface Offering {
@@ -305,8 +319,8 @@ export type AssetStatus = 'generating' | 'loading_image' | 'complete';
 
 export interface ExtendedAsset extends Asset {
   localStatus?: AssetStatus;
-  // aspectRatio is already in Asset, but ExtendedAsset might need it explicitly if Asset didn't have it (it does now).
-  // We can keep it clean.
+  jobId?: string; // Server job ID for polling
+  animationPhase?: 'warmup' | 'cruise' | 'deceleration' | 'revealed'; // Tracks animation progress
 }
 
 export interface StyleReferenceImage {
@@ -430,7 +444,8 @@ export enum ViewState {
   ADMIN = 'ADMIN',
   CHAT = 'CHAT',
   USER_PROFILE = 'USER_PROFILE',
-  DESIGN_LAB = 'DESIGN_LAB'
+  DESIGN_LAB = 'DESIGN_LAB',
+  PLANNER = 'PLANNER'
 }
 
 export interface ChatMessage {
@@ -442,4 +457,56 @@ export interface ChatMessage {
     type: 'image';
     content: string; // Base64
   };
+}
+
+// ============================================================================
+// SOCIAL MEDIA TYPES (GHL Integration)
+// ============================================================================
+
+export interface SocialPost {
+  id: string;
+  ghlPostId?: string;
+  parentPostId?: string;
+  businessId: string;
+  locationId?: string;
+  summary: string;
+  mediaUrls: string[];
+  status: 'scheduled' | 'published' | 'failed' | 'draft';
+  scheduledAt?: string;
+  publishedAt?: string;
+  platforms: string[];
+  syncedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SocialAccount {
+  id: string;
+  platform: string;  // 'instagram', 'facebook', 'linkedin', etc.
+  name: string;
+  avatar?: string;
+  type?: string;     // 'page', 'profile', 'business' (GHL account type)
+}
+
+// ============================================================================
+// UTILITY TYPES
+// ============================================================================
+
+// Type alias for business hours (used by formatters.ts)
+export type BusinessHour = {
+  day: string;
+  open: string;
+  close: string;
+  closed: boolean;
+  slots?: { open: string; close: string }[]; // Multiple time slots per day
+};
+
+// Notification interface (used by NotificationContext)
+export interface Notification {
+  id: string;
+  type: 'success' | 'error' | 'warning' | 'info';
+  message: string;
+  title?: string;
+  duration?: number; // ms, undefined = persistent
+  createdAt: Date;
 }

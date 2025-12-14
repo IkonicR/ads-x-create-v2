@@ -6,10 +6,12 @@ import { NumberTicker } from './NumberTicker'; // Assuming this exists or we use
 
 interface GeneratorCardProps {
   aspectRatio?: string;
-  // primaryColor prop removed
   status?: 'queued' | 'generating' | 'complete';
   onReveal?: () => void;
   resultContent?: string;
+  // Animation phase persistence
+  animationPhase?: 'warmup' | 'cruise' | 'deceleration' | 'revealed';
+  onPhaseChange?: (phase: 'warmup' | 'cruise' | 'deceleration' | 'revealed') => void;
 }
 
 const getPaddingBottom = (ratio: string = '1:1') => {
@@ -22,7 +24,9 @@ const GeneratorCardComponent: React.FC<GeneratorCardProps> = ({
   aspectRatio = '1:1',
   status = 'generating',
   onReveal,
-  resultContent
+  resultContent,
+  animationPhase = 'warmup',
+  onPhaseChange
 }) => {
   const { theme, styles } = useThemeStyles();
   const isDark = theme === 'dark';
@@ -44,68 +48,84 @@ const GeneratorCardComponent: React.FC<GeneratorCardProps> = ({
     onRevealRef.current = onReveal;
   }, [onReveal]);
 
+  // Keep onPhaseChange ref fresh
+  const onPhaseChangeRef = React.useRef(onPhaseChange);
+  React.useEffect(() => {
+    onPhaseChangeRef.current = onPhaseChange;
+  }, [onPhaseChange]);
+
   React.useEffect(() => {
     let isMounted = true;
 
     const runSequence = async () => {
-      // STAGE 1: Warmup (0-1.5s)
-      setStageText('Initializing Engines...');
-      warpFactor.set(0);
+      // PHASE-AWARE: Skip to the correct phase based on prop
+      const startPhase = animationPhase;
 
-      const startTime = Date.now();
-      // Reduced to 1.5s for snappier feel
-      while (Date.now() - startTime < 1500) {
-        if (!isMounted) return;
-        // Check if we completed early during warmup
-        if (statusRef.current === 'complete') break;
+      // STAGE 1: Warmup (only if starting from warmup)
+      if (startPhase === 'warmup') {
+        setStageText('Initializing Engines...');
+        warpFactor.set(0);
 
-        const elapsed = Date.now() - startTime;
-        setProgress(Math.floor((elapsed / 1500) * 10));
-        await new Promise(r => setTimeout(r, 50));
+        const startTime = Date.now();
+        while (Date.now() - startTime < 1500) {
+          if (!isMounted) return;
+          if (statusRef.current === 'complete') break;
+
+          const elapsed = Date.now() - startTime;
+          setProgress(Math.floor((elapsed / 1500) * 10));
+          await new Promise(r => setTimeout(r, 50));
+        }
       }
 
-      // STAGE 2: Acceleration
+      // STAGE 2 & 3: Acceleration + Cruise
       if (!isMounted) return;
 
-      // Only accelerate if we aren't already done
-      if (statusRef.current === 'generating') {
-        setStageText('Engaging Hyperdrive...');
-        // Faster acceleration (0.8s)
-        animate(warpFactor, 1, { duration: 0.8, ease: "circIn" });
+      if (startPhase === 'warmup' || startPhase === 'cruise') {
+        // If resuming cruise, set warp immediately
+        if (startPhase === 'cruise') {
+          warpFactor.set(1);
+          setProgress(50); // Resume mid-progress
+        }
 
-        // STAGE 3: Cruise
-        setStageText('Synthesizing...');
-        let currentProgress = 10;
+        // Report phase change to parent
+        if (startPhase === 'warmup') {
+          onPhaseChangeRef.current?.('cruise');
+        }
 
-        // Check ref for latest status
-        while (isMounted && statusRef.current === 'generating') {
-          if (currentProgress < 90) {
-            currentProgress += 0.5;
+        if (statusRef.current === 'generating') {
+          setStageText('Engaging Hyperdrive...');
+          if (startPhase === 'warmup') {
+            animate(warpFactor, 1, { duration: 0.8, ease: "circIn" });
           }
-          setProgress(Math.floor(currentProgress));
-          await new Promise(r => setTimeout(r, 50));
+
+          setStageText('Synthesizing...');
+          let currentProgress = startPhase === 'cruise' ? 50 : 10;
+
+          while (isMounted && statusRef.current === 'generating') {
+            if (currentProgress < 90) {
+              currentProgress += 0.5;
+            }
+            setProgress(Math.floor(currentProgress));
+            await new Promise(r => setTimeout(r, 50));
+          }
         }
       }
 
       if (!isMounted) return;
 
       // STAGE 4: Deceleration
+      onPhaseChangeRef.current?.('deceleration');
       setStageText('Finalizing...');
       setProgress(100);
 
-      // Ensure any previous animation is stopped
       warpFactor.stop();
 
-      // If we finished early (e.g. during warmup), we might be at low speed.
-      // Ramp up to 1 briefly to show "Arrival" effect, then slow down.
       if (warpFactor.get() < 0.5) {
         await new Promise<void>(resolve => {
           animate(warpFactor, 1, { duration: 0.5, ease: "circIn", onComplete: () => resolve() });
         });
       }
 
-      // Use Spring for natural "landing" feel
-      // Tuned for slower deceleration: Lower stiffness (30), Higher damping (20)
       await new Promise<void>(resolve => {
         animate(warpFactor, 0, {
           type: "spring",
@@ -116,48 +136,28 @@ const GeneratorCardComponent: React.FC<GeneratorCardProps> = ({
       });
 
       // STAGE 5: Pause
-      await new Promise(r => setTimeout(r, 800)); // Longer pause (0.8s)
+      await new Promise(r => setTimeout(r, 800));
 
       // STAGE 6: Reveal
+      onPhaseChangeRef.current?.('revealed');
       if (onRevealRef.current) onRevealRef.current();
     };
 
-    // Only start this sequence on mount (status='generating')
-    // If we re-run this effect when status changes to 'complete', we might restart logic.
-    // We want the loop to just exit.
-    // So we run this ONCE on mount, and let the ref break the loop.
-    if (status === 'generating') {
+    // Start animation based on animationPhase, not just status
+    // This ensures debug mode (which sets status to 'complete' instantly) still shows animation
+    if (animationPhase !== 'revealed') {
       runSequence();
-    } else if (status === 'complete') {
-      // If mounted as complete (e.g. due to remount), play the landing sequence
-      // Assume we were at Warp 1
-      warpFactor.set(1);
-
-      const land = async () => {
-        setStageText('Finalizing...');
-        setProgress(100);
-
-        // Decelerate
-        await new Promise<void>(resolve => {
-          animate(warpFactor, 0, {
-            type: "spring",
-            stiffness: 30,
-            damping: 20,
-            onComplete: () => resolve()
-          });
-        });
-
-        await new Promise(r => setTimeout(r, 800));
-        if (onRevealRef.current) onRevealRef.current();
-      };
-      land();
+    } else {
+      // Already revealed, nothing to animate
+      onPhaseChangeRef.current?.('revealed');
+      if (onRevealRef.current) onRevealRef.current();
     }
 
     return () => {
       isMounted = false;
       warpFactor.stop();
     };
-  }, []); // Run once on mount. The ref handles the update.
+  }, []); // Run once on mount
   // Liquid Mode Removed
   //   ? '6px 6px 12px #000000, -6px -6px 12px #2b2e33'
   //   : '9px 9px 16px #a3b1c6, -9px -9px 16px #ffffff';

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Business, TeamMember, Testimonial, BrandArchetype, VisualMotif } from '../types';
 import { NeuCard, NeuInput, NeuButton, NeuTextArea, useThemeStyles, NeuTabs, NeuBadge } from '../components/NeuComponents';
 import { NeuImageUploader } from '../components/NeuImageUploader';
-import { Palette, Mic2, Ban, Users, Plus, Trash2, Image as ImageIcon, Star, Type, Zap, Save, UploadCloud, Loader, Globe, Heart, Brain, Target, Shield, Layout, Sparkles, X } from 'lucide-react';
+import { Palette, Mic2, Ban, Users, Plus, Trash2, Image as ImageIcon, Star, Type, Zap, Save, UploadCloud, Loader, Globe, Heart, Brain, Target, Shield, Layout, Sparkles, X, Pencil } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigation } from '../context/NavigationContext';
 import { useNotification } from '../context/NotificationContext';
@@ -18,9 +18,34 @@ interface BrandKitProps {
 }
 
 const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
-  const [localBusiness, setLocalBusiness] = useState<Business>(business);
+  // Valid tone pills - must match extraction service
+  const VALID_TONE_PILLS = [
+    'Bold', 'Premium', 'Minimal', 'Playful', 'Modern', 'Classic', 'Elegant', 'Timeless', 'Sophisticated', 'Luxurious', 'Refined', 'Curated',
+    'Professional', 'Creative', 'Energetic', 'Witty', 'Urgent', 'Calm', 'Warm', 'Approachable', 'Sincere', 'Trustworthy',
+    'Friendly', 'Exclusive', 'Rebellious', 'Community Focused', 'Authoritative', 'Supportive', 'Personable', 'Welcoming',
+    'Educational', 'Insightful', 'Analytical', 'Geeky', 'Direct', 'Informative', 'Expert'
+  ];
+
+  // Clean legacy pills: strip emojis and filter to valid list
+  const cleanTonePills = (pills: string[]): string[] => {
+    const emojiRegex = /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}]/gu;
+    return pills
+      .map(p => {
+        const cleaned = p.replace(emojiRegex, '').trim();
+        return VALID_TONE_PILLS.find(v => v.toLowerCase() === cleaned.toLowerCase());
+      })
+      .filter((p): p is string => p !== undefined);
+  };
+
+  const [localBusiness, setLocalBusiness] = useState<Business>(() => ({
+    ...business,
+    voice: {
+      ...business.voice,
+      tonePills: cleanTonePills(business.voice.tonePills || [])
+    }
+  }));
   const { isDirty, setDirty, registerSaveHandler } = useNavigation();
-  const { notify } = useNotification();
+  const { toast } = useNotification();
   const [isSaving, setIsSaving] = useState(false);
   const [isLogoUploading, setIsLogoUploading] = useState(false);
   const [isWordmarkUploading, setIsWordmarkUploading] = useState(false);
@@ -30,13 +55,34 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
   // Local input states
   const [newUSP, setNewUSP] = useState('');
   const [newCompetitor, setNewCompetitor] = useState({ name: '', website: '' });
-  const [newMotif, setNewMotif] = useState<Partial<VisualMotif>>({ name: '', description: '', frequency: 'sometimes' });
+  const [newMotif, setNewMotif] = useState<Partial<VisualMotif>>({ name: '', description: '', prominence: 'standard' });
+  const [editingMotifId, setEditingMotifId] = useState<string | null>(null);
 
   const { styles } = useThemeStyles();
   const localBusinessRef = React.useRef(localBusiness);
 
+  // Ref to track usage to prevent auto-wiping state on parent re-renders
+  const prevBusinessRef = React.useRef(business);
+
   useEffect(() => {
-    setLocalBusiness(business);
+    const prevBusiness = prevBusinessRef.current;
+
+    // Only update local state if the business actually changed (ID or Content)
+    // This prevents "silent wipes" when the parent component re-renders but data is the same
+    const idChanged = business.id !== prevBusiness.id;
+    const contentChanged = JSON.stringify(business) !== JSON.stringify(prevBusiness);
+
+    if (idChanged || contentChanged) {
+      setLocalBusiness(prev => ({
+        ...business,
+        voice: {
+          ...business.voice,
+          tonePills: cleanTonePills(business.voice.tonePills || [])
+        }
+      }));
+    }
+
+    prevBusinessRef.current = business;
   }, [business]);
 
   useEffect(() => {
@@ -47,14 +93,14 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
     setIsSaving(true);
     try {
       await updateBusiness(localBusinessRef.current);
-      notify({ title: 'Brand Kit Saved', type: 'success', message: 'Your brand identity has been updated.' });
+      toast({ title: 'Brand Kit Saved', type: 'success', message: 'Your brand identity has been updated.' });
     } catch (e) {
       console.error(e);
-      notify({ title: 'Save Failed', type: 'error' });
+      toast({ title: 'Save Failed', type: 'error' });
     } finally {
       setIsSaving(false);
     }
-  }, [updateBusiness, notify]);
+  }, [updateBusiness, toast]);
 
   useEffect(() => {
     const isChanged = JSON.stringify(business) !== JSON.stringify(localBusiness);
@@ -87,7 +133,7 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
       updateVoice({ tonePills: current.filter(p => p !== pill) });
     } else {
       if (current.length >= 4) {
-        notify({ title: 'Limit Reached', type: 'info', message: 'You can only select up to 4 voice attributes.' });
+        toast({ title: 'Limit Reached', type: 'info', message: 'You can only select up to 4 voice attributes.' });
         return;
       }
       updateVoice({ tonePills: [...current, pill] });
@@ -98,11 +144,11 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
   const handleLogoUpload = async (file: File, type: 'logo' | 'wordmark' = 'logo') => {
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
-      notify({ title: 'File too large', type: 'error', message: 'Image must be under 5MB' });
+      toast({ title: 'File too large', type: 'error', message: 'Image must be under 5MB' });
       return;
     }
     if (!file.type.startsWith('image/')) {
-      notify({ title: 'Invalid file', type: 'error', message: 'Please upload an image (PNG, JPG, SVG)' });
+      toast({ title: 'Invalid file', type: 'error', message: 'Please upload an image (PNG, JPG, SVG)' });
       return;
     }
 
@@ -117,11 +163,11 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
         } else {
           updateLocal({ logoVariants: { ...localBusiness.logoVariants, wordmark: url } });
         }
-        notify({ title: 'Upload Success', type: 'success' });
+        toast({ title: 'Upload Success', type: 'success' });
       }
     } catch (err) {
       console.error(err);
-      notify({ title: 'Upload Failed', type: 'error' });
+      toast({ title: 'Upload Failed', type: 'error' });
     } finally {
       if (type === 'logo') setIsLogoUploading(false);
       else setIsWordmarkUploading(false);
@@ -378,31 +424,56 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
                 <div className="flex items-center gap-2 mb-1">
                   <span className={`font-bold ${styles.textMain}`}>{motif.name}</span>
                   <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider
-                    ${motif.frequency === 'always' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                      motif.frequency === 'often' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
-                        motif.frequency === 'sometimes' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                    ${motif.prominence === 'prominent' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                      motif.prominence === 'standard' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                        motif.prominence === 'subtle' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
                           'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'}`}
                   >
-                    {motif.frequency}
+                    {motif.prominence || 'standard'}
                   </span>
                 </div>
                 {motif.description && <p className={`text-sm ${styles.textSub} mt-1`}>{motif.description}</p>}
               </div>
-              <button
-                onClick={() => {
-                  const updated = (localBusiness.visualMotifs || []).filter((_, i) => i !== idx);
-                  updateLocal({ visualMotifs: updated });
-                }}
-                className="text-red-400 hover:text-red-600 p-1"
-              >
-                <Trash2 size={16} />
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setEditingMotifId(motif.id);
+                    setNewMotif({ name: motif.name, description: motif.description, prominence: motif.prominence });
+                  }}
+                  className="text-gray-400 hover:text-brand p-1"
+                >
+                  <Pencil size={16} />
+                </button>
+                <button
+                  onClick={() => {
+                    const updated = (localBusiness.visualMotifs || []).filter((_, i) => i !== idx);
+                    updateLocal({ visualMotifs: updated });
+                  }}
+                  className="text-red-400 hover:text-red-600 p-1"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
             </div>
           ))}
         </div>
 
-        {/* Add New Motif */}
-        <div className={`p-4 rounded-xl border-2 border-dashed ${styles.border} space-y-3`}>
+        {/* Add/Edit Motif */}
+        <div className={`p-4 rounded-xl border-2 ${editingMotifId ? 'border-brand bg-brand/5' : 'border-dashed'} ${styles.border} space-y-3`}>
+          {editingMotifId && (
+            <div className="flex justify-between items-center mb-2">
+              <span className={`text-xs font-bold ${styles.textMain}`}>Editing Signature</span>
+              <button
+                onClick={() => {
+                  setEditingMotifId(null);
+                  setNewMotif({ name: '', description: '', prominence: 'standard' });
+                }}
+                className="text-xs text-gray-400 hover:text-red-500"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <NeuInput
               placeholder="Keyword (e.g. Whale, Beach, Palm Tree)"
@@ -410,17 +481,17 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
               onChange={(e) => setNewMotif({ ...newMotif, name: e.target.value })}
             />
             <div className="flex gap-2">
-              {(['always', 'often', 'sometimes', 'contextual'] as const).map(freq => (
+              {(['hidden', 'subtle', 'standard', 'prominent'] as const).map(level => (
                 <button
-                  key={freq}
-                  onClick={() => setNewMotif({ ...newMotif, frequency: freq })}
+                  key={level}
+                  onClick={() => setNewMotif({ ...newMotif, prominence: level })}
                   className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all capitalize
-                    ${newMotif.frequency === freq
+                    ${newMotif.prominence === level
                       ? 'bg-brand text-white'
                       : `${styles.bgAccent} ${styles.textSub} hover:bg-brand/10`
                     }`}
                 >
-                  {freq}
+                  {level === 'hidden' ? "Don't Use" : level}
                 </button>
               ))}
             </div>
@@ -428,19 +499,32 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
           <NeuButton
             onClick={() => {
               if (newMotif.name) {
-                const motif: VisualMotif = {
-                  id: `motif_${Date.now()}`,
-                  name: newMotif.name,
-                  frequency: newMotif.frequency || 'sometimes'
-                };
-                updateLocal({ visualMotifs: [...(localBusiness.visualMotifs || []), motif] });
-                setNewMotif({ name: '', description: '', frequency: 'sometimes' });
+                if (editingMotifId) {
+                  // Update existing
+                  const updated = (localBusiness.visualMotifs || []).map(m =>
+                    m.id === editingMotifId
+                      ? { ...m, name: newMotif.name!, description: newMotif.description, prominence: newMotif.prominence || 'standard' }
+                      : m
+                  );
+                  updateLocal({ visualMotifs: updated });
+                  setEditingMotifId(null);
+                } else {
+                  // Add new
+                  const motif: VisualMotif = {
+                    id: `motif_${Date.now()}`,
+                    name: newMotif.name,
+                    prominence: newMotif.prominence || 'standard'
+                  };
+                  updateLocal({ visualMotifs: [...(localBusiness.visualMotifs || []), motif] });
+                }
+                setNewMotif({ name: '', description: '', prominence: 'standard' });
               }
             }}
             disabled={!newMotif.name}
             className="w-full"
           >
-            <Plus size={16} className="mr-2" /> Add Signature
+            <Plus size={16} className="mr-2" />
+            {editingMotifId ? 'Save Changes' : 'Add Signature'}
           </NeuButton>
         </div>
       </NeuCard>
@@ -464,11 +548,11 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
               <NeuBadge variant="outline">{localBusiness.voice.tonePills?.length || 0} / 4</NeuBadge>
             </div>
 
-            {/* Energy */}
+            {/* Style */}
             <div>
-              <label className={`text-xs font-bold ${styles.textSub} uppercase tracking-wider mb-3 block`}>Energy</label>
+              <label className={`text-xs font-bold ${styles.textSub} uppercase tracking-wider mb-3 block`}>Style</label>
               <div className="flex flex-wrap gap-2">
-                {['⚡ High Energy', '🧘 Calm', '🚀 Urgent', '🌊 Flowing'].map(pill => (
+                {['Bold', 'Premium', 'Minimal', 'Playful', 'Modern', 'Classic', 'Elegant', 'Timeless', 'Sophisticated', 'Luxurious', 'Refined', 'Curated'].map(pill => (
                   <button
                     key={pill}
                     onClick={() => toggleTonePill(pill)}
@@ -484,17 +568,17 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
               </div>
             </div>
 
-            {/* Intellect */}
+            {/* Tone */}
             <div>
-              <label className={`text-xs font-bold ${styles.textSub} uppercase tracking-wider mb-3 block`}>Intellect</label>
+              <label className={`text-xs font-bold ${styles.textSub} uppercase tracking-wider mb-3 block`}>Tone</label>
               <div className="flex flex-wrap gap-2">
-                {['🎓 Educational', '💡 Insightful', '🤓 Geeky', '🧠 Analytical'].map(pill => (
+                {['Professional', 'Creative', 'Energetic', 'Witty', 'Urgent', 'Calm', 'Warm', 'Approachable', 'Sincere', 'Trustworthy'].map(pill => (
                   <button
                     key={pill}
                     onClick={() => toggleTonePill(pill)}
                     className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-all border-2
                       ${(localBusiness.voice.tonePills || []).includes(pill)
-                        ? 'border-blue-500 bg-blue-500/10 text-blue-500'
+                        ? 'border-purple-500 bg-purple-500/10 text-purple-500'
                         : 'border-transparent bg-gray-100 dark:bg-white/5 text-gray-500 hover:border-gray-200'
                       }`}
                   >
@@ -508,13 +592,33 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
             <div>
               <label className={`text-xs font-bold ${styles.textSub} uppercase tracking-wider mb-3 block`}>Relation</label>
               <div className="flex flex-wrap gap-2">
-                {['🤝 Friendly', '👑 Exclusive', '🤟 Rebellious', '❤️ Community Focused'].map(pill => (
+                {['Friendly', 'Exclusive', 'Rebellious', 'Community Focused', 'Authoritative', 'Supportive', 'Personable', 'Welcoming'].map(pill => (
                   <button
                     key={pill}
                     onClick={() => toggleTonePill(pill)}
                     className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-all border-2
                       ${(localBusiness.voice.tonePills || []).includes(pill)
                         ? 'border-pink-500 bg-pink-500/10 text-pink-500'
+                        : 'border-transparent bg-gray-100 dark:bg-white/5 text-gray-500 hover:border-gray-200'
+                      }`}
+                  >
+                    {pill}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Intellect */}
+            <div>
+              <label className={`text-xs font-bold ${styles.textSub} uppercase tracking-wider mb-3 block`}>Intellect</label>
+              <div className="flex flex-wrap gap-2">
+                {['Educational', 'Insightful', 'Analytical', 'Geeky', 'Direct', 'Informative', 'Expert'].map(pill => (
+                  <button
+                    key={pill}
+                    onClick={() => toggleTonePill(pill)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-all border-2
+                      ${(localBusiness.voice.tonePills || []).includes(pill)
+                        ? 'border-blue-500 bg-blue-500/10 text-blue-500'
                         : 'border-transparent bg-gray-100 dark:bg-white/5 text-gray-500 hover:border-gray-200'
                       }`}
                   >

@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { Business, ViewState, Task, Asset, ExtendedAsset } from './types';
 import { StorageService } from './services/storage';
+import { TeamService } from './services/teamService';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
-import { NotificationProvider } from './context/NotificationContext';
+import { NotificationProvider, useNotification } from './context/NotificationContext';
 import { NavigationProvider, useNavigation } from './context/NavigationContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AssetProvider, useAssets } from './context/AssetContext';
+import { SocialProvider, useSocial } from './context/SocialContext';
 import Layout from './components/Layout';
 import Onboarding from './views/Onboarding';
 import UserOnboarding from './views/UserOnboarding';
@@ -18,10 +20,16 @@ import Tasks from './views/Tasks';
 import BusinessProfile from './views/BusinessProfile';
 import Offerings from './views/Offerings';
 import Library from './views/Library';
+import Planner from './views/Planner';
 import AdminDashboard from './views/AdminDashboard';
 import ChatInterface from './views/ChatInterface';
 import UserProfile from './views/UserProfile';
 import DesignLab from './views/DesignLab';
+import BusinessManager from './views/BusinessManager';
+import AcceptInvite from './views/AcceptInvite';
+import TeamSettings from './views/TeamSettings';
+import SocialSettings from './views/SocialSettings';
+import { PrinterDownload } from './views/PrinterDownload';
 import GlobalLoader from './components/GlobalLoader';
 import { GalaxyHeading } from './components/GalaxyHeading';
 
@@ -36,6 +44,7 @@ const getViewStateFromPath = (pathname: string): ViewState => {
     case '/generator': return ViewState.GENERATOR;
     case '/tasks': return ViewState.TASKS;
     case '/library': return ViewState.LIBRARY;
+    case '/planner': return ViewState.PLANNER;
     case '/chat': return ViewState.CHAT;
     case '/admin': return ViewState.ADMIN;
     case '/user-profile': return ViewState.USER_PROFILE;
@@ -55,6 +64,7 @@ const getPathFromViewState = (view: ViewState): string => {
     case ViewState.GENERATOR: return '/generator';
     case ViewState.TASKS: return '/tasks';
     case ViewState.LIBRARY: return '/library';
+    case ViewState.PLANNER: return '/planner';
     case ViewState.CHAT: return '/chat';
     case ViewState.ADMIN: return '/admin';
     case ViewState.USER_PROFILE: return '/user-profile';
@@ -79,6 +89,9 @@ const AppContent: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { addAsset, setBusinessId } = useAssets();
+  const { loadPosts: loadSocialPosts, setBusinessId: setSocialBusinessId } = useSocial();
+  const { notify } = useNotification();
+  const [pendingInviteChecked, setPendingInviteChecked] = useState(false);
 
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [activeBusinessId, setActiveBusinessId] = useState<string>('');
@@ -93,6 +106,9 @@ const AppContent: React.FC = () => {
 
   // Load initial data
   useEffect(() => {
+    // Don't act until we know if there's a user (auth check complete)
+    if (!authChecked) return;
+
     if (!user) {
       setLoadingData(false); // Allow Login screen to render if no user
       return;
@@ -135,7 +151,63 @@ const AppContent: React.FC = () => {
       }
     };
     load();
-  }, [user?.id]); // Only on user ID change (prevents object ref loops)
+  }, [authChecked, user?.id]); // Wait for auth check, then load on user ID change
+
+  // Check for pending team invites on login
+  useEffect(() => {
+    if (!user?.email || pendingInviteChecked) return;
+
+    const checkPendingInvites = async () => {
+      try {
+        const invites = await TeamService.getPendingInvitesForEmail(user.email);
+
+        // Filter out already notified invites (stored in sessionStorage)
+        const notifiedKey = `notified_invites_${user.id}`;
+        const notifiedRaw = sessionStorage.getItem(notifiedKey);
+        const notifiedIds: string[] = notifiedRaw ? JSON.parse(notifiedRaw) : [];
+
+        // Only show NEW invites we haven't notified about
+        const newInvites = invites.filter(inv => !notifiedIds.includes(inv.id));
+
+        if (newInvites.length > 0) {
+          // Deduplicate by businessId - show ONE notification per business
+          const seenBusinesses = new Set<string>();
+          const uniqueByBusiness = newInvites.filter(inv => {
+            if (seenBusinesses.has(inv.businessId)) return false;
+            seenBusinesses.add(inv.businessId);
+            return true;
+          });
+
+          // Show one notification summarizing all invites
+          if (uniqueByBusiness.length === 1) {
+            const inv = uniqueByBusiness[0];
+            notify({
+              type: 'info',
+              title: 'Team Invitation',
+              message: `You've been invited to join ${inv.businessName || 'a business'} as ${inv.role}`,
+              link: `/invite/${inv.token}`
+            });
+          } else {
+            notify({
+              type: 'info',
+              title: 'Team Invitations',
+              message: `You have ${uniqueByBusiness.length} pending team invitations`,
+              link: `/invite/${uniqueByBusiness[0].token}`
+            });
+          }
+
+          // Mark all as notified
+          const allNotified = [...notifiedIds, ...newInvites.map(i => i.id)];
+          sessionStorage.setItem(notifiedKey, JSON.stringify(allNotified));
+        }
+      } catch (err) {
+        console.error('Failed to check pending invites:', err);
+      } finally {
+        setPendingInviteChecked(true);
+      }
+    };
+    checkPendingInvites();
+  }, [user?.email, user?.id, pendingInviteChecked, notify]);
 
   // --- TIMEOUT HANDLING ---
   const [connectionError, setConnectionError] = useState(false);
@@ -182,7 +254,24 @@ const AppContent: React.FC = () => {
   // --- AUTHENTICATION GATES ---
   // Wait until auth check, profile check, AND data load are all complete
   if (!authChecked || !profileChecked || loadingData) {
+    // Allow public routes to bypass loading gate
+    if (location.pathname.startsWith('/print/')) {
+      return (
+        <Routes>
+          <Route path="/print/:token" element={<PrinterDownload />} />
+        </Routes>
+      );
+    }
     return <GlobalLoader />;
+  }
+
+  // Allow public routes without auth
+  if (location.pathname.startsWith('/print/')) {
+    return (
+      <Routes>
+        <Route path="/print/:token" element={<PrinterDownload />} />
+      </Routes>
+    );
   }
 
   if (!user) return <Login />;
@@ -212,7 +301,7 @@ const AppContent: React.FC = () => {
       owner_id: user.id, // Explicitly set owner
       currency: 'USD', // Default currency
       profile: { address: '', contactEmail: '', contactPhone: '', hours: [], socials: [], ...newBusinessData.profile },
-      adPreferences: { goals: '', targetAudience: '', complianceText: '', preferredCta: 'Learn More', sloganUsage: 'Sometimes', ...newBusinessData.adPreferences },
+      adPreferences: { goals: '', targetAudience: '', complianceText: '', preferredCta: '', sloganProminence: 'standard', businessNameProminence: 'standard', contactProminence: 'standard', locationProminence: 'standard', hoursProminence: 'standard', ...newBusinessData.adPreferences },
       offerings: [],
       teamMembers: [],
       voice: { tone: 'Professional', keywords: [], slogan: '', negativeKeywords: [], ...newBusinessData.voice }
@@ -233,11 +322,14 @@ const AppContent: React.FC = () => {
 
       // Clear data immediately to prevent ghosting
       setTasks([]);
-      // Clear data immediately to prevent ghosting
-      setTasks([]);
 
-      // Update Context
+      // Update Asset Context
       setBusinessId(id);
+
+      // Preload social posts for instant calendar (find locationId from new business)
+      const targetBusiness = businesses.find(b => b.id === id);
+      setSocialBusinessId(id);
+      loadSocialPosts(id, true); // Don't await - let it load in background
 
       const loadedTasks = await StorageService.getTasks(id);
       setTasks(loadedTasks);
@@ -249,8 +341,20 @@ const AppContent: React.FC = () => {
 
   const updateBusiness = async (updated: Business) => {
     if (!user) return;
+
+    console.log("[App.tsx] Saving business update...", updated.name);
+    // 1. Save to Database
     await StorageService.saveBusiness(updated, user.id);
-    setBusinesses(prev => prev.map(b => b.id === updated.id ? updated : b));
+
+    // 2. FORCE RE-FETCH from DB to ensure local state is 100% in sync
+    // Trusting the 'updated' object from the view can lead to stale state if the view had drift.
+    console.log("[App.tsx] Force-fetching fresh business data...");
+    const freshList = await StorageService.getBusinesses(user.id);
+
+    // 3. Update State with FRESH data
+    setBusinesses(freshList);
+
+    console.log("[App.tsx] Global state updated with fresh data.");
   };
 
   // Optimized update for AdminDashboard (which already saves to DB)
@@ -339,18 +443,47 @@ const AppContent: React.FC = () => {
               <Route path="/library" element={
                 <Library businessId={activeBusiness.id} />
               } />
+              <Route path="/planner" element={
+                <Planner business={activeBusiness} />
+              } />
+              <Route path="/social-settings" element={
+                <SocialSettings business={activeBusiness} updateBusiness={updateBusiness} />
+              } />
               <Route path="/chat" element={
                 <ChatInterface business={activeBusiness} />
               } />
             </>
           )}
 
-          <Route path="/admin" element={<AdminDashboard onBusinessUpdated={handleExternalBusinessUpdate} />} />
+          {/* Admin Route - Protected for super admins only */}
+          <Route path="/admin" element={
+            profile?.is_admin ? <AdminDashboard onBusinessUpdated={handleExternalBusinessUpdate} /> : <Navigate to="/dashboard" replace />
+          } />
           <Route path="/user-profile" element={<UserProfile />} />
+          <Route path="/business-manager" element={<BusinessManager />} />
           <Route path="/design-lab" element={<DesignLab />} />
+          <Route path="/invite/:token" element={<AcceptInvite />} />
 
-          {/* Fallback: If no active business, go to onboarding, else dashboard */}
-          <Route path="*" element={<Navigate to={activeBusiness ? "/dashboard" : "/onboarding"} replace />} />
+          {/* Public Routes (No Auth Required) */}
+          <Route path="/print/:token" element={<PrinterDownload />} />
+
+          {/* Team Settings - requires active business */}
+          {activeBusiness && (
+            <Route path="/team" element={
+              <TeamSettings
+                business={activeBusiness}
+                onMembershipChange={() => {
+                  // Reload businesses when membership changes
+                  if (user) StorageService.getBusinesses(user.id).then(setBusinesses);
+                }}
+              />
+            } />
+          )}
+
+          {/* Fallback: If still loading data, show nothing. Otherwise redirect based on business state */}
+          <Route path="*" element={
+            loadingData ? <GlobalLoader /> : <Navigate to={activeBusiness ? "/dashboard" : "/onboarding"} replace />
+          } />
         </Routes>
       </MainLayout>
     </NavigationProvider>
@@ -360,15 +493,17 @@ const AppContent: React.FC = () => {
 const App: React.FC = () => {
   return (
     <ThemeProvider>
-      <NotificationProvider>
-        <AuthProvider>
+      <AuthProvider>
+        <NotificationProvider>
           <AssetProvider>
-            <Router>
-              <AppContent />
-            </Router>
+            <SocialProvider>
+              <Router>
+                <AppContent />
+              </Router>
+            </SocialProvider>
           </AssetProvider>
-        </AuthProvider>
-      </NotificationProvider>
+        </NotificationProvider>
+      </AuthProvider>
     </ThemeProvider>
   );
 };

@@ -140,7 +140,12 @@ export const ExtractionPreview: React.FC<ExtractionPreviewProps> = ({
                         </div>
                     </div>
                 )}
-                <GalaxyHeading text="Review Your Profile" className="text-3xl md:text-4xl" />
+                <div className="flex items-center justify-center gap-3 mb-2">
+                    <GalaxyHeading text="Review Your Profile" className="text-3xl md:text-4xl" />
+                    <span className="px-2 py-0.5 rounded-lg text-xs font-bold bg-blue-100 text-blue-600 border border-blue-200 uppercase tracking-wide shadow-sm transform -translate-y-1">
+                        Beta
+                    </span>
+                </div>
                 <p className={`${styles.textSub} mt-2 max-w-md mx-auto`}>
                     We extracted this from your website. Review and adjust as needed.
                 </p>
@@ -186,6 +191,7 @@ export const ExtractionPreview: React.FC<ExtractionPreviewProps> = ({
                             Description
                         </label>
                         <NeuTextArea
+                            expandable
                             value={editedData.description || ''}
                             onChange={e => updateField('description', e.target.value)}
                             placeholder="Brief description of your business"

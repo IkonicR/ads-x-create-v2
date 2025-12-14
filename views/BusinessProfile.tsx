@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Business } from '../types';
 import { NeuCard, NeuInput, NeuButton, NeuDropdown, NeuTextArea, useThemeStyles, NeuTabs, NeuCombobox } from '../components/NeuComponents';
 import { LocationSearch } from '../components/LocationSearch';
-import { MapPin, Clock, Globe, Mail, Phone, Megaphone, Save, Copy, MessageCircle, Sparkles, Calendar, Target, AlertTriangle, Plus, Settings, Trash2 } from 'lucide-react';
+import { Save, AlertCircle, Plus, Trash2, Globe, Sparkles, Image as ImageIcon, Phone, Mail, MapPin, Clock, LayoutTemplate, MessageCircle, Calendar, Target, AlertTriangle, Megaphone, Settings, Copy, Pencil, Users } from 'lucide-react';
 import { formatBusinessHours } from '../utils/formatters';
 import { useNavigation } from '../context/NavigationContext';
 import { useNotification } from '../context/NotificationContext';
@@ -13,6 +14,7 @@ import { INDUSTRY_OPTIONS } from '../constants/industries';
 import { OperatingModelSelector } from '../components/OperatingModelSelector';
 import { ConnectedAccountsCard } from '../components/ConnectedAccountsCard';
 import { Share2 } from 'lucide-react';
+import TeamSettings from './TeamSettings';
 
 interface BusinessProfileProps {
   business: Business;
@@ -22,7 +24,8 @@ interface BusinessProfileProps {
 const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusiness }) => {
   const [localBusiness, setLocalBusiness] = useState<Business>(business);
   const { isDirty, setDirty, registerSaveHandler } = useNavigation();
-  const { notify } = useNotification();
+  const { toast } = useNotification();
+  const navigate = useNavigate();
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('profile');
 
@@ -48,9 +51,8 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
       if (localBusiness.profile.contactEmail) {
         migrated.push({ id: 'legacy_email', type: 'email', value: localBusiness.profile.contactEmail, label: 'Main Email', isPrimary: true });
       }
-      if (localBusiness.profile.address) {
-        migrated.push({ id: 'legacy_addr', type: 'address', value: localBusiness.profile.address, label: 'HQ', isPrimary: true });
-      }
+      // NOTE: Address is NOT migrated to Contact Hub - it has its own dedicated field (profile.address)
+      // and display controls (adPreferences.locationDisplay)
 
       if (migrated.length > 0) {
         setLocalBusiness(prev => ({
@@ -65,21 +67,47 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
     localBusinessRef.current = localBusiness;
   }, [localBusiness]);
 
+  // Ref to track the previous business prop to prevent unnecessary resets
+  const prevBusinessRef = React.useRef(business);
+
   useEffect(() => {
-    setLocalBusiness(business);
+    const prevBusiness = prevBusinessRef.current;
+    const businessIdChanged = business.id !== prevBusiness.id;
+    // Simple content check - in production we might want deep equality, but stringify is okay for this size
+    const contentChanged = JSON.stringify(business) !== JSON.stringify(prevBusiness);
+
+    // Only update local state if:
+    // 1. We switched to a different business (ID changed)
+    // 2. The business data actually changed from the outside (e.g. after save, or real-time update)
+    // We do NOT update if it's just a re-render with the same data (referential change only)
+    if (businessIdChanged || contentChanged) {
+      console.log('[BusinessProfile] Syncing local state with prop:', {
+        reason: businessIdChanged ? 'ID Change' : 'Content Change',
+        id: business.id
+      });
+      setLocalBusiness(business);
+    }
+
+    // Always update the ref
+    prevBusinessRef.current = business;
   }, [business]);
 
   const handleSave = React.useCallback(async () => {
     setIsSaving(true);
     try {
       await updateBusiness(localBusinessRef.current);
-      notify({ title: 'Profile Saved', type: 'success', message: 'Business information updated.' });
-    } catch (e) {
-      notify({ title: 'Save Failed', type: 'error' });
+      toast({ title: 'Profile Saved', type: 'success', message: 'Business information updated.' });
+    } catch (e: any) {
+      console.error("[BusinessProfile] Save error details:", e);
+      toast({
+        title: 'Save Failed',
+        type: 'error',
+        message: e.message || e.details || 'Could not save business details.'
+      });
     } finally {
       setIsSaving(false);
     }
-  }, [updateBusiness, notify]);
+  }, [updateBusiness, toast]);
 
   useEffect(() => {
     const isChanged = JSON.stringify(business) !== JSON.stringify(localBusiness);
@@ -88,10 +116,13 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
   }, [business, localBusiness, setDirty, registerSaveHandler, handleSave]);
 
   const updateProfile = (updates: Partial<typeof localBusiness.profile>) => {
-    setLocalBusiness(prev => ({
-      ...prev,
-      profile: { ...prev.profile, ...updates }
-    }));
+    setLocalBusiness(prev => {
+      const newState = {
+        ...prev,
+        profile: { ...prev.profile, ...updates }
+      };
+      return newState;
+    });
   };
 
   const updateAdPrefs = (key: keyof typeof localBusiness.adPreferences, value: any) => {
@@ -131,8 +162,32 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
   };
 
   const deleteContact = (id: string) => {
+    // 1. Identify which contact we are deleting
+    const contactToDelete = (localBusiness.profile.contacts || []).find(c => c.id === id);
+
+    // 2. Remove it from the list
     const updated = (localBusiness.profile.contacts || []).filter(c => c.id !== id);
-    updateProfile({ contacts: updated });
+
+    // 3. Prepare updates
+    const profileUpdates: any = { contacts: updated };
+
+    // 4. ZOMBIE KILLER: If we are deleting a migrated contact (or any contact matching legacy types),
+    // we MUST clear the legacy field to prevent resurrection by the useEffect migration script.
+    if (contactToDelete) {
+      if (contactToDelete.type === 'phone') {
+        profileUpdates.contactPhone = ''; // wipe legacy
+      }
+      if (contactToDelete.type === 'email') {
+        profileUpdates.contactEmail = ''; // wipe legacy
+      }
+      if (contactToDelete.type === 'website') {
+        profileUpdates.website = ''; // wipe legacy
+      }
+      // NOTE: address type removed - address is managed via profile.address
+    }
+
+    updateProfile(profileUpdates);
+
     // Also remove from Ad Prefs if selected
     const selected = localBusiness.adPreferences.contactIds || [];
     if (selected.includes(id)) {
@@ -189,7 +244,7 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
 
             {/* DYNAMIC: Location / Service Area */}
             <AnimatePresence mode="wait">
-              {localBusiness.profile.operatingMode === 'storefront' && (
+              {(localBusiness.profile.operatingMode === 'storefront' || !localBusiness.profile.operatingMode) && (
                 <motion.div
                   key="storefront"
                   initial={{ opacity: 0, y: 10 }}
@@ -208,63 +263,151 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
                   <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
                     <div className="flex justify-between items-center mb-3">
                       <label className={`block text-sm font-bold ${styles.textSub}`}>Opening Hours</label>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => {
-                            // Find Monday or use default
-                            const mon = (localBusiness.profile.hours || []).find(h => h.day === 'Mon') || { open: '09:00', close: '17:00', closed: false };
+                      <button
+                        onClick={() => {
+                          const mon = (localBusiness.profile.hours || []).find(h => h.day === 'Mon');
+                          if (!mon) return;
 
-                            const newHours = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => ({
-                              day,
-                              open: mon.open,
-                              close: mon.close,
-                              closed: mon.closed
-                            }));
-                            updateProfile({ hours: newHours });
-                          }}
-                          className="text-[10px] text-brand hover:underline"
-                        >
-                          Copy Mon to All
-                        </button>
-                      </div>
+                          const newHours = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => ({
+                            day,
+                            open: mon.open,
+                            close: mon.close,
+                            closed: mon.closed,
+                            slots: mon.slots ? [...mon.slots] : undefined
+                          }));
+                          updateProfile({ hours: newHours });
+                        }}
+                        className="text-[10px] text-brand hover:underline"
+                      >
+                        Copy Mon to All
+                      </button>
                     </div>
-                    <div className="space-y-2 bg-gray-50 dark:bg-white/5 p-3 rounded-xl border border-gray-100 dark:border-gray-800">
+
+                    <div className="space-y-2 bg-gray-50 dark:bg-white/5 p-4 rounded-xl border border-gray-100 dark:border-gray-800">
                       {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => {
-                        const dayData = (localBusiness.profile.hours || []).find(h => h.day === day) || { day, open: '09:00', close: '17:00', closed: day === 'Sat' || day === 'Sun' };
+                        const dayData = (localBusiness.profile.hours || []).find(h => h.day === day) || { day, open: '09:00', close: '17:00', closed: day === 'Sat' || day === 'Sun', slots: [] };
+
+                        const slots = dayData.slots && dayData.slots.length > 0
+                          ? dayData.slots
+                          : [{ open: dayData.open, close: dayData.close }];
+
                         return (
-                          <div key={day} className="grid grid-cols-12 gap-2 items-center">
-                            <div className="col-span-2 text-xs font-bold text-gray-500">{day}</div>
-                            <div className="col-span-3">
+                          <div key={day} className={`flex items-start gap-4 py-2 ${day !== 'Sun' ? 'border-b border-gray-200/50 dark:border-gray-700/50' : ''}`}>
+                            {/* Left: Toggle & Label */}
+                            <div className="w-24 flex items-center justify-between pt-2">
+                              <div className="text-sm font-bold text-gray-500 w-8">{day}</div>
                               <button
                                 onClick={() => {
                                   const newHours = [...(localBusiness.profile.hours || [])];
                                   const idx = newHours.findIndex(h => h.day === day);
-                                  if (idx >= 0) newHours[idx] = { ...newHours[idx], closed: !dayData.closed };
-                                  else newHours.push({ ...dayData, closed: !dayData.closed });
+                                  const updated = { ...dayData, closed: !dayData.closed };
+                                  if (idx >= 0) newHours[idx] = updated;
+                                  else newHours.push(updated);
                                   updateProfile({ hours: newHours });
                                 }}
-                                className={`w-full text-[10px] py-1 rounded border transition-colors ${dayData.closed ? 'bg-red-100 text-red-600 border-red-200' : 'bg-green-100 text-green-600 border-green-200'}`}
+                                className={`relative w-9 h-5 rounded-full transition-colors ${!dayData.closed ? 'bg-brand' : 'bg-gray-300 dark:bg-gray-600'}`}
                               >
-                                {dayData.closed ? 'Closed' : 'Open'}
+                                <div className={`absolute top-1 left-1 bg-white w-3 h-3 rounded-full shadow-sm transition-transform ${!dayData.closed ? 'translate-x-4' : 'translate-x-0'}`} />
                               </button>
                             </div>
-                            {!dayData.closed ? (
-                              <>
-                                <div className="col-span-3"><NeuInput type="time" className="h-8 text-xs py-0 px-2" value={dayData.open} onChange={(e) => {
-                                  const newHours = [...(localBusiness.profile.hours || [])];
-                                  const idx = newHours.findIndex(h => h.day === day);
-                                  if (idx >= 0) newHours[idx] = { ...newHours[idx], open: e.target.value };
-                                  updateProfile({ hours: newHours });
-                                }} /></div>
-                                <div className="col-span-1 text-center text-gray-400 text-xs">-</div>
-                                <div className="col-span-3"><NeuInput type="time" className="h-8 text-xs py-0 px-2" value={dayData.close} onChange={(e) => {
-                                  const newHours = [...(localBusiness.profile.hours || [])];
-                                  const idx = newHours.findIndex(h => h.day === day);
-                                  if (idx >= 0) newHours[idx] = { ...newHours[idx], close: e.target.value };
-                                  updateProfile({ hours: newHours });
-                                }} /></div>
-                              </>
-                            ) : <div className="col-span-7 text-center text-[10px] text-gray-400 italic">- Closed -</div>}
+
+                            {/* Right: Slots Area */}
+                            <div className="flex-1 min-w-0">
+                              {!dayData.closed ? (
+                                <div className="flex flex-col gap-2">
+                                  {slots.map((slot, sIdx) => (
+                                    <div key={sIdx} className="flex items-center gap-2">
+                                      <input
+                                        type="time"
+                                        className={`bg-white dark:bg-black/20 border ${styles.border} rounded-lg px-2 text-sm h-9 w-32 text-center focus:border-brand outline-none transition-colors ${styles.textMain}`}
+                                        value={slot.open}
+                                        onChange={(e) => {
+                                          const newHours = [...(localBusiness.profile.hours || [])];
+                                          const idx = newHours.findIndex(h => h.day === day);
+                                          const newSlots = [...slots];
+                                          newSlots[sIdx] = { ...slot, open: e.target.value };
+
+                                          const updates: any = { slots: newSlots };
+                                          if (sIdx === 0) updates.open = e.target.value;
+
+                                          const updated = { ...dayData, ...updates };
+                                          if (idx >= 0) newHours[idx] = updated;
+                                          else newHours.push(updated);
+                                          updateProfile({ hours: newHours });
+                                        }}
+                                      />
+                                      <span className="text-gray-300 text-sm">-</span>
+                                      <input
+                                        type="time"
+                                        className={`bg-white dark:bg-black/20 border ${styles.border} rounded-lg px-2 text-sm h-9 w-32 text-center focus:border-brand outline-none transition-colors ${styles.textMain}`}
+                                        value={slot.close}
+                                        onChange={(e) => {
+                                          const newHours = [...(localBusiness.profile.hours || [])];
+                                          const idx = newHours.findIndex(h => h.day === day);
+                                          const newSlots = [...slots];
+                                          newSlots[sIdx] = { ...slot, close: e.target.value };
+
+                                          const updates: any = { slots: newSlots };
+                                          if (sIdx === 0) updates.close = e.target.value;
+
+                                          const updated = { ...dayData, ...updates };
+                                          if (idx >= 0) newHours[idx] = updated;
+                                          else newHours.push(updated);
+                                          updateProfile({ hours: newHours });
+                                        }}
+                                      />
+
+                                      {/* Action Buttons */}
+                                      <div className="flex items-center gap-1 ml-2">
+                                        {sIdx === slots.length - 1 && (
+                                          <button
+                                            title="Add Split Shift"
+                                            onClick={() => {
+                                              const newHours = [...(localBusiness.profile.hours || [])];
+                                              const idx = newHours.findIndex(h => h.day === day);
+                                              const lastClose = slots[slots.length - 1]?.close || '12:00';
+                                              const [h, m] = lastClose.split(':').map(Number);
+                                              const nextStart = `${String((h + 1) % 24).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+                                              const nextEnd = `${String((h + 2) % 24).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+
+                                              const newSlots = [...slots, { open: nextStart, close: nextEnd }];
+                                              const updated = { ...dayData, slots: newSlots };
+                                              if (idx >= 0) newHours[idx] = updated;
+                                              else newHours.push(updated);
+                                              updateProfile({ hours: newHours });
+                                            }}
+                                            className="p-1.5 rounded-lg text-gray-400 hover:text-brand hover:bg-brand/10 transition-colors"
+                                          >
+                                            <Plus size={14} />
+                                          </button>
+                                        )}
+                                        {slots.length > 1 && (
+                                          <button
+                                            title="Remove Slot"
+                                            onClick={() => {
+                                              const newHours = [...(localBusiness.profile.hours || [])];
+                                              const idx = newHours.findIndex(h => h.day === day);
+                                              const newSlots = slots.filter((_, i) => i !== sIdx);
+                                              const updated = { ...dayData, slots: newSlots, open: newSlots[0].open, close: newSlots[0].close };
+                                              if (idx >= 0) newHours[idx] = updated;
+                                              else newHours.push(updated);
+                                              updateProfile({ hours: newHours });
+                                            }}
+                                            className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                                          >
+                                            <Trash2 size={14} />
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="h-9 flex items-center">
+                                  <span className="text-xs text-gray-400 italic">Closed</span>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         );
                       })}
@@ -280,13 +423,106 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
                   transition={{ duration: 0.2 }}
+                  className="space-y-4"
                 >
-                  <label className={`block text-sm font-bold ${styles.textSub} mb-1`}>Service Area</label>
-                  <NeuInput
-                    value={localBusiness.profile.serviceArea || ''}
-                    onChange={(e) => updateProfile({ serviceArea: e.target.value })}
-                    placeholder="e.g. Greater Austin Area, 50-mile radius..."
-                  />
+                  <div>
+                    <label className={`block text-sm font-bold ${styles.textSub} mb-1`}>Service Area</label>
+                    <NeuInput
+                      value={localBusiness.profile.serviceArea || ''}
+                      onChange={(e) => updateProfile({ serviceArea: e.target.value })}
+                      placeholder="e.g. Greater Austin Area, 50-mile radius..."
+                    />
+                  </div>
+
+                  {/* Hours Toggle for Service Mode */}
+                  <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-white/5 rounded-xl">
+                    <span className={`text-sm font-medium ${styles.textMain}`}>Set Availability Hours?</span>
+                    <button
+                      onClick={() => updateProfile({ showHours: !localBusiness.profile.showHours })}
+                      className={`relative w-11 h-6 rounded-full transition-colors ${localBusiness.profile.showHours ? 'bg-brand' : 'bg-gray-300 dark:bg-gray-600'}`}
+                    >
+                      <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full shadow-sm transition-transform ${localBusiness.profile.showHours ? 'translate-x-5' : 'translate-x-0'}`} />
+                    </button>
+                  </div>
+
+                  {/* Conditional Hours Editor */}
+                  {localBusiness.profile.showHours && (
+                    <div className="pt-2 animate-fade-in">
+                      <div className="flex justify-between items-center mb-3">
+                        <label className={`block text-sm font-bold ${styles.textSub}`}>Availability Hours</label>
+                        <button
+                          onClick={() => {
+                            const mon = (localBusiness.profile.hours || []).find(h => h.day === 'Mon');
+                            if (!mon) return;
+                            const newHours = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => ({
+                              day, open: mon.open, close: mon.close, closed: mon.closed, slots: mon.slots ? [...mon.slots] : undefined
+                            }));
+                            updateProfile({ hours: newHours });
+                          }}
+                          className="text-[10px] text-brand hover:underline"
+                        >
+                          Copy Mon to All
+                        </button>
+                      </div>
+                      <div className="space-y-2 bg-white dark:bg-black/20 p-4 rounded-xl border border-gray-100 dark:border-gray-800">
+                        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => {
+                          const dayData = (localBusiness.profile.hours || []).find(h => h.day === day) || { day, open: '09:00', close: '17:00', closed: day === 'Sat' || day === 'Sun', slots: [] };
+                          const slots = dayData.slots && dayData.slots.length > 0 ? dayData.slots : [{ open: dayData.open, close: dayData.close }];
+                          return (
+                            <div key={day} className={`flex items-center gap-3 py-1 ${day !== 'Sun' ? 'border-b border-gray-100 dark:border-gray-800' : ''}`}>
+                              <div className="w-10 text-xs font-bold text-gray-500">{day}</div>
+                              <button
+                                onClick={() => {
+                                  const newHours = [...(localBusiness.profile.hours || [])];
+                                  const idx = newHours.findIndex(h => h.day === day);
+                                  const updated = { ...dayData, closed: !dayData.closed };
+                                  if (idx >= 0) newHours[idx] = updated;
+                                  else newHours.push(updated);
+                                  updateProfile({ hours: newHours });
+                                }}
+                                className={`relative w-8 h-4 rounded-full transition-colors ${!dayData.closed ? 'bg-brand' : 'bg-gray-300 dark:bg-gray-600'}`}
+                              >
+                                <div className={`absolute top-0.5 left-0.5 bg-white w-3 h-3 rounded-full shadow-sm transition-transform ${!dayData.closed ? 'translate-x-4' : 'translate-x-0'}`} />
+                              </button>
+                              {!dayData.closed ? (
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="time"
+                                    className={`bg-white dark:bg-black/20 border ${styles.border} rounded px-1 text-xs h-7 w-24 text-center ${styles.textMain}`}
+                                    value={slots[0]?.open || '09:00'}
+                                    onChange={(e) => {
+                                      const newHours = [...(localBusiness.profile.hours || [])];
+                                      const idx = newHours.findIndex(h => h.day === day);
+                                      const updated = { ...dayData, open: e.target.value, slots: [{ open: e.target.value, close: slots[0]?.close || '17:00' }] };
+                                      if (idx >= 0) newHours[idx] = updated;
+                                      else newHours.push(updated);
+                                      updateProfile({ hours: newHours });
+                                    }}
+                                  />
+                                  <span className="text-gray-400 text-xs">-</span>
+                                  <input
+                                    type="time"
+                                    className={`bg-white dark:bg-black/20 border ${styles.border} rounded px-1 text-xs h-7 w-24 text-center ${styles.textMain}`}
+                                    value={slots[0]?.close || '17:00'}
+                                    onChange={(e) => {
+                                      const newHours = [...(localBusiness.profile.hours || [])];
+                                      const idx = newHours.findIndex(h => h.day === day);
+                                      const updated = { ...dayData, close: e.target.value, slots: [{ open: slots[0]?.open || '09:00', close: e.target.value }] };
+                                      if (idx >= 0) newHours[idx] = updated;
+                                      else newHours.push(updated);
+                                      updateProfile({ hours: newHours });
+                                    }}
+                                  />
+                                </div>
+                              ) : (
+                                <span className="text-xs text-gray-400 italic">Closed</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </motion.div>
               )}
 
@@ -315,6 +551,203 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
                       placeholder="Search Google Maps..."
                     />
                   </div>
+
+                  {/* Hours Toggle for Appointment Mode */}
+                  <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-white/5 rounded-xl">
+                    <span className={`text-sm font-medium ${styles.textMain}`}>Set Availability Hours?</span>
+                    <button
+                      onClick={() => updateProfile({ showHours: !localBusiness.profile.showHours })}
+                      className={`relative w-11 h-6 rounded-full transition-colors ${localBusiness.profile.showHours ? 'bg-brand' : 'bg-gray-300 dark:bg-gray-600'}`}
+                    >
+                      <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full shadow-sm transition-transform ${localBusiness.profile.showHours ? 'translate-x-5' : 'translate-x-0'}`} />
+                    </button>
+                  </div>
+
+                  {/* Conditional Hours Editor */}
+                  {localBusiness.profile.showHours && (
+                    <div className="pt-2 animate-fade-in">
+                      <div className="flex justify-between items-center mb-3">
+                        <label className={`block text-sm font-bold ${styles.textSub}`}>Availability Hours</label>
+                        <button
+                          onClick={() => {
+                            const mon = (localBusiness.profile.hours || []).find(h => h.day === 'Mon');
+                            if (!mon) return;
+                            const newHours = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => ({
+                              day, open: mon.open, close: mon.close, closed: mon.closed, slots: mon.slots ? [...mon.slots] : undefined
+                            }));
+                            updateProfile({ hours: newHours });
+                          }}
+                          className="text-[10px] text-brand hover:underline"
+                        >
+                          Copy Mon to All
+                        </button>
+                      </div>
+                      <div className="space-y-2 bg-white dark:bg-black/20 p-4 rounded-xl border border-gray-100 dark:border-gray-800">
+                        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => {
+                          const dayData = (localBusiness.profile.hours || []).find(h => h.day === day) || { day, open: '09:00', close: '17:00', closed: day === 'Sat' || day === 'Sun', slots: [] };
+                          const slots = dayData.slots && dayData.slots.length > 0 ? dayData.slots : [{ open: dayData.open, close: dayData.close }];
+                          return (
+                            <div key={day} className={`flex items-center gap-3 py-1 ${day !== 'Sun' ? 'border-b border-gray-100 dark:border-gray-800' : ''}`}>
+                              <div className="w-10 text-xs font-bold text-gray-500">{day}</div>
+                              <button
+                                onClick={() => {
+                                  const newHours = [...(localBusiness.profile.hours || [])];
+                                  const idx = newHours.findIndex(h => h.day === day);
+                                  const updated = { ...dayData, closed: !dayData.closed };
+                                  if (idx >= 0) newHours[idx] = updated;
+                                  else newHours.push(updated);
+                                  updateProfile({ hours: newHours });
+                                }}
+                                className={`relative w-8 h-4 rounded-full transition-colors ${!dayData.closed ? 'bg-brand' : 'bg-gray-300 dark:bg-gray-600'}`}
+                              >
+                                <div className={`absolute top-0.5 left-0.5 bg-white w-3 h-3 rounded-full shadow-sm transition-transform ${!dayData.closed ? 'translate-x-4' : 'translate-x-0'}`} />
+                              </button>
+                              {!dayData.closed ? (
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="time"
+                                    className={`bg-white dark:bg-black/20 border ${styles.border} rounded px-1 text-xs h-7 w-24 text-center ${styles.textMain}`}
+                                    value={slots[0]?.open || '09:00'}
+                                    onChange={(e) => {
+                                      const newHours = [...(localBusiness.profile.hours || [])];
+                                      const idx = newHours.findIndex(h => h.day === day);
+                                      const updated = { ...dayData, open: e.target.value, slots: [{ open: e.target.value, close: slots[0]?.close || '17:00' }] };
+                                      if (idx >= 0) newHours[idx] = updated;
+                                      else newHours.push(updated);
+                                      updateProfile({ hours: newHours });
+                                    }}
+                                  />
+                                  <span className="text-gray-400 text-xs">-</span>
+                                  <input
+                                    type="time"
+                                    className={`bg-white dark:bg-black/20 border ${styles.border} rounded px-1 text-xs h-7 w-24 text-center ${styles.textMain}`}
+                                    value={slots[0]?.close || '17:00'}
+                                    onChange={(e) => {
+                                      const newHours = [...(localBusiness.profile.hours || [])];
+                                      const idx = newHours.findIndex(h => h.day === day);
+                                      const updated = { ...dayData, close: e.target.value, slots: [{ open: slots[0]?.open || '09:00', close: e.target.value }] };
+                                      if (idx >= 0) newHours[idx] = updated;
+                                      else newHours.push(updated);
+                                      updateProfile({ hours: newHours });
+                                    }}
+                                  />
+                                </div>
+                              ) : (
+                                <span className="text-xs text-gray-400 italic">Closed</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+
+              {localBusiness.profile.operatingMode === 'online' && (
+                <motion.div
+                  key="online"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                  className="space-y-4"
+                >
+                  <div className="p-4 bg-gray-50 dark:bg-white/5 rounded-xl">
+                    <p className={`text-sm ${styles.textSub}`}>
+                      Online businesses are available 24/7 by default. You can optionally set customer support hours below.
+                    </p>
+                  </div>
+
+                  {/* Hours Toggle for Online Mode */}
+                  <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-white/5 rounded-xl">
+                    <span className={`text-sm font-medium ${styles.textMain}`}>Set Support Hours?</span>
+                    <button
+                      onClick={() => updateProfile({ showHours: !localBusiness.profile.showHours })}
+                      className={`relative w-11 h-6 rounded-full transition-colors ${localBusiness.profile.showHours ? 'bg-brand' : 'bg-gray-300 dark:bg-gray-600'}`}
+                    >
+                      <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full shadow-sm transition-transform ${localBusiness.profile.showHours ? 'translate-x-5' : 'translate-x-0'}`} />
+                    </button>
+                  </div>
+
+                  {/* Conditional Hours Editor */}
+                  {localBusiness.profile.showHours && (
+                    <div className="pt-2 animate-fade-in">
+                      <div className="flex justify-between items-center mb-3">
+                        <label className={`block text-sm font-bold ${styles.textSub}`}>Support Hours</label>
+                        <button
+                          onClick={() => {
+                            const mon = (localBusiness.profile.hours || []).find(h => h.day === 'Mon');
+                            if (!mon) return;
+                            const newHours = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => ({
+                              day, open: mon.open, close: mon.close, closed: mon.closed, slots: mon.slots ? [...mon.slots] : undefined
+                            }));
+                            updateProfile({ hours: newHours });
+                          }}
+                          className="text-[10px] text-brand hover:underline"
+                        >
+                          Copy Mon to All
+                        </button>
+                      </div>
+                      <div className="space-y-2 bg-white dark:bg-black/20 p-4 rounded-xl border border-gray-100 dark:border-gray-800">
+                        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => {
+                          const dayData = (localBusiness.profile.hours || []).find(h => h.day === day) || { day, open: '09:00', close: '17:00', closed: day === 'Sat' || day === 'Sun', slots: [] };
+                          const slots = dayData.slots && dayData.slots.length > 0 ? dayData.slots : [{ open: dayData.open, close: dayData.close }];
+                          return (
+                            <div key={day} className={`flex items-center gap-3 py-1 ${day !== 'Sun' ? 'border-b border-gray-100 dark:border-gray-800' : ''}`}>
+                              <div className="w-10 text-xs font-bold text-gray-500">{day}</div>
+                              <button
+                                onClick={() => {
+                                  const newHours = [...(localBusiness.profile.hours || [])];
+                                  const idx = newHours.findIndex(h => h.day === day);
+                                  const updated = { ...dayData, closed: !dayData.closed };
+                                  if (idx >= 0) newHours[idx] = updated;
+                                  else newHours.push(updated);
+                                  updateProfile({ hours: newHours });
+                                }}
+                                className={`relative w-8 h-4 rounded-full transition-colors ${!dayData.closed ? 'bg-brand' : 'bg-gray-300 dark:bg-gray-600'}`}
+                              >
+                                <div className={`absolute top-0.5 left-0.5 bg-white w-3 h-3 rounded-full shadow-sm transition-transform ${!dayData.closed ? 'translate-x-4' : 'translate-x-0'}`} />
+                              </button>
+                              {!dayData.closed ? (
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="time"
+                                    className={`bg-white dark:bg-black/20 border ${styles.border} rounded px-1 text-xs h-7 w-24 text-center ${styles.textMain}`}
+                                    value={slots[0]?.open || '09:00'}
+                                    onChange={(e) => {
+                                      const newHours = [...(localBusiness.profile.hours || [])];
+                                      const idx = newHours.findIndex(h => h.day === day);
+                                      const updated = { ...dayData, open: e.target.value, slots: [{ open: e.target.value, close: slots[0]?.close || '17:00' }] };
+                                      if (idx >= 0) newHours[idx] = updated;
+                                      else newHours.push(updated);
+                                      updateProfile({ hours: newHours });
+                                    }}
+                                  />
+                                  <span className="text-gray-400 text-xs">-</span>
+                                  <input
+                                    type="time"
+                                    className={`bg-white dark:bg-black/20 border ${styles.border} rounded px-1 text-xs h-7 w-24 text-center ${styles.textMain}`}
+                                    value={slots[0]?.close || '17:00'}
+                                    onChange={(e) => {
+                                      const newHours = [...(localBusiness.profile.hours || [])];
+                                      const idx = newHours.findIndex(h => h.day === day);
+                                      const updated = { ...dayData, close: e.target.value, slots: [{ open: slots[0]?.open || '09:00', close: e.target.value }] };
+                                      if (idx >= 0) newHours[idx] = updated;
+                                      else newHours.push(updated);
+                                      updateProfile({ hours: newHours });
+                                    }}
+                                  />
+                                </div>
+                              ) : (
+                                <span className="text-xs text-gray-400 italic">Closed</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -336,99 +769,131 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
           </div>
 
           <div className="space-y-3 mb-4">
-            {(localBusiness.profile.contacts || []).map(contact => (
-              <div key={contact.id} className={`p-3 rounded-xl border ${styles.border} ${styles.bgAccent} flex justify-between items-center group`}>
-                <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-full ${styles.bg} text-gray-500`}>
-                    {contact.type === 'phone' && <Phone size={14} />}
-                    {contact.type === 'email' && <Mail size={14} />}
-                    {contact.type === 'website' && <Globe size={14} />}
-                    {contact.type === 'whatsapp' && <MessageCircle size={14} />}
-                    {contact.type === 'address' && <MapPin size={14} />}
-                  </div>
-                  <div>
-                    <div className={`text-xs font-bold ${styles.textMain} flex items-center gap-2`}>
-                      {contact.displayStyle === 'action' && <span className="bg-brand/10 text-brand px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider">Action Button</span>}
-                      {contact.label || contact.type}
+            <AnimatePresence>
+              {(localBusiness.profile.contacts || []).map(contact => (
+                <motion.div
+                  key={contact.id}
+                  layout
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className={`p-3 rounded-xl border ${styles.border} ${styles.bgAccent} flex justify-between items-center group`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-full ${styles.bg} text-gray-500`}>
+                      {contact.type === 'phone' && <Phone size={14} />}
+                      {contact.type === 'email' && <Mail size={14} />}
+                      {contact.type === 'website' && <Globe size={14} />}
+                      {contact.type === 'whatsapp' && <MessageCircle size={14} />}
                     </div>
-                    <div className={`text-sm ${styles.textSub}`}>{contact.value}</div>
+                    <div>
+                      <div className={`text-xs font-bold ${styles.textMain} flex items-center gap-2`}>
+                        {contact.displayStyle === 'action' && <span className="bg-brand/10 text-brand px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider">Action Button</span>}
+                        {contact.label || contact.type}
+                      </div>
+                      <div className={`text-sm ${styles.textSub}`}>{contact.value}</div>
+                    </div>
                   </div>
-                </div>
-                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => deleteContact(contact.id)} className="p-1 hover:text-red-500"><Trash2 size={14} /></button>
-                </div>
-              </div>
-            ))}
+                  <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => {
+                      setEditingContactId(contact.id);
+                      setNewContact({
+                        type: contact.type,
+                        value: contact.value,
+                        label: contact.label,
+                        isPrimary: contact.isPrimary,
+                        displayStyle: contact.displayStyle
+                      });
+                      setIsAddingContact(true);
+                    }} className="p-1.5 rounded-lg hover:bg-brand/10 text-gray-400 hover:text-brand transition-colors">
+                      <Pencil size={14} />
+                    </button>
+                    <button onClick={() => deleteContact(contact.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-400 hover:text-red-500 transition-colors">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
             {(localBusiness.profile.contacts || []).length === 0 && (
               <div className="text-center py-8 text-gray-400 text-xs">No contacts added yet.</div>
             )}
           </div>
 
-          {isAddingContact && (
-            <div className="p-4 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-gray-800 animate-fade-in">
-              <h4 className={`text-xs font-bold ${styles.textMain} mb-3`}>Add Contact Method</h4>
+          <AnimatePresence>
+            {isAddingContact && (
+              <motion.div
+                initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                animate={{ opacity: 1, height: 'auto', marginTop: 16 }}
+                exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="p-4 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-gray-800">
+                  <h4 className={`text-xs font-bold ${styles.textMain} mb-3`}>{editingContactId ? 'Edit Contact' : 'Add Contact Method'}</h4>
 
-              {/* Step 1: Type */}
-              <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-                {[
-                  { id: 'phone', icon: Phone, label: 'Phone' },
-                  { id: 'email', icon: Mail, label: 'Email' },
-                  { id: 'website', icon: Globe, label: 'Link' },
-                  { id: 'whatsapp', icon: MessageCircle, label: 'WhatsApp' }
-                ].map(t => (
-                  <button
-                    key={t.id}
-                    onClick={() => setNewContact({ ...newContact, type: t.id as any })}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-bold transition-all ${newContact.type === t.id
-                      ? 'bg-brand text-white border-brand'
-                      : `bg-white dark:bg-white/5 border-gray-200 dark:border-gray-700 text-gray-500`
-                      }`}
-                  >
-                    <t.icon size={12} /> {t.label}
-                  </button>
-                ))}
-              </div>
+                  {/* Step 1: Type */}
+                  <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
+                    {[
+                      { id: 'phone', icon: Phone, label: 'Phone' },
+                      { id: 'email', icon: Mail, label: 'Email' },
+                      { id: 'website', icon: Globe, label: 'Link' },
+                      { id: 'whatsapp', icon: MessageCircle, label: 'WhatsApp' }
+                    ].map(t => (
+                      <button
+                        key={t.id}
+                        onClick={() => setNewContact({ ...newContact, type: t.id as any })}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-bold transition-all ${newContact.type === t.id
+                          ? 'bg-brand text-white border-brand'
+                          : `bg-white dark:bg-white/5 border-gray-200 dark:border-gray-700 text-gray-500`
+                          }`}
+                      >
+                        <t.icon size={12} /> {t.label}
+                      </button>
+                    ))}
+                  </div>
 
-              {/* Step 2: Value */}
-              <div className="mb-4">
-                <NeuInput
-                  placeholder={newContact.type === 'email' ? 'hello@example.com' : '+1 555...'}
-                  value={newContact.value || ''}
-                  onChange={(e) => setNewContact({ ...newContact, value: e.target.value })}
-                  className="text-lg"
-                />
-              </div>
+                  {/* Step 2: Value */}
+                  <div className="mb-4">
+                    <NeuInput
+                      placeholder={newContact.type === 'email' ? 'hello@example.com' : '+1 555...'}
+                      value={newContact.value || ''}
+                      onChange={(e) => setNewContact({ ...newContact, value: e.target.value })}
+                      className="text-lg"
+                    />
+                  </div>
 
-              {/* Step 3: Visual Style (Cards) */}
-              <div className="mb-4">
-                <label className={`block text-xs font-bold ${styles.textSub} mb-2`}>How should this look?</label>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                  {[
-                    { id: 'value_only', label: 'Simple', preview: newContact.value || '+1 555...' },
-                    { id: 'standard', label: 'Labeled', preview: `${newContact.type === 'email' ? 'Email' : 'Phone'}: ${newContact.value || '...'}` },
-                    { id: 'action', label: 'Action Button', preview: `[Call Now]` }
-                  ].map(style => (
-                    <button
-                      key={style.id}
-                      onClick={() => setNewContact({ ...newContact, displayStyle: style.id as any })}
-                      className={`p-3 rounded-lg border text-left transition-all ${(newContact.displayStyle || 'standard') === style.id
-                        ? 'border-brand bg-brand/5 ring-1 ring-brand'
-                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
-                        }`}
-                    >
-                      <div className="text-[10px] font-bold text-gray-400 mb-1 uppercase">{style.label}</div>
-                      <div className={`text-xs ${styles.textMain} truncate`}>{style.preview}</div>
-                    </button>
-                  ))}
+                  {/* Step 3: Visual Style (Cards) */}
+                  <div className="mb-4">
+                    <label className={`block text-xs font-bold ${styles.textSub} mb-2`}>How should this look?</label>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                      {[
+                        { id: 'value_only', label: 'Simple', preview: newContact.value || '+1 555...' },
+                        { id: 'standard', label: 'Labeled', preview: `${newContact.type === 'email' ? 'Email' : 'Phone'}: ${newContact.value || '...'}` },
+                        { id: 'action', label: 'Action Button', preview: `[Call Now]` }
+                      ].map(style => (
+                        <button
+                          key={style.id}
+                          onClick={() => setNewContact({ ...newContact, displayStyle: style.id as any })}
+                          className={`p-3 rounded-lg border text-left transition-all ${(newContact.displayStyle || 'standard') === style.id
+                            ? 'border-brand bg-brand/5 ring-1 ring-brand'
+                            : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                            }`}
+                        >
+                          <div className="text-[10px] font-bold text-gray-400 mb-1 uppercase">{style.label}</div>
+                          <div className={`text-xs ${styles.textMain} truncate`}>{style.preview}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2">
+                    <NeuButton variant="secondary" onClick={() => setIsAddingContact(false)} className="text-xs">Cancel</NeuButton>
+                    <NeuButton onClick={saveContact} className="text-xs">Save</NeuButton>
+                  </div>
                 </div>
-              </div>
-
-              <div className="flex justify-end gap-2">
-                <NeuButton variant="secondary" onClick={() => setIsAddingContact(false)} className="text-xs">Cancel</NeuButton>
-                <NeuButton onClick={saveContact} className="text-xs">Save</NeuButton>
-              </div>
-            </div>
-          )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </NeuCard>
       </div>
     </div>
@@ -536,14 +1001,14 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
                     if (prefs.hoursDisplay === 'weekends_only') {
                       // Filter to only Sat/Sun and format
                       const weekendHours = hours.filter(h => ['Sat', 'Sun'].includes(h.day));
-                      return formatBusinessHours(weekendHours);
+                      return formatBusinessHours(weekendHours, { includeClosed: true });
                     }
 
                     if (prefs.hoursDisplay === 'custom_selection') {
                       // Filter to selected days and format
                       const selectedDays = prefs.hoursDisplayDays || [];
                       const selectedHours = hours.filter(h => selectedDays.includes(h.day));
-                      return formatBusinessHours(selectedHours);
+                      return formatBusinessHours(selectedHours, { includeClosed: true });
                     }
 
                     // Default: All Hours
@@ -613,7 +1078,6 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
                       {contact.type === 'email' && <Mail size={16} />}
                       {contact.type === 'website' && <Globe size={16} />}
                       {contact.type === 'whatsapp' && <MessageCircle size={16} />}
-                      {contact.type === 'address' && <MapPin size={16} />}
                       <div className="text-left">
                         <div className="text-xs font-bold">{contact.label}</div>
                         <div className="text-[10px] opacity-70">{contact.value}</div>
@@ -629,6 +1093,22 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
                 </div>
               )}
             </div>
+
+            {(localBusiness.adPreferences.contactIds || []).length > 0 && (
+              <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 animate-fade-in">
+                <label className={`block text-xs font-bold ${styles.textSub} mb-1`}>Contact Prominence</label>
+                <NeuDropdown
+                  value={localBusiness.adPreferences.contactProminence || 'standard'}
+                  onChange={val => updateAdPrefs('contactProminence', val)}
+                  options={[
+                    { value: "hidden", label: "Don't Include" },
+                    { value: "subtle", label: "Subtle" },
+                    { value: "standard", label: "Standard" },
+                    { value: "prominent", label: "Prominent" }
+                  ]}
+                />
+              </div>
+            )}
           </NeuCard>
 
           {/* Voice & Legal (Moved here for balance) */}
@@ -683,16 +1163,31 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
                 </div>
               </div>
               <div>
-                <label className={`block text-sm font-bold ${styles.textSub} mb-1`}>Slogan Usage</label>
+                <label className={`block text-sm font-bold ${styles.textSub} mb-1`}>Slogan Prominence</label>
                 <NeuDropdown
-                  value={localBusiness.adPreferences.sloganUsage || 'Always'}
-                  onChange={val => updateAdPrefs('sloganUsage', val)}
+                  value={localBusiness.adPreferences.sloganProminence || 'standard'}
+                  onChange={val => updateAdPrefs('sloganProminence', val)}
                   options={[
-                    { value: "Always", label: "Always Include" },
-                    { value: "Sometimes", label: "Sometimes" },
-                    { value: "Never", label: "Never" }
+                    { value: "hidden", label: "Don't Include" },
+                    { value: "subtle", label: "Subtle" },
+                    { value: "standard", label: "Standard" },
+                    { value: "prominent", label: "Prominent" }
                   ]}
                 />
+
+                {localBusiness.adPreferences.sloganProminence !== 'hidden' && (
+                  <div className="mt-2 animate-fade-in gap-2">
+                    <label className={`block text-[10px] font-bold ${styles.textSub}`}>Slogan Text</label>
+                    <NeuInput
+                      placeholder="e.g. Just Do It"
+                      value={localBusiness.voice.slogan || ''}
+                      onChange={(e) => {
+                        const updatedVoice = { ...localBusiness.voice, slogan: e.target.value };
+                        setLocalBusiness(prev => ({ ...prev, voice: updatedVoice }));
+                      }}
+                    />
+                  </div>
+                )}
               </div>
               <div>
                 <label className={`block text-sm font-bold ${styles.textSub} mb-1`}>Legal Footer</label>
@@ -764,76 +1259,143 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
                 </div>
               ))}
             </div>
+
+            {localBusiness.adPreferences.locationDisplay !== 'hidden' && (
+              <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 animate-fade-in">
+                <label className={`block text-xs font-bold ${styles.textSub} mb-1`}>Location Prominence</label>
+                <NeuDropdown
+                  value={localBusiness.adPreferences.locationProminence || 'standard'}
+                  onChange={val => updateAdPrefs('locationProminence', val)}
+                  options={[
+                    { value: "subtle", label: "Subtle" },
+                    { value: "standard", label: "Standard" },
+                    { value: "prominent", label: "Prominent" }
+                  ]}
+                />
+              </div>
+            )}
           </NeuCard>
 
           <NeuCard>
             <h4 className={`text-md font-bold ${styles.textMain} mb-4 flex items-center gap-2`}>
-              <Clock size={18} className="text-brand" /> Hours Display
+              <LayoutTemplate size={18} className="text-brand" /> Ad Content
             </h4>
             <div className="space-y-4">
-              <NeuDropdown
-                value={localBusiness.adPreferences.hoursDisplay || 'all_hours'}
-                onChange={(val) => updateAdPrefs('hoursDisplay', val)}
-                options={[
-                  { value: 'all_hours', label: 'Standard (Mon-Fri...)' },
-                  { value: 'weekends_only', label: 'Weekends Only' },
-                  { value: 'custom_selection', label: 'Select Specific Days' },
-                  { value: 'custom_text', label: 'Custom Text' },
-                  { value: 'hidden', label: 'Hidden' }
-                ]}
-              />
+              <div className="flex items-center justify-between p-2 bg-black/5 rounded-lg">
+                <span className={`text-sm font-medium ${styles.textMain}`}>Show Business Name</span>
+                <button
+                  onClick={() => updateAdPrefs('showBusinessName', localBusiness.adPreferences.showBusinessName === false ? true : false)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${localBusiness.adPreferences.showBusinessName !== false ? 'bg-brand' : 'bg-gray-200'}`}
+                >
+                  <span
+                    className={`${localBusiness.adPreferences.showBusinessName !== false ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
+                  />
+                </button>
+              </div>
 
-              {/* Custom Days Selector */}
-              {localBusiness.adPreferences.hoursDisplay === 'custom_selection' && (
-                <div className="grid grid-cols-4 gap-2">
-                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => {
-                    const selectedDays = localBusiness.adPreferences.hoursDisplayDays || [];
-                    const isSelected = selectedDays.includes(day);
-                    return (
-                      <button
-                        key={day}
-                        onClick={() => {
-                          if (isSelected) {
-                            updateAdPrefs('hoursDisplayDays', selectedDays.filter(d => d !== day));
-                          } else {
-                            updateAdPrefs('hoursDisplayDays', [...selectedDays, day]);
-                          }
-                        }}
-                        className={`text-[10px] font-bold py-1 rounded border transition-colors
-                                ${isSelected
-                            ? 'bg-brand text-white border-brand'
-                            : `${styles.bg} ${styles.textSub} border-transparent hover:border-brand/30`
-                          }
-                            `}
-                      >
-                        {day}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Custom Hours Text - Only shows when Custom Text is selected */}
-              {localBusiness.adPreferences.hoursDisplay === 'custom_text' && (
-                <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 animate-fade-in">
-                  <div className="flex justify-between items-center mb-1">
-                    <label className={`block text-xs font-bold ${styles.textSub}`}>Hours Text (for Ads)</label>
-                    <button
-                      onClick={() => updateAdPrefs('hoursText', formatBusinessHours(localBusiness.profile.hours))}
-                      className="text-[10px] text-brand hover:underline"
-                    >
-                      Pre-fill from Profile
-                    </button>
-                  </div>
-                  <NeuInput
-                    value={localBusiness.adPreferences.hoursText || ''}
-                    onChange={e => updateAdPrefs('hoursText', e.target.value)}
-                    placeholder="e.g. Mon-Fri 9am - 5pm"
+              {localBusiness.adPreferences.showBusinessName !== false && (
+                <div className="animate-fade-in">
+                  <label className={`block text-xs font-bold ${styles.textSub} mb-1`}>Business Name Prominence</label>
+                  <NeuDropdown
+                    value={localBusiness.adPreferences.businessNameProminence || 'standard'}
+                    onChange={val => updateAdPrefs('businessNameProminence', val)}
+                    options={[
+                      { value: "subtle", label: "Subtle" },
+                      { value: "standard", label: "Standard" },
+                      { value: "prominent", label: "Prominent" }
+                    ]}
                   />
                 </div>
               )}
             </div>
           </NeuCard>
+
+          {/* Hours Display - Only show if storefront OR showHours toggle is on */}
+          {(localBusiness.profile.operatingMode === 'storefront' || !localBusiness.profile.operatingMode || localBusiness.profile.showHours) && (
+            <NeuCard>
+              <h4 className={`text-md font-bold ${styles.textMain} mb-4 flex items-center gap-2`}>
+                <Clock size={18} className="text-brand" /> Hours Display
+              </h4>
+              <div className="space-y-4">
+                <NeuDropdown
+                  value={localBusiness.adPreferences.hoursDisplay || 'all_hours'}
+                  onChange={(val) => updateAdPrefs('hoursDisplay', val)}
+                  options={[
+                    { value: 'all_hours', label: 'Full Business Hours' },
+                    { value: 'weekends_only', label: 'Weekends Only' },
+                    { value: 'custom_selection', label: 'Select Specific Days' },
+                    { value: 'custom_text', label: 'Custom Text' },
+                    { value: 'hidden', label: 'Hidden' }
+                  ]}
+                />
+
+                {/* Custom Days Selector */}
+                {localBusiness.adPreferences.hoursDisplay === 'custom_selection' && (
+                  <div className="grid grid-cols-4 gap-2">
+                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => {
+                      const selectedDays = localBusiness.adPreferences.hoursDisplayDays || [];
+                      const isSelected = selectedDays.includes(day);
+                      return (
+                        <button
+                          key={day}
+                          onClick={() => {
+                            if (isSelected) {
+                              updateAdPrefs('hoursDisplayDays', selectedDays.filter(d => d !== day));
+                            } else {
+                              updateAdPrefs('hoursDisplayDays', [...selectedDays, day]);
+                            }
+                          }}
+                          className={`text-[10px] font-bold py-1 rounded border transition-colors
+                                ${isSelected
+                              ? 'bg-brand text-white border-brand'
+                              : `${styles.bg} ${styles.textSub} border-transparent hover:border-brand/30`
+                            }
+                            `}
+                        >
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Custom Hours Text - Only shows when Custom Text is selected */}
+                {localBusiness.adPreferences.hoursDisplay === 'custom_text' && (
+                  <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 animate-fade-in">
+                    <div className="flex justify-between items-center mb-1">
+                      <label className={`block text-xs font-bold ${styles.textSub}`}>Hours Text (for Ads)</label>
+                      <button
+                        onClick={() => updateAdPrefs('hoursText', formatBusinessHours(localBusiness.profile.hours))}
+                        className="text-[10px] text-brand hover:underline"
+                      >
+                        Pre-fill from Profile
+                      </button>
+                    </div>
+                    <NeuInput
+                      value={localBusiness.adPreferences.hoursText || ''}
+                      onChange={e => updateAdPrefs('hoursText', e.target.value)}
+                      placeholder="e.g. Mon-Fri 9am - 5pm"
+                    />
+                  </div>
+                )}
+
+                {localBusiness.adPreferences.hoursDisplay !== 'hidden' && (
+                  <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 animate-fade-in">
+                    <label className={`block text-xs font-bold ${styles.textSub} mb-1`}>Hours Prominence</label>
+                    <NeuDropdown
+                      value={localBusiness.adPreferences.hoursProminence || 'standard'}
+                      onChange={val => updateAdPrefs('hoursProminence', val)}
+                      options={[
+                        { value: "subtle", label: "Subtle" },
+                        { value: "standard", label: "Standard" },
+                        { value: "prominent", label: "Prominent" }
+                      ]}
+                    />
+                  </div>
+                )}
+              </div>
+            </NeuCard>
+          )}
           <NeuCard className="border-2 border-brand/10 relative overflow-hidden transition-all">
             <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
               <Sparkles size={100} className="text-brand" />
@@ -939,6 +1501,7 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
             { id: 'profile', label: 'Profile & Contact', icon: <Globe size={16} /> },
             { id: 'ads', label: 'Ad Preferences', icon: <Megaphone size={16} /> },
             { id: 'social', label: 'Social Accounts', icon: <Share2 size={16} /> },
+            { id: 'team', label: 'Team', icon: <Users size={16} /> },
           ]}
         />
       </div>
@@ -953,6 +1516,27 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
               business={localBusiness}
               onBusinessUpdate={(updated) => setLocalBusiness(updated)}
             />
+
+            {/* Link to Social Settings */}
+            <NeuCard>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className={`font-bold ${styles.textMain}`}>Social Posting Settings</h3>
+                  <p className={`text-sm ${styles.textSub}`}>
+                    Configure default hashtags, platforms, and posting preferences
+                  </p>
+                </div>
+                <NeuButton onClick={() => navigate('/social-settings')}>
+                  <Settings size={16} className="mr-2" />
+                  Configure
+                </NeuButton>
+              </div>
+            </NeuCard>
+          </div>
+        )}
+        {activeTab === 'team' && (
+          <div className="space-y-8 animate-fade-in">
+            <TeamSettings business={localBusiness} />
           </div>
         )}
       </div>

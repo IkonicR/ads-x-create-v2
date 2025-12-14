@@ -9,12 +9,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const { locationId, accountIds, caption, mediaUrls, scheduledAt } = req.body;
+    const { locationId, accountIds, caption, mediaUrls, scheduledAt, firstComment } = req.body;
 
     if (!locationId || !accountIds || !caption) {
         return res.status(400).json({ error: 'Missing required fields' });
@@ -37,33 +37,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             return res.status(404).json({ error: 'No GHL integration found' });
         }
 
-        // Build the post payload
+        // Build the post payload per GHL API requirements
+        // - locationId is in URL path, NOT in body
+        // - userId is required
+        // - media must always be an array (even if empty)
         const postPayload: any = {
-            locationId,
             accountIds,
             type: 'post',
             status: scheduledAt ? 'scheduled' : 'published',
+            userId: integration.user_id,
+            summary: caption,
+            media: mediaUrls && mediaUrls.length > 0
+                ? mediaUrls.map((url: string) => ({ url, type: 'image/jpeg' }))
+                : [],
         };
-
-        // Add platform-specific details based on first account
-        // GHL requires different fields for different platforms
-        if (mediaUrls && mediaUrls.length > 0) {
-            postPayload.summary = caption;
-            postPayload.media = mediaUrls.map((url: string) => ({
-                url,
-                type: 'image',
-            }));
-        } else {
-            postPayload.summary = caption;
-        }
 
         if (scheduledAt) {
             postPayload.scheduleDate = scheduledAt;
         }
 
+        // If firstComment is enabled, extract hashtags from caption and put them in followUpComment
+        if (firstComment && caption) {
+            const hashtagRegex = /#[\w]+/g;
+            const hashtags = caption.match(hashtagRegex);
+            if (hashtags && hashtags.length > 0) {
+                postPayload.followUpComment = hashtags.join(' ');
+                // Remove hashtags from the main caption
+                postPayload.summary = caption.replace(hashtagRegex, '').trim().replace(/\s+/g, ' ');
+            }
+        }
+
         // Call GHL to create post
         const ghlResponse = await fetch(
-            'https://services.leadconnectorhq.com/social-media-posting/posts',
+            `https://services.leadconnectorhq.com/social-media-posting/${locationId}/posts`,
             {
                 method: 'POST',
                 headers: {

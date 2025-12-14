@@ -10,7 +10,7 @@ import { useThemeStyles, NeuButton } from '../components/NeuComponents';
 import { NeuConfirmModal } from '../components/NeuConfirmModal';
 import { Business, Asset, ExtendedAsset, StylePreset, AssetStatus, GenerationStrategy, SubjectType } from '../types';
 import { DEFAULT_STRATEGY } from '../constants/campaignPresets';
-import { generateImage } from '../services/geminiService';
+import { generateImage, pollJobStatus, getPendingJobs } from '../services/geminiService';
 import { StorageService } from '../services/storage';
 import { useAssets } from '../context/AssetContext';
 
@@ -57,6 +57,77 @@ const Generator: React.FC<GeneratorProps> = ({
     };
     loadConfig();
   }, []);
+
+  // Load Pending Jobs on Mount (for page refresh recovery)
+  useEffect(() => {
+    if (!business.id) return;
+
+    const loadPendingJobs = async () => {
+      try {
+        const jobs = await getPendingJobs(business.id);
+
+        if (jobs.length > 0) {
+          console.log('[Generator] Found', jobs.length, 'pending jobs to resume');
+
+          // Convert jobs to pending assets - mark with animationPhase so they resume properly
+          const pendingFromJobs: ExtendedAsset[] = jobs.map(job => ({
+            id: job.id,
+            type: 'image' as const,
+            content: '',
+            prompt: job.prompt,
+            createdAt: job.created_at,
+            localStatus: 'generating' as const,
+            aspectRatio: job.aspect_ratio,
+            styleId: job.style_id,
+            subjectId: job.subject_id,
+            modelTier: job.model_tier,
+            animationPhase: 'cruise' as const // Resume in cruise, not warmup
+          }));
+
+          setPendingAssets(prev => {
+            // Merge without duplicates - check BOTH id AND jobId
+            const existingIds = new Set(prev.map(a => a.id));
+            const existingJobIds = new Set(prev.map(a => a.jobId).filter(Boolean));
+            const newJobs = pendingFromJobs.filter(j =>
+              !existingIds.has(j.id) && !existingJobIds.has(j.id)
+            );
+            return [...newJobs, ...prev];
+          });
+
+          // Resume polling for each job
+          jobs.forEach(job => {
+            const pollInterval = setInterval(async () => {
+              try {
+                const status = await pollJobStatus(job.id);
+
+                if (status.status === 'completed' && status.asset) {
+                  clearInterval(pollInterval);
+                  setPendingAssets(prev => prev.map(a =>
+                    a.id === job.id
+                      ? { ...a, localStatus: 'complete', content: status.asset.content }
+                      : a
+                  ));
+                } else if (status.status === 'failed') {
+                  clearInterval(pollInterval);
+                  setPendingAssets(prev => prev.filter(a => a.id !== job.id));
+                  alert(status.errorMessage || 'A background generation failed.');
+                }
+              } catch (err) {
+                console.error('[Generator] Poll error:', err);
+              }
+            }, 2000);
+
+            // Safety timeout
+            setTimeout(() => clearInterval(pollInterval), 5 * 60 * 1000);
+          });
+        }
+      } catch (error) {
+        console.error('[Generator] Failed to load pending jobs:', error);
+      }
+    };
+
+    loadPendingJobs();
+  }, [business.id, setPendingAssets]);
 
   // State for Ultra Confirm Modal
   const [showUltraConfirm, setShowUltraConfirm] = useState(false);
@@ -186,8 +257,6 @@ const Generator: React.FC<GeneratorProps> = ({
     subjectId: string,
     modelTier: 'flash' | 'pro' | 'ultra'
   ) => {
-    // if (loading) return; // REMOVED for Concurrency
-
     // Pricing Logic (Visual Check Only - Server Enforces)
     const COST_MAP = {
       flash: 10,
@@ -196,7 +265,6 @@ const Generator: React.FC<GeneratorProps> = ({
     };
 
     const cost = COST_MAP[modelTier];
-
     const isDebug = prompt.toLowerCase().startsWith('debug:');
 
     if (!isDebug && business.credits < cost) {
@@ -204,26 +272,20 @@ const Generator: React.FC<GeneratorProps> = ({
       return;
     }
 
-    // setLoading(true); // REMOVED for Concurrency
     if (deductCredit && !isDebug) {
-      deductCredit(cost); // <--- DEDUCT CREDITS NOW
+      deductCredit(cost);
     }
 
-    // 1. Create Pending Asset
-    const tempId = Date.now().toString();
-
-    // Look up from state instead of constants
+    // Look up from state
     const stylePreset = aestheticStyles.find(s => s.id === styleId);
     const subject = subjects.find(s => s.id === subjectId);
 
-    // Construct Final Prompt
-    let fullPrompt = prompt;
-    // Removed manual style appending to avoid duplication with PromptFactory
-
+    // Create pending asset with stable ID (used as React key)
+    const stableId = `pending_${Date.now()}_${Math.random().toString(36).substring(7)}`;
     const newPendingAsset: ExtendedAsset = {
-      id: tempId,
+      id: stableId,
       type: 'image',
-      content: '', // Placeholder
+      content: '',
       prompt: prompt,
       createdAt: new Date().toISOString(),
       localStatus: 'generating',
@@ -234,81 +296,75 @@ const Generator: React.FC<GeneratorProps> = ({
       modelTier: modelTier
     };
 
+    // Card appears INSTANTLY
     setPendingAssets(prev => [newPendingAsset, ...prev]);
 
     try {
-      // 2. Call API
-      const result = await generateImage(
-        fullPrompt,
+      // 1. Call API - returns job ID
+      const { jobId } = await generateImage(
+        prompt,
         business,
-        stylePreset, // stylePreset
+        stylePreset,
         subject ? {
           ...subject,
           preserveLikeness: subject.preserveLikeness || false
-        } : undefined, // subjectContext
-        ratio, // Pass Aspect Ratio
-        modelTier === 'flash' ? 'pro' : modelTier, // Ensure 'flash' is mapped to 'pro' if it somehow slips through
-        strategy // NEW: Pass strategy override
+        } : undefined,
+        ratio,
+        modelTier === 'flash' ? 'pro' : modelTier,
+        strategy
       );
 
-      // Fix: Check if result is a valid data URL string
-      if (result && typeof result === 'string' && result.startsWith('data:image')) {
-        // 3. Success
+      // 2. Store jobId for polling (but DON'T change the id - that's the React key!)
+      setPendingAssets(prev => prev.map(a =>
+        a.id === stableId ? { ...a, jobId: jobId } : a
+      ));
 
-        // UPLOAD TO STORAGE (Phase 1 Fix)
-        const publicUrl = await StorageService.uploadGeneratedAsset(result, business.id);
-        if (!publicUrl) throw new Error("Failed to upload generated asset to storage.");
+      // 3. Poll for completion
+      const pollInterval = setInterval(async () => {
+        try {
+          const status = await pollJobStatus(jobId);
 
-        // Strip localStatus to ensure it renders as a completed AssetCard
-        const { localStatus, ...rest } = newPendingAsset;
+          if (status.status === 'completed' && status.asset) {
+            clearInterval(pollInterval);
 
-        const finalAsset: Asset = {
-          ...rest,
-          id: tempId, // REUSE ID for seamless transition
-          content: publicUrl, // Use URL, not base64
-        };
+            // Update pending asset with URL and set to complete
+            setPendingAssets(prev => prev.map(a =>
+              a.id === stableId
+                ? { ...a, localStatus: 'complete', content: status.asset.content }
+                : a
+            ));
 
-        // CRITICAL FIX: Save to DB immediately to prevent data loss on refresh
-        // We do this in the background. The UI update happens later in handleReveal.
-        StorageService.saveAsset({ ...finalAsset, businessId: business.id }).catch(err => {
-          console.error("Failed to save asset immediately:", err);
-        });
+          } else if (status.status === 'failed') {
+            clearInterval(pollInterval);
 
-        // Optimistic Update: Add to parent state immediately (DO NOT AWAIT DB SAVE)
-        // addAsset(finalAsset); // MOVED TO REVEAL
-
-        // Update pending asset to complete, but keep it in pending list for animation
-        setPendingAssets(prev => prev.map(a =>
-          a.id === tempId
-            ? { ...a, localStatus: 'complete', content: publicUrl } // Update with URL
-            : a
-        ));
-
-        // Remove pending asset immediately // REMOVED - Wait for reveal
-        // setPendingAssets(prev => prev.filter(a => a.id !== tempId));
-
-        // Note: Credit update from server response is lost in Direct Mode.
-        // We rely on the client or separate logic for credit sync if needed.
-
-      } else {
-        // Failure - Remove pending asset AND REFUND
-        setPendingAssets(prev => prev.filter(a => a.id !== tempId));
-        if (deductCredit) {
-          deductCredit(-cost); // REFUND
-          alert("Generation failed. Credits have been refunded.");
+            // Remove pending and refund
+            setPendingAssets(prev => prev.filter(a => a.id !== stableId));
+            if (deductCredit) {
+              deductCredit(-cost); // REFUND
+              alert(status.errorMessage || 'Generation failed. Credits have been refunded.');
+            }
+          }
+          // If still 'processing' or 'pending', keep polling
+        } catch (pollError) {
+          console.error("Poll error:", pollError);
+          // Don't clear interval on temporary errors
         }
-      }
+      }, 2000); // Poll every 2 seconds
+
+      // Safety: Stop polling after 5 minutes
+      setTimeout(() => {
+        clearInterval(pollInterval);
+      }, 5 * 60 * 1000);
 
     } catch (error) {
       console.error("Generation Error", error);
-      setPendingAssets(prev => prev.filter(a => a.id !== tempId));
+      setPendingAssets(prev => prev.filter(a => a.id !== stableId));
       if (deductCredit) {
         deductCredit(-cost); // REFUND
         alert("An unexpected error occurred. Credits have been refunded.");
       }
     }
-    // Finally block removed as it was empty
-  }, [business, deductCredit, updateCredits, addAsset, setPendingAssets, subjects, aestheticStyles]);
+  }, [business, deductCredit, updateCredits, addAsset, setPendingAssets, subjects, aestheticStyles, strategy]);
 
   const handleGenerate = useCallback(async (
     prompt: string,
@@ -381,6 +437,13 @@ const Generator: React.FC<GeneratorProps> = ({
     // Remove from pending list
     setPendingAssets(prev => prev.filter(a => a.id !== id));
   }, [pendingAssets, addAsset, setPendingAssets]);
+
+  // Handle animation phase changes from GeneratorCard
+  const handlePhaseChange = useCallback((id: string, phase: 'warmup' | 'cruise' | 'deceleration' | 'revealed') => {
+    setPendingAssets(prev => prev.map(a =>
+      a.id === id ? { ...a, animationPhase: phase } : a
+    ));
+  }, [setPendingAssets]);
 
   const handleReuse = useCallback((asset: Asset, mode: 'prompt_only' | 'all') => {
     if (mode === 'prompt_only') {
@@ -457,6 +520,8 @@ const Generator: React.FC<GeneratorProps> = ({
                       status={(asset as ExtendedAsset).localStatus || 'generating'}
                       onReveal={() => handleReveal(asset.id)}
                       resultContent={(asset as ExtendedAsset).content}
+                      animationPhase={(asset as ExtendedAsset).animationPhase || 'warmup'}
+                      onPhaseChange={(phase) => handlePhaseChange(asset.id, phase)}
                     />
                   </motion.div>
                 );

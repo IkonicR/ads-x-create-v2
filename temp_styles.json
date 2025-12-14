@@ -1,0 +1,411 @@
+[dotenv@17.2.3] injecting env (10) from .env.local -- tip: 🔐 prevent building .env in docker: https://dotenvx.com/prebuild
+[
+  {
+    "id": "34c7404e-03e8-431e-90ac-65b9f83bc0d0",
+    "name": "Clay-Pop",
+    "description": "Soft matte clay on a clean studio backdrop.",
+    "prompt_modifier": "Soft sculpted clay forms, Velvet matte surface, Subtle pores and dimples, Rounded edges and seams. High-end 3D render.",
+    "image_url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395920602_0uxq8b.png",
+    "sort_order": 0,
+    "is_active": true,
+    "created_at": "2025-11-29T05:19:41.97039+00:00",
+    "logo_material": "Matte Clay Emboss",
+    "reference_images": [
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395919492_54cn1.png",
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395920602_0uxq8b.png",
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395921026_ofz2mi.png",
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395921508_74xmjg.png",
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395922014_vdb4u.png",
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395922504_oian88.png"
+    ],
+    "style_cues": [
+      "Soft sculpted clay forms",
+      "Velvet matte surface",
+      "Subtle pores and dimples",
+      "Rounded edges and seams"
+    ],
+    "avoid": [
+      "Harsh reflections",
+      "Glossy surfaces",
+      "Sharp edges"
+    ],
+    "reference_images_json": [
+      {
+        "id": "b11a9960-23c2-4083-a695-64f2936a7909",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395919492_54cn1.png",
+        "isActive": true
+      },
+      {
+        "id": "3751a7f7-2236-432f-b7a5-bc11fbacd591",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395920602_0uxq8b.png",
+        "isActive": true
+      },
+      {
+        "id": "f8444c71-7202-4d98-92ee-be8bdc3ce663",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395921026_ofz2mi.png",
+        "isActive": true
+      },
+      {
+        "id": "0729f55f-1298-40fd-ac4f-619eb8e998b2",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395921508_74xmjg.png",
+        "isActive": true
+      },
+      {
+        "id": "6d31c3bf-5918-4d6c-a0b2-c2c5e2d66b8d",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395922014_vdb4u.png",
+        "isActive": true
+      },
+      {
+        "id": "7718f267-d11c-4bbd-9f8d-7f6a22ba11e2",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395922504_oian88.png",
+        "isActive": true
+      }
+    ],
+    "config": {}
+  },
+  {
+    "id": "635514c2-555d-42f5-8916-884c86355234",
+    "name": "Digital Zine",
+    "description": "High-energy mixed media collage with sticker aesthetics, tape strips, and paper textures.",
+    "prompt_modifier": "A chaotic but organized mixed-media collage. The background is a high-resolution crumpled paper texture that is completely flooded in the [Brand Primary Color]. The main subject is treated as a 2D photographic cut-out with a thick white die-cut border (sticker aesthetic). Typography is bold and eclectic: Use a mix of black adhesive tape strips (white text) AND torn white paper strips (black text) to create contrast blocks for the headline. Surround the subject with hand-drawn marker doodles (arrows, scribbles, stars) in contrasting ink (black or white). Use halftone dot patterns to add grit. The lighting should be a top-down 'flat lay' with hard drop shadows under the paper elements to create physical depth. Do not use gradients.",
+    "image_url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764579996882_dle6jb.jpeg",
+    "sort_order": 1,
+    "is_active": true,
+    "created_at": "2025-12-01T08:01:34.005843+00:00",
+    "logo_material": "Glossy Die-Cut Vinyl Sticker with white stroke and hard shadow",
+    "reference_images": [
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764577393689_qh83bd.webp",
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764579996882_dle6jb.jpeg",
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764577395436_yji7eg.webp",
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764577394410_9v6xk.webp",
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764579997538_bobvvr.jpeg"
+    ],
+    "style_cues": [
+      "Flooded Paper Texture",
+      "Die-Cut White Borders",
+      "Mixed Black/White Tape Typography",
+      "Marker Scribbles",
+      "Halftone Dot Patterns"
+    ],
+    "avoid": [
+      "3D smooth renders",
+      "neon glow effects",
+      "corporate vector art",
+      "smooth gradients",
+      "minimalist clean space",
+      "floating 3D objects"
+    ],
+    "reference_images_json": [
+      {
+        "id": "4ffce255-080a-45ac-b7d0-dca2cda21613",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764577393689_qh83bd.webp",
+        "isActive": false
+      },
+      {
+        "id": "f82eca47-9f71-4e9d-ab2c-062dfbf66934",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764579996882_dle6jb.jpeg",
+        "isActive": true
+      },
+      {
+        "id": "45d2dff4-11da-42d1-813b-e208601b3bc0",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764577395436_yji7eg.webp",
+        "isActive": true
+      },
+      {
+        "id": "26075631-af33-404c-904a-48dde5574794",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764577394410_9v6xk.webp",
+        "isActive": true
+      },
+      {
+        "id": "a93097b5-f3cc-4582-a04b-231f034bc68e",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764579997538_bobvvr.jpeg",
+        "isActive": true
+      }
+    ],
+    "config": {
+      "lighting": {
+        "style": "Hard Flash",
+        "quality": "Harsh / Direct",
+        "contrast": "High Contrast",
+        "temperature": "Neutral White",
+        "atmospherics": "Surface Texture Grain"
+      },
+      "viewpoint": {
+        "angle": "Top-Down 90°",
+        "shotType": "Flat Lay (Knolling)",
+        "framingRule": "Organized Chaos",
+        "perspective": "Orthographic / Zero-Point",
+        "depthOfField": "Deep Focus (Everything Sharp)"
+      },
+      "aesthetics": {
+        "clarity": "High Structure / Gritty",
+        "colorGrade": "Hyper-Saturated",
+        "textureOverlay": "Crumpled Paper & Halftone Dots",
+        "primarySurfaceMaterial": "Construction Paper"
+      },
+      "schemaVersion": "3.0",
+      "brandApplication": {
+        "prominence": "Dominant Environment",
+        "materiality": "Glossy Die-Cut Vinyl Sticker",
+        "integrationMethod": "Flooded Material Background",
+        "lightingInteraction": "Hard Drop Shadows"
+      },
+      "mediumController": {
+        "medium": "Mixed Media Collage",
+        "executionDetails": {
+          "style": "Neo-Brutalism",
+          "brushwork": "Marker Pen Scribbles",
+          "shotStyle": "Dadaist Assemblage",
+          "technique": "Analog Cut-and-Paste",
+          "cameraSystem": "High-Res Flatbed Scan",
+          "renderEngine": "Physical Based Rendering (PBR)"
+        }
+      }
+    }
+  },
+  {
+    "id": "9a070e65-ff68-4d58-b05a-13b1fb45eaa4",
+    "name": "Editorial Pop",
+    "description": "Sophisticated fashion-editorial vibe featuring massive serif typography and vibrant geometric stickers.",
+    "prompt_modifier": "A high-end fashion editorial composition. The background is a clean, muted studio grey or a desaturated urban wall. The lighting is soft, diffused 'butterfly' fashion lighting. The typography is MASSIVE, elegant Serif (Caslon/Didot style) in sharp Black, with tight negative tracking (letters touching). The KEY VISUAL SIGNATURE is a single, vibrant [Brand Primary Color] geometric sticker (oval, pill, or circle shape) that acts as a label or badge behind a specific keyword. The main subject is styled in a chic, anonymous way (e.g., face obscured by a prop, a phone, or a paper bag, or a focus on hands). The image is almost entirely Black & White/Greige, making the colored sticker element pop aggressively.",
+    "image_url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764942871045_4qtesb.jpeg",
+    "sort_order": 2,
+    "is_active": true,
+    "created_at": "2025-12-05T13:54:39.984645+00:00",
+    "logo_material": null,
+    "reference_images": [
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764942867107_twf2m.jpeg",
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764942868911_8cssq7.jpeg",
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764942870033_32yhxp.jpeg",
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764942871045_4qtesb.jpeg"
+    ],
+    "style_cues": [
+      "Massive Serif Headlines",
+      "Monochrome Background",
+      "Vibrant Geometric Sticker",
+      "Anonymous Subject Styling"
+    ],
+    "avoid": [
+      "Colorful backgrounds",
+      "Gradients",
+      "Cartoonish doodles",
+      "Distressed paper textures",
+      "Busy patterns"
+    ],
+    "reference_images_json": [
+      {
+        "id": "50cee178-fd6e-4254-95e9-7a82623dccba",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764942867107_twf2m.jpeg",
+        "isActive": true
+      },
+      {
+        "id": "baf725ef-3444-4ce2-aaaf-4bf358acd469",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764942868911_8cssq7.jpeg",
+        "isActive": true
+      },
+      {
+        "id": "e4fa2f4a-8219-4765-9c58-11bba1522858",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764942870033_32yhxp.jpeg",
+        "isActive": true
+      },
+      {
+        "id": "9972c17e-90ad-47aa-a81b-9ff2284b7428",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764942871045_4qtesb.jpeg",
+        "isActive": true
+      }
+    ],
+    "config": {
+      "lighting": {
+        "style": "Butterfly Lighting / Softbox",
+        "quality": "Diffused / Soft",
+        "contrast": "Muted / Low",
+        "temperature": "Cool Studio Grey",
+        "atmospherics": "Clean Studio Air"
+      },
+      "viewpoint": {
+        "angle": "Eye Level",
+        "shotType": "Medium Close-Up",
+        "framingRule": "Central Subject with Negative Space",
+        "perspective": "50mm Portrait Lens",
+        "depthOfField": "Shallow (Subject Focus)"
+      },
+      "aesthetics": {
+        "clarity": "Soft Skin / Sharp Typography",
+        "colorGrade": "Monochrome / Desaturated",
+        "textureOverlay": "Fine Art Paper Grain",
+        "primarySurfaceMaterial": "Studio Seamless Backdrop"
+      },
+      "schemaVersion": "3.0",
+      "brandApplication": {
+        "prominence": "Focal Point Pop",
+        "materiality": "Matte Vinyl on Paper",
+        "integrationMethod": "Geometric Sticker Overlay",
+        "lightingInteraction": "Soft Specular Highlight"
+      },
+      "mediumController": {
+        "medium": "Studio Photography",
+        "executionDetails": {
+          "style": "Minimalist Chic",
+          "brushwork": "Clean Lines",
+          "shotStyle": "High Fashion Editorial",
+          "technique": "Studio Portraiture",
+          "cameraSystem": "Medium Format Digital (Hasselblad)",
+          "renderEngine": "Photorealistic"
+        }
+      }
+    }
+  },
+  {
+    "id": "66f58de4-5839-4ac8-bc32-c86c0962545d",
+    "name": "Nostalgia Royale",
+    "description": "Poster serenity—deep field, soft shading.",
+    "prompt_modifier": "Flat poster silhouettes, Deep single colour field, Broad soft interior shading, Mid century simplified forms.",
+    "image_url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395942272_064f2w.png",
+    "sort_order": 0,
+    "is_active": true,
+    "created_at": "2025-11-29T05:19:41.97039+00:00",
+    "logo_material": "Screen Printed Ink",
+    "reference_images": [
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395941073_f58q3n.png",
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395941808_kjvus7.png",
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395942272_064f2w.png"
+    ],
+    "style_cues": [
+      "Flat poster silhouettes",
+      "Deep single colour field",
+      "Broad soft interior shading",
+      "Mid century simplified forms"
+    ],
+    "avoid": [
+      "Glossy highlights",
+      "Photorealism",
+      "Complex textures"
+    ],
+    "reference_images_json": [
+      {
+        "id": "2a8986bc-4639-416e-91a8-0cc3ef32ddd1",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395941073_f58q3n.png",
+        "isActive": true
+      },
+      {
+        "id": "7e0b3973-5bf1-4089-98a9-2ea4286a805c",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395941808_kjvus7.png",
+        "isActive": true
+      },
+      {
+        "id": "9fc14257-6ffc-4769-a912-b5ac40900344",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395942272_064f2w.png",
+        "isActive": true
+      }
+    ],
+    "config": {}
+  },
+  {
+    "id": "558c80e7-5a60-4b90-b8b4-400252a39e81",
+    "name": "Playful Line Art",
+    "description": "Playful monoline on near-white.",
+    "prompt_modifier": "Rounded monoline outlines, Near white paper background, Generous negative space, Halftone dots on hero.",
+    "image_url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395955037_s6xbwa.png",
+    "sort_order": 0,
+    "is_active": true,
+    "created_at": "2025-11-29T05:19:41.97039+00:00",
+    "logo_material": "Monoline Vector",
+    "reference_images": [
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395955037_s6xbwa.png",
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395955877_jlv2gn.png",
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395956269_nipqj.png",
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395956654_268arj.png",
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395957225_0m9b3f.png"
+    ],
+    "style_cues": [
+      "Rounded monoline outlines",
+      "Near white paper background",
+      "Generous negative space",
+      "Halftone dots on hero"
+    ],
+    "avoid": [
+      "Gradients",
+      "Complex shading",
+      "Photorealism"
+    ],
+    "reference_images_json": [
+      {
+        "id": "aefb4580-382d-4057-b4a9-de2a6ab40535",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395955037_s6xbwa.png",
+        "isActive": true
+      },
+      {
+        "id": "c201089b-f3fc-498a-90b4-a72d6a438519",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395955877_jlv2gn.png",
+        "isActive": true
+      },
+      {
+        "id": "de996a3f-41a5-42d4-b0f3-193f116f4c1f",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395956269_nipqj.png",
+        "isActive": true
+      },
+      {
+        "id": "5fa0f0f1-b81e-4b06-b7e8-54f919c3c001",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395956654_268arj.png",
+        "isActive": true
+      },
+      {
+        "id": "130f746c-9fa0-4bd6-a503-9dd661df96bc",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system_assets/styles/refs/1764395957225_0m9b3f.png",
+        "isActive": true
+      }
+    ],
+    "config": {}
+  },
+  {
+    "id": "b75e3202-d5be-4b64-917f-c947340901e1",
+    "name": "Printissimo",
+    "description": "Punchy riso poster—bold spot inks.",
+    "prompt_modifier": "Light paper texture, Two to three spot inks, Deliberate misregistration, Halftone dot shading.",
+    "image_url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764577243406_2i0rqd.png",
+    "sort_order": 0,
+    "is_active": true,
+    "created_at": "2025-11-29T05:19:41.97039+00:00",
+    "logo_material": "Overprinted Ink",
+    "reference_images": [
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764577243406_2i0rqd.png",
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764577244015_x1ruac.png",
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764577244485_vvi8pk.png",
+      "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764577245123_9hhks.png"
+    ],
+    "style_cues": [
+      "Light paper texture",
+      "Two to three spot inks",
+      "Deliberate misregistration",
+      "Halftone dot shading"
+    ],
+    "avoid": [
+      "Soft airbrush glows",
+      "Digital gradients",
+      "Perfect registration"
+    ],
+    "reference_images_json": [
+      {
+        "id": "472261c2-eafe-4fbd-85fc-5a0c76a182a6",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764577243406_2i0rqd.png",
+        "isActive": true
+      },
+      {
+        "id": "db688e72-b7bc-470f-a4fc-6a4e811773a8",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764577244015_x1ruac.png",
+        "isActive": true
+      },
+      {
+        "id": "2143eb69-2cb0-411b-b3d4-bf98d44fb1eb",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764577244485_vvi8pk.png",
+        "isActive": true
+      },
+      {
+        "id": "7ba6303f-55a2-4801-a9cf-01efe249f449",
+        "url": "https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/system/styles/1764577245123_9hhks.png",
+        "isActive": true
+      }
+    ],
+    "config": {}
+  }
+]

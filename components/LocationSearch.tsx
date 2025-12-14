@@ -51,7 +51,48 @@ export const LocationSearch: React.FC<LocationSearchProps> = ({ value, onChange,
     }
   }, [isLoaded]);
 
-  // ... (existing useEffects for input sync and predictions remain the same)
+  // Sync Input with Value Prop (Fixes "Business Name vs Address" issue)
+  useEffect(() => {
+    setInputValue(value);
+  }, [value]);
+
+  // Fetch Predictions (Debounced)
+  useEffect(() => {
+    if (!inputValue || inputValue === value) {
+      setPredictions([]);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (autocompleteService.current && inputValue.length > 2) {
+        autocompleteService.current.getPlacePredictions(
+          {
+            input: inputValue,
+            sessionToken: sessionToken.current || undefined,
+            // types: [], // REMOVED: No restrictions. Search everything.
+          },
+          (results, status) => {
+            console.log('📍 Maps API Status:', status);
+            // console.log('📍 Maps API Results:', results);
+
+            if (status === google.maps.places.PlacesServiceStatus.OK && results) {
+              setPredictions(results);
+              setShowDropdown(true);
+            } else {
+              if (status === google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
+                console.warn('📍 Zero results found for:', inputValue);
+              } else if (status === google.maps.places.PlacesServiceStatus.REQUEST_DENIED) {
+                console.error('🚨 API Request Denied. Check your API Key and billing.');
+              }
+              setPredictions([]);
+            }
+          }
+        );
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [inputValue, value]);
 
   const handleSelect = async (prediction: google.maps.places.AutocompletePrediction) => {
     // 1. Show the user what they clicked, but indicate we are processing

@@ -3,7 +3,7 @@ import { NeuCard, NeuInput, NeuButton, NeuBadge, useThemeStyles } from '../compo
 import { GalaxyHeading } from '../components/GalaxyHeading';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import { User, Mail, Lock, Bell, CreditCard, Shield, LogOut, Moon, Sun, Chrome } from 'lucide-react';
+import { User, Mail, Lock, Bell, CreditCard, Shield, LogOut, Moon, Sun, Chrome, Building } from 'lucide-react';
 import { StorageService } from '../services/storage';
 
 const UserProfile: React.FC = () => {
@@ -143,6 +143,14 @@ const UserProfile: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2 mb-4">
+                <NeuButton
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-600 dark:text-gray-300 transition-all font-bold"
+                  onClick={() => window.location.href = '/business-manager'}
+                >
+                  <Building size={16} /> Manage All Businesses
+                </NeuButton>
+              </div>
               <div>
                 <label className={`block text-xs font-bold ${styles.textSub} mb-2`}>Full Name</label>
                 <NeuInput

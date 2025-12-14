@@ -110,9 +110,8 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
 
     setStep('extracting');
 
-    // Extract the first selected URL (for now, we'll use single mode on primary URL)
-    // The server can be enhanced later to accept multiple URLs
-    const result = await extractWebsite(selectedPageUrls[0], 'single', setExtractionState);
+    // Pass ALL selected URLs with 'select' mode for batch scraping
+    const result = await extractWebsite(selectedPageUrls, 'select', setExtractionState);
     setExtractionResult(result);
     if (result.success && result.data) setStep('preview');
   }, [selectedPageUrls]);
@@ -214,27 +213,21 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
             </span>
           </button>
           <button
-            onClick={() => setCrawlMode('select')}
-            className={`py-3 px-3 rounded-xl text-sm font-medium transition-all ${crawlMode === 'select'
-              ? 'bg-brand/20 text-brand border-2 border-brand'
-              : `${styles.bg} ${styles.shadowOut} hover:scale-[1.01]`
-              }`}
+            onClick={() => { }}
+            className={`py-3 px-3 rounded-xl text-sm font-medium transition-all opacity-50 cursor-not-allowed ${styles.bg} ${styles.shadowOut}`}
           >
             📋 Choose Pages
-            <span className={`block text-xs mt-1 ${crawlMode === 'select' ? 'opacity-80' : styles.textSub}`}>
-              Selective
+            <span className={`block text-xs mt-1 text-red-400 font-bold`}>
+              Coming Soon
             </span>
           </button>
           <button
-            onClick={() => setCrawlMode('full')}
-            className={`py-3 px-3 rounded-xl text-sm font-medium transition-all ${crawlMode === 'full'
-              ? 'bg-brand/20 text-brand border-2 border-brand'
-              : `${styles.bg} ${styles.shadowOut} hover:scale-[1.01]`
-              }`}
+            onClick={() => { }}
+            className={`py-3 px-3 rounded-xl text-sm font-medium transition-all opacity-50 cursor-not-allowed ${styles.bg} ${styles.shadowOut}`}
           >
             🌐 Full Site
-            <span className={`block text-xs mt-1 ${crawlMode === 'full' ? 'opacity-80' : styles.textSub}`}>
-              10 pages
+            <span className={`block text-xs mt-1 text-red-400 font-bold`}>
+              Coming Soon
             </span>
           </button>
         </div>
@@ -257,6 +250,10 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
           )}
         </NeuButton>
       </div>
+
+      <p className={`text-xs pl-2 pt-4 py-2 ${styles.textSub} opacity-70 text-center max-w-sm mx-auto`}>
+        This feature is in <strong>Beta</strong>. The AI may make mistakes or miss content. Please review all extracted data carefully.
+      </p>
 
       <button
         onClick={() => setStep('manual')}
@@ -452,7 +449,12 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                   <Sparkles size={28} />
                 </div>
                 <div className="text-center">
-                  <div className="font-bold">Import from Website</div>
+                  <div className="font-bold flex items-center justify-center gap-2">
+                    Import from Website
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-600 border border-blue-200 uppercase tracking-wide">
+                      Beta
+                    </span>
+                  </div>
                   <div className={`text-xs ${styles.textSub} font-normal mt-1`}>
                     AI extracts your brand automatically
                   </div>

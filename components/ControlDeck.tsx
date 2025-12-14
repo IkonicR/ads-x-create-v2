@@ -4,6 +4,7 @@ import { useThemeStyles, useNeuAnimations, NeuButton, NeuInput, NeuDropdown } fr
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Send, LayoutTemplate, Palette, X, Crop, User, Smartphone, Monitor, Square, Box, RectangleVertical, RectangleHorizontal, Zap, Diamond, Plus, Camera, Sun, Edit2, Target, DollarSign, Tag, RotateCcw } from 'lucide-react';
 import { StylePreset, ViewState, GenerationStrategy, VisualMotif, CampaignMode, SubjectType, Offering, TeamMember } from '../types';
+import { SmartPromptInput } from './SmartPromptInput';
 import { useNavigation } from '../context/NavigationContext';
 import { supabase } from '../services/supabase';
 import { CAMPAIGN_PRESETS, applyPreset, DEFAULT_STRATEGY } from '../constants/campaignPresets';
@@ -15,7 +16,7 @@ const formatValue = (val: string) => {
 };
 
 interface ControlDeckProps {
-  onGenerate: (prompt: string, styleId: string, ratio: string, subjectId: string, modelTier: 'flash' | 'pro' | 'ultra') => void;
+  onGenerate: (prompt: string, styleId: string, ratio: string, subjectId: string, modelTier: 'flash' | 'pro' | 'ultra', thinkingMode?: 'LOW' | 'HIGH') => void;
   styles: StylePreset[];
   subjects: { id: string; name: string; type: 'product' | 'service' | 'person' | 'location'; imageUrl?: string; price?: string; description?: string; preserveLikeness?: boolean; promotion?: string }[];
   activeCount?: number;
@@ -73,6 +74,10 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
   const [selectedRatio, setSelectedRatio] = useState(() => loadSetting('ratio', '1:1'));
   const [selectedSubject, setSelectedSubject] = useState(() => loadSetting('subject', ''));
   const [modelTier, setModelTier] = useState<'pro' | 'ultra'>(() => loadSetting('tier', 'pro') as any);
+  const [thinkingMode, setThinkingMode] = useState<'LOW' | 'HIGH' | undefined>(() => {
+    const saved = loadSetting('thinkingMode', '');
+    return saved === 'LOW' || saved === 'HIGH' ? saved : undefined;
+  });
 
   // Restore State Effect
   React.useEffect(() => {
@@ -93,7 +98,8 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
     localStorage.setItem('gen_subject', selectedSubject);
     localStorage.setItem('gen_subject', selectedSubject);
     localStorage.setItem('gen_tier', modelTier);
-  }, [prompt, selectedStyle, selectedRatio, selectedSubject, modelTier]);
+    localStorage.setItem('gen_thinkingMode', thinkingMode || '');
+  }, [prompt, selectedStyle, selectedRatio, selectedSubject, modelTier, thinkingMode]);
 
   const [activeMenu, setActiveMenu] = useState<'style' | 'ratio' | 'subject' | 'model' | 'strategy' | null>(null);
 
@@ -130,10 +136,10 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!prompt.trim()) return;
-    onGenerate(prompt, selectedStyle, selectedRatio, selectedSubject, modelTier);
+    onGenerate(prompt, selectedStyle, selectedRatio, selectedSubject, modelTier, thinkingMode);
   };
 
   const activeStyleName = aestheticStyles.find(s => s.id === selectedStyle)?.name || 'Style';
@@ -167,10 +173,14 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
   useOnClickOutside(menuRef, () => setActiveMenu(null));
 
   return (
-    <div className={`fixed bottom-24 md:bottom-8 left-1/2 md:left-[calc(50%+48px)] -translate-x-1/2 z-50 w-[95%] md:w-[calc(100%-120px)] max-w-3xl transition-all duration-300`}>
+    <div className={`fixed bottom-24 md:bottom-8 left-1/2 md:left-[calc(50%+48px)] -translate-x-1/2 z-40 w-[95%] md:w-[calc(100%-120px)] max-w-3xl transition-all duration-300`}>
 
       {/* The Slab */}
-      <div className={`rounded-[2rem] p-3 ${slabBg} ${slabShadowClass} relative flex flex-col gap-3`}>
+      <motion.div
+        layout
+        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+        className={`rounded-[2rem] p-3 ${slabBg} ${slabShadowClass} relative flex flex-col gap-3`}
+      >
 
         {/* Popover Menus */}
         <AnimatePresence>
@@ -816,81 +826,18 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
         </div>
 
         {/* Input Area */}
-        <form onSubmit={handleSubmit} className="relative flex items-center gap-3">
-          <div className={`flex-1 relative rounded-2xl ${insetShadowClass} overflow-hidden`}>
-            <input
-              type="text"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder={selectedSubject ? `Describe the scene for ${activeSubjectLabel}...` : "Describe your vision..."}
-              className={`w-full pl-5 pr-4 py-4 bg-transparent outline-none text-base font-medium ${themeStyles.textMain} placeholder-gray-400`}
-              autoFocus
-            />
-          </div>
+        {/* Input Area */}
+        <SmartPromptInput
+          prompt={prompt}
+          setPrompt={setPrompt}
+          onSubmit={handleSubmit}
+          placeholder={selectedSubject ? `Describe the scene for ${activeSubjectLabel}...` : "Describe your vision..."}
+          activeCount={activeCount}
+          modelTier={modelTier}
+          disabled={!prompt.trim()}
+        />
 
-          <div className="relative">
-            {/* Techy Glowing Border (Only when active) */}
-            <AnimatePresence>
-              {activeCount > 0 && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="absolute -inset-[3px] rounded-2xl overflow-hidden z-0"
-                >
-                  <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                    className="w-[200%] h-[200%] absolute top-[-50%] left-[-50%] bg-[conic-gradient(from_0deg,transparent_0deg,#3b82f6_180deg,transparent_360deg)] opacity-80 blur-sm"
-                  />
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <button
-              type="submit"
-              disabled={!prompt.trim()}
-              className={`relative z-10 w-14 h-14 rounded-2xl flex items-center justify-center transition-all text-white overflow-hidden ${!prompt.trim()
-                ? 'bg-gray-400 cursor-not-allowed opacity-50'
-                : modelTier === 'ultra'
-                  ? 'bg-gradient-to-tr from-purple-500 to-pink-500 shadow-lg shadow-purple-500/40 hover:scale-105 active:scale-95'
-                  : 'bg-[#1a1a1a] border border-white/10 shadow-lg active:scale-95'
-                }`}
-            >
-              <AnimatePresence mode="wait">
-                {activeCount > 0 ? (
-                  <motion.div
-                    key="count"
-                    initial={{ scale: 0.5, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0.5, opacity: 0 }}
-                    className="flex flex-col items-center justify-center relative"
-                  >
-                    {/* HUD Ring */}
-                    <motion.div
-                      animate={{ rotate: -360 }}
-                      transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-                      className="absolute inset-[-8px] border border-blue-400/30 rounded-full border-t-transparent border-l-transparent"
-                    />
-                    <span className="text-[9px] font-bold leading-none text-blue-400 mb-0.5">GEN</span>
-                    <span className="text-sm font-bold leading-none text-white">{activeCount}</span>
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    key="icon"
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    exit={{ scale: 0 }}
-                  >
-                    <Send size={24} />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </button>
-          </div>
-        </form>
-
-      </div>
+      </motion.div>
     </div >
   );
 };

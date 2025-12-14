@@ -1,0 +1,3 @@
+
+ALTER TABLE presets 
+ADD COLUMN IF NOT EXISTS config JSONB DEFAULT '{}'::jsonb;

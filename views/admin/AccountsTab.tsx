@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Business } from '../../types';
 import { useThemeStyles, NeuButton, NeuInput } from '../../components/NeuComponents';
-import { Building2, Search, RefreshCw, ChevronLeft, ChevronRight, Wallet, CheckSquare, RotateCcw, Share2, X, Check, AlertCircle } from 'lucide-react';
+import { NeuModal } from '../../components/NeuModal';
+import { Building2, Search, RefreshCw, ChevronLeft, ChevronRight, Wallet, CheckSquare, RotateCcw, Share2, X, Check, AlertCircle, ExternalLink } from 'lucide-react';
 
 // CreditRow Component with Social Config
 const CreditRow: React.FC<{
@@ -292,22 +293,50 @@ const SocialConfigModal: React.FC<{
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-            <div className={`w-full max-w-md p-6 rounded-2xl ${styles.bg} ${styles.shadowOut} border border-white/10 animate-scale-in`}>
-                {/* Header */}
-                <div className="flex justify-between items-center mb-6">
-                    <div className="flex items-center gap-3">
-                        <div className={`p-2 rounded-xl ${styles.bg} ${styles.shadowIn}`}>
-                            <Share2 size={20} className="text-brand" />
-                        </div>
-                        <div>
-                            <h3 className={`font-bold ${styles.textMain}`}>Configure Social</h3>
-                            <p className={`text-xs ${styles.textSub}`}>{business.name}</p>
-                        </div>
+        <NeuModal
+            isOpen={true}
+            onClose={onClose}
+            title="Configure Social"
+            className="max-w-md w-full"
+        >
+            <div className="space-y-6">
+                {/* Business Info Badge */}
+                <div className={`p-3 rounded-xl ${styles.bg} ${styles.shadowIn} flex items-center gap-3`}>
+                    <div className={`p-1.5 rounded-lg ${styles.bg} ${styles.shadowOut}`}>
+                        <Share2 size={16} className="text-brand" />
                     </div>
-                    <button onClick={onClose} className={`p-2 rounded-xl ${styles.bg} ${styles.shadowOut} hover:text-red-400 transition-colors`}>
-                        <X size={18} />
-                    </button>
+                    <div>
+                        <p className={`text-[10px] uppercase font-bold ${styles.textSub}`}>Target Business</p>
+                        <p className={`font-bold ${styles.textMain} leading-none`}>{business.name}</p>
+                    </div>
+                </div>
+
+                {/* Connect App Section */}
+                <div className={`p-4 rounded-xl ${styles.bg} ${styles.shadowIn}`}>
+                    <h4 className={`text-sm font-bold ${styles.textMain} mb-2`}>Connect Sub-Account</h4>
+                    <p className={`text-xs ${styles.textSub} mb-4`}>
+                        Install the Ads x Create app on the client's GoHighLevel sub-account to enable social posting.
+                    </p>
+                    <NeuButton
+                        variant="primary"
+                        className="w-full justify-center"
+                        onClick={() => {
+                            const url = `/api/social/install?businessId=${business.id}`;
+                            window.open(url, 'ghl_install', 'width=600,height=800');
+                        }}
+                    >
+                        <ExternalLink size={16} className="mr-2" />
+                        Connect GHL Sub-Account
+                    </NeuButton>
+                </div>
+
+                <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                        <div className="w-full border-t border-gray-200/10"></div>
+                    </div>
+                    <div className="relative flex justify-center">
+                        <span className={`px-2 text-[10px] uppercase font-bold ${styles.textSub} ${styles.bg}`}>Or Configure Manually</span>
+                    </div>
                 </div>
 
                 {/* Form */}
@@ -350,7 +379,7 @@ const SocialConfigModal: React.FC<{
                 </div>
 
                 {/* Actions */}
-                <div className="flex justify-end gap-3 mt-6">
+                <div className="flex justify-end gap-3 pt-2">
                     <NeuButton onClick={onClose} disabled={isSaving}>
                         Cancel
                     </NeuButton>
@@ -359,6 +388,6 @@ const SocialConfigModal: React.FC<{
                     </NeuButton>
                 </div>
             </div>
-        </div>
+        </NeuModal>
     );
 };

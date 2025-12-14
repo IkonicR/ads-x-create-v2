@@ -19,7 +19,7 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const { isDirty, setDirty, registerSaveHandler } = useNavigation();
-  const { notify } = useNotification();
+  const { toast } = useNotification();
   const [isSaving, setIsSaving] = useState(false);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const { styles } = useThemeStyles();
@@ -70,13 +70,13 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
     setIsSaving(true);
     try {
       await updateBusiness(localBusinessRef.current);
-      notify({ title: 'Offerings Saved', type: 'success' });
+      toast({ title: 'Offerings Saved', type: 'success' });
     } catch (e) {
-      notify({ title: 'Save Failed', type: 'error' });
+      toast({ title: 'Save Failed', type: 'error' });
     } finally {
       setIsSaving(false);
     }
-  }, [updateBusiness, notify]);
+  }, [updateBusiness, toast]);
 
   useEffect(() => {
     const isChanged = JSON.stringify(business) !== JSON.stringify(localBusiness);
@@ -114,7 +114,7 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
 
   const handleEnhance = async () => {
     if (!formState.name) {
-      notify({ title: 'Enter a name first', type: 'info' });
+      toast({ title: 'Enter a name first', type: 'info' });
       return;
     }
     setIsEnhancing(true);
@@ -134,9 +134,9 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
         features: enhanced.features,
         promotion: enhanced.promotion
       }));
-      notify({ title: 'Product Enhanced!', type: 'success' });
+      toast({ title: 'Product Enhanced!', type: 'success' });
     } catch (e) {
-      notify({ title: 'Enhancement Failed', type: 'error' });
+      toast({ title: 'Enhancement Failed', type: 'error' });
     } finally {
       setIsEnhancing(false);
     }
@@ -169,13 +169,13 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
         ...prev,
         offerings: prev.offerings.map(o => o.id === editingId ? baseOffering : o)
       }));
-      notify({ title: 'Offering Updated', type: 'success' });
+      toast({ title: 'Offering Updated', type: 'success' });
     } else {
       setLocalBusiness(prev => ({
         ...prev,
         offerings: [...prev.offerings, baseOffering]
       }));
-      notify({ title: 'Offering Added', type: 'success' });
+      toast({ title: 'Offering Added', type: 'success' });
     }
     resetForm();
   };
@@ -231,10 +231,10 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
     let newMembers = [...(localBusiness.teamMembers || [])];
     if (editingTeamId) {
       newMembers = newMembers.map(m => m.id === editingTeamId ? baseMember : m);
-      notify({ title: 'Team Member Updated', type: 'success' });
+      toast({ title: 'Team Member Updated', type: 'success' });
     } else {
       newMembers.push(baseMember);
-      notify({ title: 'Team Member Added', type: 'success' });
+      toast({ title: 'Team Member Added', type: 'success' });
     }
 
     setLocalBusiness(prev => ({ ...prev, teamMembers: newMembers }));
@@ -277,10 +277,10 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
     let newLocations = [...(localBusiness.locations || [])];
     if (editingLocationId) {
       newLocations = newLocations.map(l => l.id === editingLocationId ? baseLocation : l);
-      notify({ title: 'Location Updated', type: 'success' });
+      toast({ title: 'Location Updated', type: 'success' });
     } else {
       newLocations.push(baseLocation);
-      notify({ title: 'Location Added', type: 'success' });
+      toast({ title: 'Location Added', type: 'success' });
     }
 
     setLocalBusiness(prev => ({ ...prev, locations: newLocations }));

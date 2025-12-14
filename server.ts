@@ -1,10 +1,12 @@
-
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { google } from '@ai-sdk/google';
+import { gateway } from '@ai-sdk/gateway';
 import { generateText } from 'ai';
+import { GoogleGenAI } from '@google/genai';
 import bodyParser from 'body-parser';
+// Note: PromptFactory is imported dynamically in generateImage route to avoid
+// supabase client initialization before dotenv.config() runs
 
 // Load environment variables
 dotenv.config({ path: '.env.local' });
@@ -27,8 +29,9 @@ app.post('/api/generate-text', async (req, res) => {
     try {
         const { messages, prompt, system, modelTier = 'standard' } = req.body;
 
-        const modelName = modelTier === 'premium' ? 'gemini-1.5-pro' : 'gemini-2.0-flash';
-        const model = google(modelName);
+        // Use Vercel AI Gateway - gemini-2.5-flash for all tiers (2.0-flash is outdated)
+        const modelId = modelTier === 'premium' ? 'google/gemini-2.5-pro' : 'google/gemini-2.5-flash';
+        const model = gateway(modelId);
 
         const result = await generateText({
             model,
@@ -36,7 +39,7 @@ app.post('/api/generate-text', async (req, res) => {
             system,
         });
 
-        console.log('[Server] Text Generated Successfully');
+        console.log('[Server] Text Generated Successfully via Vercel Gateway');
         res.json({ text: result.text });
 
     } catch (error) {
@@ -46,6 +49,14 @@ app.post('/api/generate-text', async (req, res) => {
 });
 
 // import generateImageHandler from './api/generate-image';
+import exportPrintHandler from './api/export-print';
+import testVercelAiHandler from './api/test-vercel-ai';
+
+// Share API Handlers (Printer Share Link)
+import shareCreateHandler from './api/share/create';
+import shareValidateHandler from './api/share/validate';
+import shareRevokeHandler from './api/share/revoke';
+import shareListHandler from './api/share/list';
 
 // --- API ROUTE: Generate Image (Adapter for Vercel Function) ---
 // This ensures we run the EXACT same code (Brain -> Hand) locally as in production.
@@ -82,6 +93,190 @@ app.post('/api/generate-image', async (req, res) => {
     }
 });
 */
+
+// --- API ROUTE: Print Export (Adapter for Vercel Function) ---
+app.post('/api/export-print', async (req, res) => {
+    console.log('[Server] Print Export Request Received');
+    try {
+        // Call the Vercel Function Handler
+        // Express req/res are compatible enough with VercelRequest/VercelResponse for this use case
+        await exportPrintHandler(req as any, res as any);
+    } catch (error: any) {
+        console.error('[Server] Print Export Adapter Error:', error);
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to execute export handler', details: error.message });
+        }
+    }
+});
+
+// --- API ROUTES: Share (Printer Share Link Feature) ---
+app.post('/api/share/create', async (req, res) => {
+    console.log('[Server] Share Create Request');
+    try {
+        await shareCreateHandler(req as any, res as any);
+    } catch (error: any) {
+        console.error('[Server] Share Create Error:', error);
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to create share', details: error.message });
+        }
+    }
+});
+
+app.get('/api/share/validate/:token', async (req, res) => {
+    console.log('[Server] Share Validate Request:', req.params.token);
+    try {
+        // Create a mock request with token in query (req.query is read-only)
+        const mockReq = {
+            ...req,
+            method: req.method,
+            headers: req.headers,
+            query: { token: req.params.token },
+        };
+        await shareValidateHandler(mockReq as any, res as any);
+    } catch (error: any) {
+        console.error('[Server] Share Validate Error:', error);
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to validate share', details: error.message });
+        }
+    }
+});
+
+app.post('/api/share/revoke', async (req, res) => {
+    console.log('[Server] Share Revoke Request');
+    try {
+        await shareRevokeHandler(req as any, res as any);
+    } catch (error: any) {
+        console.error('[Server] Share Revoke Error:', error);
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to revoke share', details: error.message });
+        }
+    }
+});
+
+app.get('/api/share/list', async (req, res) => {
+    console.log('[Server] Share List Request');
+    try {
+        await shareListHandler(req as any, res as any);
+    } catch (error: any) {
+        console.error('[Server] Share List Error:', error);
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to list shares', details: error.message });
+        }
+    }
+});
+
+// --- Share: Send Email ---
+app.post('/api/share/send-email', async (req, res) => {
+    console.log('[Server] Share Send Email Request');
+    try {
+        const { shareId, recipientEmail } = req.body;
+
+        if (!shareId || !recipientEmail) {
+            return res.status(400).json({ error: 'shareId and recipientEmail are required' });
+        }
+
+        // Check for Resend API key
+        if (!process.env.RESEND_API_KEY) {
+            return res.status(500).json({ error: 'Email service not configured' });
+        }
+
+        // Get auth
+        const authHeader = req.headers.authorization;
+        if (!authHeader?.startsWith('Bearer ')) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        const userToken = authHeader.split(' ')[1];
+
+        const supabaseUrl = process.env.VITE_SUPABASE_URL!;
+        const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY!;
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(supabaseUrl, supabaseSecretKey);
+
+        // Verify user
+        const { data: { user }, error: authError } = await supabase.auth.getUser(userToken);
+        if (authError || !user) {
+            return res.status(401).json({ error: 'Invalid auth token' });
+        }
+
+        // Get share and verify ownership
+        const { data: share, error: shareError } = await supabase
+            .from('shared_assets')
+            .select('*, businesses(name, logo_url)')
+            .eq('id', shareId)
+            .eq('created_by', user.id)
+            .single();
+
+        if (shareError || !share) {
+            return res.status(404).json({ error: 'Share not found' });
+        }
+
+        // Build share URL
+        const baseUrl = process.env.VERCEL_URL
+            ? `https://${process.env.VERCEL_URL}`
+            : 'http://localhost:5173';
+        const shareUrl = `${baseUrl}/print/${share.token}`;
+
+        // Send email using Resend
+        const { Resend } = await import('resend');
+        const resend = new Resend(process.env.RESEND_API_KEY);
+
+        const businessName = share.businesses?.name || 'a business';
+
+        const response = await resend.emails.send({
+            from: 'onboarding@resend.dev',
+            to: recipientEmail,
+            subject: `Print-Ready Asset from ${businessName}`,
+            html: `
+                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; background: #f9fafb;">
+                    <div style="background: white; border-radius: 16px; padding: 32px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                        <h1 style="color: #1a1a1a; margin: 0 0 16px 0; font-size: 24px;">Print-Ready Asset 🎨</h1>
+                        <p style="color: #4b5563; line-height: 1.6; margin: 0 0 24px 0;">
+                            <strong>${businessName}</strong> has shared a print-ready asset with you. 
+                            Click below to access and download in your preferred format.
+                        </p>
+                        <a href="${shareUrl}" style="display: inline-block; background: linear-gradient(135deg, #6D5DFC 0%, #8B7DFC 100%); color: white; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-weight: 600; font-size: 16px;">
+                            Download Asset
+                        </a>
+                        <p style="color: #9ca3af; font-size: 13px; margin: 24px 0 0 0;">
+                            ${share.expires_at ? `This link expires on ${new Date(share.expires_at).toLocaleDateString()}.` : 'This link does not expire.'}
+                        </p>
+                    </div>
+                    <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 24px 0 0 0;">
+                        Powered by Ads x Create
+                    </p>
+                </div>
+            `
+        });
+
+        if (response.error) {
+            console.error('[Share] Resend API Error:', response.error);
+            return res.status(500).json({
+                error: response.error.message || 'Failed to send email',
+                details: response.error
+            });
+        }
+
+        console.log('[Share] Email sent successfully. ID:', response.data?.id);
+        res.json({ success: true });
+
+    } catch (error: any) {
+        console.error('[Server] Share Send Email Error:', error);
+        res.status(500).json({ error: 'Failed to send email', details: error.message });
+    }
+});
+
+// --- API ROUTE: Test Vercel AI Gateway (Isolated POC) ---
+app.post('/api/test-vercel-ai', async (req, res) => {
+    console.log('[Server] Test Vercel AI Gateway Request Received');
+    try {
+        await testVercelAiHandler(req as any, res as any);
+    } catch (error: any) {
+        console.error('[Server] Test Vercel AI Error:', error);
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Test failed', details: error.message });
+        }
+    }
+});
 
 // --- API ROUTE: Discover Pages (Local Development) ---
 // Uses Firecrawl v1/map to get a list of pages for selection
@@ -321,117 +516,204 @@ app.post('/api/discover-pages', async (req, res) => {
 });
 
 // --- API ROUTE: Extract Website (Local Development) ---
-// Uses Firecrawl v2.7.0 + DeepSeek V3.2 for intelligent extraction
+// Uses Firecrawl V2 + DeepSeek V3.2 for intelligent extraction
+// Supports: 'single' (1 page), 'select' (batch URLs), 'full' (crawl site)
+const FIRECRAWL_V2_BASE = 'https://api.firecrawl.dev/v2';
+
+// Helper: Poll async job status
+async function pollFirecrawlJob(
+    jobId: string,
+    jobType: 'crawl' | 'batch-scrape',
+    apiKey: string
+): Promise<{ success: boolean; data?: any[]; error?: string }> {
+    for (let attempt = 0; attempt < 30; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        try {
+            const response = await fetch(`${FIRECRAWL_V2_BASE}/${jobType}/${jobId}`, {
+                headers: { 'Authorization': `Bearer ${apiKey}` },
+                signal: AbortSignal.timeout(10000) // 10s timeout
+            });
+
+            if (response.ok) {
+                const statusData = await response.json();
+                console.log(`[Server] Job status (${attempt + 1}/30):`, statusData.status);
+
+                if (statusData.status === 'completed') {
+                    return { success: true, data: statusData.data || [] };
+                } else if (statusData.status === 'failed') {
+                    return { success: false, error: 'Job failed' };
+                }
+            } else if (response.status === 429) {
+                continue; // Retry on rate limit
+            }
+        } catch (err) {
+            console.error(`[Server] Poll error (attempt ${attempt + 1}):`, err);
+        }
+    }
+    return { success: false, error: 'Job timed out' };
+}
+
 app.post('/api/extract-website', async (req, res) => {
     console.log('[Server] Website Extraction Request Received');
 
-    const { url, mode = 'full' } = req.body; // mode: 'single' or 'full'
+    const { url, urls, mode = 'single' } = req.body;
 
-    if (!url) {
+    // Validate input
+    if (mode === 'select' && (!urls || !Array.isArray(urls) || urls.length === 0)) {
+        res.status(400).json({ error: 'URLs array required for select mode' });
+        return;
+    }
+
+    if ((mode === 'single' || mode === 'full') && !url) {
         res.status(400).json({ error: 'URL is required' });
         return;
     }
 
     const FIRECRAWL_API_KEY = process.env.FIRECRAWL_API_KEY;
-    const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
 
-    if (!FIRECRAWL_API_KEY || !DEEPSEEK_API_KEY) {
-        console.error('[Server] Missing API keys. Add FIRECRAWL_API_KEY and DEEPSEEK_API_KEY to .env.local');
-        res.status(500).json({ error: 'Missing API keys in .env.local' });
+    if (!FIRECRAWL_API_KEY) {
+        console.error('[Server] Missing FIRECRAWL_API_KEY');
+        res.status(500).json({ error: 'Missing FIRECRAWL_API_KEY in .env.local' });
         return;
     }
 
     try {
-        // Step 1: Call Firecrawl (scrape for single page, crawl for full)
-        const endpoint = mode === 'single'
-            ? 'https://api.firecrawl.dev/v1/scrape'
-            : 'https://api.firecrawl.dev/v1/crawl';
+        let pages: any[] = [];
 
-        console.log(`[Server] Calling Firecrawl ${mode === 'single' ? 'scrape' : 'crawl'}:`, url);
-
-        const firecrawlBody = mode === 'single'
-            ? {
-                url,
-                formats: ['markdown', 'branding'],
-                onlyMainContent: true,
-            }
-            : {
-                url,
-                limit: 5,
-                scrapeOptions: {
-                    formats: ['markdown', 'branding'],
-                    onlyMainContent: true,
-                },
-            };
-
-        const crawlResponse = await fetch(endpoint, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(firecrawlBody),
-        });
-
-        if (!crawlResponse.ok) {
-            const errorText = await crawlResponse.text();
-            console.error('[Server] Firecrawl error:', errorText);
-            res.status(500).json({ error: 'Failed to extract website' });
-            return;
-        }
-
-        let firecrawlData: any;
-
+        // Step 1: Get pages based on mode
         if (mode === 'single') {
-            // Scrape returns data directly
-            firecrawlData = await crawlResponse.json();
-            firecrawlData = { data: [firecrawlData.data || firecrawlData] };
-        } else {
-            // Crawl returns a job ID, need to poll
-            const crawlJob = await crawlResponse.json();
-            const jobId = crawlJob.id;
+            console.log('[Server] V2 Single Scrape:', url);
+            const response = await fetch(`${FIRECRAWL_V2_BASE}/scrape`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    url,
+                    formats: ['markdown', 'branding', 'extract'],
+                    extract: {
+                        schema: {
+                            type: "object",
+                            properties: {
+                                contactEmail: { type: "string" },
+                                contactPhone: { type: "string" },
+                                socialLinks: {
+                                    type: "array",
+                                    items: { type: "string" }
+                                },
+                                address: { type: "string" }
+                            }
+                        }
+                    }
+                }),
+                signal: AbortSignal.timeout(25000)
+            });
 
-            if (!jobId) {
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('[Server] V2 Scrape error:', errorText);
+                res.status(500).json({ error: 'Scrape failed' });
+                return;
+            }
+
+            const result = await response.json();
+            pages = [result.data];
+
+        } else if (mode === 'select') {
+            console.log('[Server] V2 Batch Scrape:', urls.length, 'URLs');
+            const response = await fetch(`${FIRECRAWL_V2_BASE}/batch-scrape`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    urls: urls.slice(0, 10),
+                    formats: ['markdown', 'branding'],
+                }),
+                signal: AbortSignal.timeout(10000)
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('[Server] V2 Batch error:', errorText);
+                res.status(500).json({ error: 'Batch scrape failed' });
+                return;
+            }
+
+            const result = await response.json();
+            if (!result.id) {
+                res.status(500).json({ error: 'Failed to start batch job' });
+                return;
+            }
+
+            console.log('[Server] Batch job started:', result.id);
+            const pollResult = await pollFirecrawlJob(result.id, 'batch-scrape', FIRECRAWL_API_KEY);
+
+            if (!pollResult.success) {
+                res.status(500).json({ error: pollResult.error });
+                return;
+            }
+            pages = pollResult.data || [];
+
+        } else if (mode === 'full') {
+            console.log('[Server] V2 Crawl:', url);
+            const response = await fetch(`${FIRECRAWL_V2_BASE}/crawl`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    url,
+                    limit: 5,
+                    scrapeOptions: {
+                        formats: ['markdown', 'branding'],
+                    },
+                }),
+                signal: AbortSignal.timeout(10000)
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('[Server] V2 Crawl error:', errorText);
+                res.status(500).json({ error: 'Crawl failed' });
+                return;
+            }
+
+            const result = await response.json();
+            if (!result.id) {
                 res.status(500).json({ error: 'Failed to start crawl job' });
                 return;
             }
 
-            console.log('[Server] Waiting for crawl job:', jobId);
+            console.log('[Server] Crawl job started:', result.id);
+            const pollResult = await pollFirecrawlJob(result.id, 'crawl', FIRECRAWL_API_KEY);
 
-            for (let attempt = 0; attempt < 30; attempt++) {
-                await new Promise(resolve => setTimeout(resolve, 2000));
-
-                const statusResponse = await fetch(`https://api.firecrawl.dev/v1/crawl/${jobId}`, {
-                    headers: { 'Authorization': `Bearer ${FIRECRAWL_API_KEY}` },
-                });
-
-                if (statusResponse.ok) {
-                    const statusData = await statusResponse.json();
-                    if (statusData.status === 'completed') {
-                        firecrawlData = statusData;
-                        break;
-                    } else if (statusData.status === 'failed') {
-                        res.status(500).json({ error: 'Crawl failed' });
-                        return;
-                    }
-                }
+            if (!pollResult.success) {
+                res.status(500).json({ error: pollResult.error });
+                return;
             }
+            pages = pollResult.data || [];
         }
 
-        if (!firecrawlData?.data?.length) {
+        if (!pages.length) {
             res.status(500).json({ error: 'No content extracted' });
             return;
         }
 
-        console.log('[Server] Firecrawl completed, pages:', firecrawlData.data.length);
+        console.log('[Server] Firecrawl V2 completed, pages:', pages.length);
 
-        // Step 2: DeepSeek V3.2 extraction
-        const combinedMarkdown = firecrawlData.data
-            .map((page: any) => `## Page: ${page.url || url}\n\n${page.markdown || ''}`)
+        // Step 2: Combine markdown from all pages
+        const combinedMarkdown = pages
+            .map((page: any) => `## Page: ${page.metadata?.title || page.url || url}\n\n${page.markdown || ''}`)
             .join('\n\n---\n\n');
 
-        const branding = firecrawlData.data[0]?.branding || {};
+        const branding = pages[0]?.branding || {};
 
+        // Step 3: DeepSeek extraction
         const EXTRACTION_PROMPT = `You are an expert business analyst. Extract business data from this website into JSON.
 
 ## REQUIRED FORMAT
@@ -446,7 +728,7 @@ Return ONLY valid JSON with these fields:
   "profile": {
     "contactEmail": "email if found",
     "contactPhone": "phone if found", 
-    "address": "full address if found (for storefront/appointment only)",
+    "address": "full address if found",
     "operatingMode": "MUST be one of: storefront | online | service | appointment",
     "socials": [{"platform": "instagram", "handle": "@example"}]
   },
@@ -461,67 +743,49 @@ Return ONLY valid JSON with these fields:
   "targetLanguage": "Primary language of website content"
 }
 
-## OPERATING MODE RULES
-- storefront: Physical location (has address, hours, "visit us")
-- online: E-commerce only (has cart, checkout, shipping)
-- service: Goes to customer (has service area, "we come to you")
-- appointment: Booking-based (has calendar, scheduling, appointments)
+CONTACT EXTRACTION RULES:
+- Look carefully in the ENTIRE content including headers and footers
+- Email addresses often appear as: info@, contact@, hello@, support@
+- Phone numbers may be formatted with dashes, spaces, or parentheses
+- South African phones: +27, 0xx xxx xxxx
+- US phones: (xxx) xxx-xxxx
+- Extract ANY email or phone you find - do not skip them
 
-## ARCHETYPE INFERENCE RULES
-- The Innocent: Pure, optimistic, simple
-- The Hero: Bold, achievement-focused, empowering
-- The Sage: Expert, educational, intellectual
-- The Outlaw: Rebellious, provocative, disruptive
-- The Magician: Transformative, visionary, innovative
-- The Caregiver: Nurturing, compassionate, supportive
-- The Creator: Artistic, innovative, perfectionist
-- The Ruler: Premium, authoritative, exclusive
-- The Lover: Passionate, intimate, sensual
-- The Jester: Fun, playful, humorous
-- The Explorer: Adventurous, authentic, free-spirited
-- The Guy/Girl Next Door: Relatable, down-to-earth, friendly
+Do your best to extract all available information.`;
 
-Be conservative. Only include data you're confident about.`;
+        console.log('[Server] Calling DeepSeek V3.2-Thinking via Vercel Gateway...');
 
-        console.log('[Server] Calling DeepSeek V3.2...');
-
-        const deepseekResponse = await fetch('https://api.deepseek.com/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                model: 'deepseek-chat',
-                messages: [
-                    { role: 'system', content: EXTRACTION_PROMPT },
-                    { role: 'user', content: `BRANDING:\n${JSON.stringify(branding)}\n\nCONTENT:\n${combinedMarkdown.slice(0, 50000)}` }
-                ],
-                response_format: { type: 'json_object' },
-                temperature: 0.2,
-                max_tokens: 4000,
-            }),
+        // Use Vercel AI Gateway for DeepSeek
+        const deepseekResult = await generateText({
+            model: gateway('deepseek/deepseek-v3.2-thinking'),
+            system: EXTRACTION_PROMPT,
+            prompt: `BRANDING:\n${JSON.stringify(branding)}\n\nCONTENT:\n${combinedMarkdown.slice(0, 50000)}`,
+            temperature: 0.2,
         });
 
-        if (!deepseekResponse.ok) {
-            const errorText = await deepseekResponse.text();
-            console.error('[Server] DeepSeek error:', errorText);
-            res.status(500).json({ error: 'AI analysis failed' });
-            return;
-        }
-
-        const deepseekResult = await deepseekResponse.json();
-        const aiContent = deepseekResult.choices?.[0]?.message?.content;
+        console.log('[Server] DeepSeek parsing complete via Vercel Gateway');
 
         let extractedData;
         try {
-            extractedData = JSON.parse(aiContent);
+            // Clean the response - remove markdown code blocks if present
+            let jsonText = deepseekResult.text.trim();
+            if (jsonText.startsWith('```json')) {
+                jsonText = jsonText.slice(7);
+            }
+            if (jsonText.startsWith('```')) {
+                jsonText = jsonText.slice(3);
+            }
+            if (jsonText.endsWith('```')) {
+                jsonText = jsonText.slice(0, -3);
+            }
+            extractedData = JSON.parse(jsonText.trim());
         } catch {
+            console.error('[Server] Failed to parse AI response:', deepseekResult.text.slice(0, 500));
             res.status(500).json({ error: 'Failed to parse AI response' });
             return;
         }
 
-        // Merge Firecrawl branding (colors + logo)
+        // Merge Firecrawl branding
         if (branding.colors) {
             extractedData.colors = {
                 primary: branding.colors.primary || extractedData.colors?.primary,
@@ -530,9 +794,46 @@ Be conservative. Only include data you're confident about.`;
             };
         }
 
-        // Extract logo from branding
         if (branding.logo) {
             extractedData.logoUrl = branding.logo;
+        }
+
+        // Fallback: check branding.images.logo if top-level logo is missing
+        if (!extractedData.logoUrl && (branding as any).images?.logo) {
+            extractedData.logoUrl = (branding as any).images.logo;
+        }
+
+        // Feature: Merge Firecrawl "extract" data (structured JSON)
+        // This is more reliable for contact info than the LLM extraction
+        const firecrawlExtract = (pages[0] as any).extract;
+        if (firecrawlExtract) {
+            if (!extractedData.profile) extractedData.profile = {};
+
+            // Prioritize Firecrawl extraction for contact info
+            if (firecrawlExtract.contactEmail) extractedData.profile.contactEmail = firecrawlExtract.contactEmail;
+            if (firecrawlExtract.contactPhone) extractedData.profile.contactPhone = firecrawlExtract.contactPhone;
+            if (firecrawlExtract.address) extractedData.profile.address = firecrawlExtract.address;
+
+            // Merge socials
+            if (firecrawlExtract.socialLinks && Array.isArray(firecrawlExtract.socialLinks)) {
+                const currentSocials = extractedData.profile.socials || [];
+                firecrawlExtract.socialLinks.forEach((link: string) => {
+                    // Simple parser for social links
+                    let platform = 'website';
+                    if (link.includes('instagram')) platform = 'instagram';
+                    else if (link.includes('facebook')) platform = 'facebook';
+                    else if (link.includes('twitter') || link.includes('x.com')) platform = 'twitter';
+                    else if (link.includes('linkedin')) platform = 'linkedin';
+                    else if (link.includes('tiktok')) platform = 'tiktok';
+                    else if (link.includes('whatsapp')) platform = 'whatsapp';
+
+                    // Add if not already present
+                    if (!currentSocials.some(s => s.handle === link)) {
+                        currentSocials.push({ platform, handle: link });
+                    }
+                });
+                extractedData.profile.socials = currentSocials;
+            }
         }
 
         const confidence: Record<string, number> = {};
@@ -543,8 +844,8 @@ Be conservative. Only include data you're confident about.`;
         if (extractedData.offerings?.length) confidence.offerings = 0.7;
         if (extractedData.logoUrl) confidence.logo = 0.95;
 
-        console.log('[Server] Extraction complete for:', url);
-        res.json({ success: true, data: extractedData, confidence, rawBranding: branding });
+        console.log('[Server] Extraction complete, pages scraped:', pages.length);
+        res.json({ success: true, data: extractedData, confidence, rawBranding: branding, pagesScraped: pages.length });
 
     } catch (error) {
         console.error('[Server] Extraction error:', error);
@@ -552,10 +853,1818 @@ Be conservative. Only include data you're confident about.`;
     }
 });
 
+
+// --- SOCIAL PLANNER API ROUTES (Ported from Serverless) ---
+
+import { createClient } from '@supabase/supabase-js';
+
+const GHL_CLIENT_ID = process.env.GHL_CLIENT_ID;
+const GHL_CLIENT_SECRET = process.env.GHL_CLIENT_SECRET;
+
+// Helper: Refresh expired token
+async function refreshToken(refreshTokenValue: string): Promise<{
+    access_token: string;
+    refresh_token: string;
+    expires_in: number;
+} | null> {
+    try {
+        const response = await fetch('https://services.leadconnectorhq.com/oauth/token', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+                client_id: GHL_CLIENT_ID,
+                client_secret: GHL_CLIENT_SECRET,
+                grant_type: 'refresh_token',
+                refresh_token: refreshTokenValue,
+            }),
+        });
+
+        if (!response.ok) {
+            console.error('[GHL Refresh] Failed:', await response.text());
+            return null;
+        }
+
+        return await response.json();
+    } catch (error) {
+        console.error('[GHL Refresh] Error:', error);
+        return null;
+    }
+}
+
+// 1. Install Endpoint
+app.get('/api/social/install', (req, res) => {
+    const { businessId } = req.query;
+
+    // HARDCODED: Must match exactly what's in GHL Marketplace App settings
+    // Note: For local dev, we might need a tunnel, but for now we keep the vercel URL as redirect (or change to localhost if GHL app allows)
+    // The user's GHL app likely expects the vercel URL.
+    const redirectUri = 'https://ads-x-create-v2.vercel.app/api/social/callback';
+
+    const SCOPES = [
+        'socialplanner/account.readonly',
+        'socialplanner/account.write',
+        'socialplanner/oauth.readonly',
+        'socialplanner/oauth.write',
+        'socialplanner/post.readonly',
+        'socialplanner/post.write',
+        'locations.readonly',
+        'users.readonly',
+        'medias.readonly',
+        'medias.write',
+    ].join(' ');
+
+    const params = new URLSearchParams({
+        response_type: 'code',
+        redirect_uri: redirectUri,
+        client_id: GHL_CLIENT_ID!,
+        scope: SCOPES,
+    });
+
+    if (businessId) {
+        params.set('state', String(businessId));
+    }
+
+    const authUrl = `https://marketplace.leadconnectorhq.com/oauth/chooselocation?${params.toString()}`;
+    res.json({ url: authUrl });
+});
+
+// 2. Callback Endpoint
+app.get('/api/social/callback', async (req, res) => {
+    const { code, state: businessId } = req.query;
+
+    if (!code) {
+        res.status(400).json({ error: 'Missing authorization code' });
+        return;
+    }
+
+    const redirectUri = 'https://ads-x-create-v2.vercel.app/api/social/callback';
+    const baseUrl = 'http://localhost:5173'; // Redirect back to local frontend
+
+    try {
+        const tokenResponse = await fetch('https://services.leadconnectorhq.com/oauth/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                client_id: GHL_CLIENT_ID!,
+                client_secret: GHL_CLIENT_SECRET!,
+                grant_type: 'authorization_code',
+                code: String(code),
+                redirect_uri: redirectUri,
+                user_type: 'Location',
+            }),
+        });
+
+        if (!tokenResponse.ok) {
+            const errorText = await tokenResponse.text();
+            console.error('[GHL Callback] Token exchange failed:', errorText);
+            res.status(500).json({ error: 'Token exchange failed', details: errorText });
+            return;
+        }
+
+        const tokenData = await tokenResponse.json();
+        const { access_token, refresh_token, expires_in, locationId, userId } = tokenData;
+
+        if (!locationId) {
+            res.status(400).json({ error: 'No locationId in token response' });
+            return;
+        }
+
+        const expiresAt = new Date(Date.now() + (expires_in * 1000)).toISOString();
+        const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+
+        const { error: dbError } = await supabase
+            .from('ghl_integrations')
+            .upsert({
+                location_id: locationId,
+                business_id: businessId || null,
+                access_token,
+                refresh_token,
+                user_id: userId,
+                expires_at: expiresAt,
+                updated_at: new Date().toISOString(),
+            }, { onConflict: 'location_id' });
+
+        if (dbError) {
+            console.error('[GHL Callback] DB Error:', dbError);
+            res.status(500).json({ error: 'Failed to store tokens', details: dbError.message });
+            return;
+        }
+
+        if (businessId) {
+            await supabase.from('businesses').update({ social_config: { ghlLocationId: locationId } }).eq('id', businessId);
+        }
+
+        const successUrl = businessId
+            ? `${baseUrl}/business/${businessId}?ghl_connected=true`
+            : `${baseUrl}?ghl_connected=true`;
+
+        res.redirect(302, successUrl);
+
+    } catch (error: any) {
+        console.error('[GHL Callback] Error:', error);
+        res.status(500).json({ error: 'OAuth callback failed', details: error.message });
+    }
+});
+
+// 3. Accounts Endpoint
+app.get('/api/social/accounts', async (req, res) => {
+    const { locationId } = req.query;
+
+    if (!locationId) {
+        res.status(400).json({ error: 'Missing locationId' });
+        return;
+    }
+
+    try {
+        const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+        const { data: integration, error: dbError } = await supabase
+            .from('ghl_integrations')
+            .select('*')
+            .eq('location_id', locationId)
+            .single();
+
+        if (dbError || !integration) {
+            res.status(404).json({ error: 'No GHL integration found', accounts: [] });
+            return;
+        }
+
+        let accessToken = integration.access_token;
+
+        // Check for expiry
+        if (new Date(integration.expires_at) < new Date()) {
+            console.log('[GHL Accounts] Token expired, refreshing...');
+            const refreshed = await refreshToken(integration.refresh_token);
+
+            if (!refreshed) {
+                console.error('[GHL Accounts] Refresh failed');
+                res.status(401).json({ error: 'Token expired and refresh failed. Please reconnect.' });
+                return;
+            }
+
+            // Update DB
+            const { error: updateError } = await supabase.from('ghl_integrations').update({
+                access_token: refreshed.access_token,
+                refresh_token: refreshed.refresh_token,
+                expires_at: new Date(Date.now() + refreshed.expires_in * 1000).toISOString(),
+                updated_at: new Date().toISOString(),
+            }).eq('location_id', locationId);
+
+            if (updateError) {
+                console.error('[GHL Accounts] Failed to update token in DB:', updateError);
+            } else {
+                console.log('[GHL Accounts] Token refreshed and saved');
+            }
+
+            accessToken = refreshed.access_token;
+        }
+
+        const ghlResponse = await fetch(
+            `https://services.leadconnectorhq.com/social-media-posting/${locationId}/accounts`,
+            {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Version': '2021-07-28',
+                },
+            }
+        );
+
+        if (!ghlResponse.ok) {
+            const errorText = await ghlResponse.text();
+            console.error('[GHL Accounts] Failed:', errorText);
+            res.status(500).json({ error: 'Failed to fetch accounts', accounts: [] });
+            return;
+        }
+
+        const data = await ghlResponse.json();
+        const accounts = (data.results?.accounts || []).map((acc: any) => ({
+            id: acc.id,
+            platform: acc.platform?.toLowerCase() || 'unknown',
+            name: acc.name || acc.username || 'Unknown Account',
+            avatar: acc.avatar || acc.profilePicture,
+            type: acc.type,
+        }));
+
+        res.status(200).json({ accounts });
+
+    } catch (error: any) {
+        console.error('[GHL Accounts] Error:', error);
+        res.status(500).json({ error: 'Failed to fetch accounts', details: error.message });
+    }
+});
+
+// 4. Social OAuth Proxy (Start)
+app.post('/api/social/social-oauth', async (req, res) => {
+    const { locationId, platform } = req.body;
+
+    if (!locationId || !platform) {
+        res.status(400).json({ error: 'Missing locationId or platform' });
+        return;
+    }
+
+    try {
+        const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+        const { data: integration, error: dbError } = await supabase
+            .from('ghl_integrations')
+            .select('*')
+            .eq('location_id', locationId)
+            .single();
+
+        if (dbError || !integration) {
+            res.status(404).json({ error: 'No GHL integration found for this location' });
+            return;
+        }
+
+        let accessToken = integration.access_token;
+        if (new Date(integration.expires_at) < new Date()) {
+            const refreshed = await refreshToken(integration.refresh_token);
+            if (!refreshed) {
+                res.status(401).json({ error: 'Token expired and refresh failed' });
+                return;
+            }
+            await supabase.from('ghl_integrations').update({
+                access_token: refreshed.access_token,
+                refresh_token: refreshed.refresh_token,
+                expires_at: new Date(Date.now() + refreshed.expires_in * 1000).toISOString(),
+                updated_at: new Date().toISOString(),
+            }).eq('location_id', locationId);
+            accessToken = refreshed.access_token;
+        }
+
+        const usersResponse = await fetch(
+            `https://services.leadconnectorhq.com/users/?locationId=${locationId}`,
+            { headers: { 'Authorization': `Bearer ${accessToken}`, 'Version': '2021-07-28' } }
+        );
+
+        if (!usersResponse.ok) {
+            res.status(500).json({ error: 'Failed to get users for location' });
+            return;
+        }
+
+        const usersData = await usersResponse.json();
+        const userId = usersData.users?.[0]?.id || integration.user_id;
+
+        if (!userId) {
+            res.status(400).json({ error: 'No user found in location' });
+            return;
+        }
+
+        const ghlResponse = await fetch(
+            `https://services.leadconnectorhq.com/social-media-posting/oauth/${platform}/start?locationId=${locationId}&userId=${userId}`,
+            {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${accessToken}`, 'Version': '2021-07-28' },
+                redirect: 'manual',
+            }
+        );
+
+        const redirectUrl = ghlResponse.headers.get('location');
+        if (!redirectUrl) {
+            res.status(500).json({ error: 'No OAuth URL returned from GHL' });
+            return;
+        }
+
+        res.status(200).json({ url: redirectUrl });
+
+    } catch (error: any) {
+        console.error('[GHL Social OAuth] Error:', error);
+        res.status(500).json({ error: 'Social OAuth proxy failed', details: error.message });
+    }
+});
+
+// 5. Post Endpoint
+app.post('/api/social/post', async (req, res) => {
+    const { accountIds, content, caption, media, mediaUrls, locationId, scheduledAt, firstComment } = req.body;
+    const postCaption = caption || content; // Support both field names
+    const postMedia = mediaUrls || media; // Support both field names
+
+    if (!accountIds?.length || !locationId) {
+        res.status(400).json({ error: 'Missing required fields' });
+        return;
+    }
+
+    try {
+        const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+        const { data: integration, error: dbError } = await supabase
+            .from('ghl_integrations')
+            .select('*')
+            .eq('location_id', locationId)
+            .single();
+
+        if (dbError || !integration) {
+            res.status(404).json({ error: 'No GHL integration found' });
+            return;
+        }
+
+        let accessToken = integration.access_token;
+        if (new Date(integration.expires_at) < new Date()) {
+            const refreshed = await refreshToken(integration.refresh_token);
+            if (!refreshed) {
+                res.status(401).json({ error: 'Token expired and refresh failed' });
+                return;
+            }
+            await supabase.from('ghl_integrations').update({
+                access_token: refreshed.access_token,
+                refresh_token: refreshed.refresh_token,
+                expires_at: new Date(Date.now() + refreshed.expires_in * 1000).toISOString(),
+                updated_at: new Date().toISOString(),
+            }).eq('location_id', locationId);
+            accessToken = refreshed.access_token;
+        }
+
+        // Build base post body
+        let summary = postCaption;
+        let followUpComment: string | undefined = undefined;
+
+        // If firstComment is enabled, extract hashtags from caption and put them in followUpComment
+        if (firstComment && postCaption) {
+            const hashtagRegex = /#[\w]+/g;
+            const hashtags = postCaption.match(hashtagRegex);
+            if (hashtags && hashtags.length > 0) {
+                followUpComment = hashtags.join(' ');
+                summary = postCaption.replace(hashtagRegex, '').trim().replace(/\s+/g, ' ');
+            }
+        }
+
+        const postBody: any = {
+            userId: integration.user_id,
+            accountIds,
+            summary,
+            type: 'post',
+            status: scheduledAt ? 'scheduled' : 'published',
+            ...(postMedia?.length ? { media: postMedia.map((url: string) => ({ url, type: 'image/jpeg' })) } : {}),
+            ...(scheduledAt ? { scheduleDate: scheduledAt } : { process: 'instant' }),
+            ...(followUpComment ? { followUpComment } : {}),
+        };
+
+        const ghlResponse = await fetch(
+            `https://services.leadconnectorhq.com/social-media-posting/${locationId}/posts`,
+            {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Version': '2021-07-28',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(postBody),
+            }
+        );
+
+        if (!ghlResponse.ok) {
+            const errorText = await ghlResponse.text();
+            console.error('[GHL Post] Failed:', errorText);
+            res.status(500).json({ error: 'Failed to create post', details: errorText });
+            return;
+        }
+
+        const result = await ghlResponse.json();
+        res.json({ success: true, result });
+
+    } catch (error: any) {
+        console.error('[GHL Post] Error:', error);
+        res.status(500).json({ error: 'Failed to create post', details: error.message });
+    }
+});
+
+// 6. Sync Endpoint
+app.post('/api/social/sync', async (req, res) => {
+    // Support both query params (from frontend) and body (for flexibility)
+    const locationId = (req.query.locationId as string) || req.body?.locationId;
+    const businessId = (req.query.businessId as string) || req.body?.businessId;
+
+    if (!locationId) {
+        res.status(400).json({ error: 'Missing locationId' });
+        return;
+    }
+
+    try {
+        const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+        const { data: integration, error: dbError } = await supabase
+            .from('ghl_integrations')
+            .select('*')
+            .eq('location_id', locationId)
+            .single();
+
+        if (dbError || !integration) {
+            res.status(404).json({ error: 'No GHL integration found' });
+            return;
+        }
+
+        let accessToken = integration.access_token;
+
+        // Check for expiry and refresh if needed
+        if (new Date(integration.expires_at) < new Date()) {
+            console.log('[GHL Sync] Token expired, refreshing...');
+            const refreshed = await refreshToken(integration.refresh_token);
+            if (!refreshed) {
+                res.status(401).json({ error: 'Token expired and refresh failed' });
+                return;
+            }
+            await supabase.from('ghl_integrations').update({
+                access_token: refreshed.access_token,
+                refresh_token: refreshed.refresh_token,
+                expires_at: new Date(Date.now() + refreshed.expires_in * 1000).toISOString(),
+                updated_at: new Date().toISOString(),
+            }).eq('location_id', locationId);
+            accessToken = refreshed.access_token;
+            console.log('[GHL Sync] Token refreshed successfully');
+        }
+
+        // Fetch posts from GHL - use POST /posts/list endpoint (not GET /posts)
+        const ghlResponse = await fetch(
+            `https://services.leadconnectorhq.com/social-media-posting/${locationId}/posts/list`,
+            {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Version': '2021-07-28',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    limit: "50",
+                    skip: "0",
+                }),
+            }
+        );
+
+        if (!ghlResponse.ok) {
+            const errorText = await ghlResponse.text();
+            console.error('[GHL Sync] GHL API Error:', ghlResponse.status, errorText);
+            res.status(500).json({ error: 'Failed to fetch GHL posts', status: ghlResponse.status, details: errorText });
+            return;
+        }
+
+        const data = await ghlResponse.json();
+        console.log('[GHL Sync] Got response:', JSON.stringify(data).slice(0, 200));
+        const posts = data.results?.posts || data.posts || [];
+        console.log('[GHL Sync] Processing', posts.length, 'posts');
+
+        for (const post of posts) {
+            // Log first post to understand structure
+            if (posts.indexOf(post) === 0) {
+                console.log('[GHL Sync] Sample post structure:', JSON.stringify(post, null, 2).slice(0, 500));
+            }
+
+            const ghlId = post._id || post.id;
+
+            // Check if post already exists by ghl_post_id
+            const { data: existing } = await supabase
+                .from('social_posts')
+                .select('id, updated_at')
+                .eq('ghl_post_id', ghlId)
+                .single();
+
+            // Only update if GHL version is newer (or post doesn't exist locally)
+            const ghlUpdatedAt = post.updatedAt ? new Date(post.updatedAt) : new Date();
+            const localUpdatedAt = existing?.updated_at ? new Date(existing.updated_at) : new Date(0);
+
+            // Skip if local version is newer (user edited locally)
+            if (existing && localUpdatedAt > ghlUpdatedAt) {
+                console.log('[GHL Sync] Skipping post (local is newer):', ghlId);
+                continue;
+            }
+
+            const upsertData = {
+                id: existing?.id || crypto.randomUUID(),  // Use existing or generate new UUID
+                ghl_post_id: ghlId,
+                business_id: integration.business_id,
+                location_id: locationId,
+                summary: post.summary || '',
+                media_urls: post.media?.map((m: any) => m.url) || [],
+                platforms: post.platform ? [post.platform] : [],
+                parent_post_id: post.parentPostId || null,  // For grouping multi-platform posts
+                scheduled_at: post.displayDate || post.scheduleDate || null,
+                // Better status detection: check publishedAt for published, displayDate for scheduled
+                status: post.publishedAt ? 'published'
+                    : post.status === 'approved' ? 'scheduled'
+                        : post.status === 'published' ? 'published'
+                            : (post.displayDate && new Date(post.displayDate) > new Date()) ? 'scheduled'
+                                : 'draft',
+                synced_at: new Date().toISOString(),
+                updated_at: ghlUpdatedAt.toISOString(),  // Use GHL's timestamp
+            };
+
+            console.log('[GHL Sync] Upserting post:', ghlId);
+            const { error: upsertError } = await supabase.from('social_posts').upsert(upsertData, { onConflict: 'ghl_post_id' });
+
+            if (upsertError) {
+                console.error('[GHL Sync] Upsert error:', upsertError);
+            }
+        }
+
+        res.json({ success: true, count: posts.length });
+
+    } catch (error: any) {
+        console.error('[GHL Sync] Error:', error);
+        res.status(500).json({ error: 'Sync failed', details: error.message });
+    }
+});
+
+// 7. Generate Caption Endpoint (DeepSeek V3.2)
+app.post('/api/social/generate-caption', async (req, res) => {
+    console.log('[Server] Caption Generation Request Received');
+
+    const { assetPrompt, business, platform = 'general', hashtagMode = 'ai_plus_brand', brandHashtags = [] } = req.body;
+
+    if (!assetPrompt || !business?.name) {
+        res.status(400).json({ error: 'Missing required fields: assetPrompt, business.name' });
+        return;
+    }
+
+    // Build dynamic hashtag instructions based on mode
+    function buildHashtagInstruction(mode: string, tags: string[]): string {
+        const brandTagsFormatted = tags.length > 0
+            ? tags.map(t => `#${t.replace(/^#/, '')}`).join(' ')
+            : '';
+
+        switch (mode) {
+            case 'brand_only':
+                if (!brandTagsFormatted) {
+                    return 'No brand hashtags provided. Add 3-5 relevant industry hashtags.';
+                }
+                return `Use ONLY these brand hashtags at the end: ${brandTagsFormatted}. Do NOT add any other hashtags.`;
+
+            case 'ai_only':
+                return 'Generate 3-5 relevant hashtags based on the content and industry. Do NOT use any provided brand hashtags.';
+
+            case 'ai_plus_brand':
+            default:
+                if (brandTagsFormatted) {
+                    return `Always include these brand hashtags: ${brandTagsFormatted}. You may add 1-2 additional relevant hashtags.`;
+                }
+                return 'Generate 3-5 relevant hashtags based on the content and industry.';
+        }
+    }
+
+    try {
+        const CAPTION_SYSTEM_PROMPT = `You are an expert social media copywriter. Given context about a business and an image description, write an engaging social media caption.
+
+RULES:
+1. Keep it concise (2-4 sentences max for Instagram, 1-2 for Twitter)
+2. Match the brand voice and tone
+3. Include a clear call-to-action when appropriate
+4. Follow the HASHTAG RULES provided in each request
+5. Use emojis sparingly and tastefully (1-3 max)
+6. Never be generic - make it specific to THIS business
+
+PLATFORM NUANCES:
+- Instagram: Storytelling, lifestyle, emojis welcome
+- LinkedIn: Professional, value-focused, minimal emojis
+- Facebook: Conversational, community-focused
+- Twitter: Punchy, witty, under 280 chars
+
+Return ONLY the caption text. No explanations.`;
+
+        const voiceContext = business.voice
+            ? `Brand Voice: ${business.voice.archetype || 'Professional'}. Tone: ${business.voice.tonePills?.join(', ') || 'Engaging'}. ${business.voice.slogan ? `Slogan: "${business.voice.slogan}"` : ''}`
+            : 'Brand Voice: Professional and engaging.';
+
+        const hashtagInstruction = buildHashtagInstruction(hashtagMode, brandHashtags);
+
+        const userPrompt = `
+BUSINESS: ${business.name}
+INDUSTRY: ${business.industry || 'General'}
+TARGET AUDIENCE: ${business.targetAudience || 'General audience'}
+${voiceContext}
+PLATFORM: ${platform}
+
+HASHTAG RULES: ${hashtagInstruction}
+
+IMAGE/CONTENT DESCRIPTION:
+${assetPrompt}
+
+Write the caption now:`;
+
+        console.log('[Server] Generating caption via Vercel Gateway (DeepSeek V3.2)...');
+
+        // Use Vercel AI Gateway for DeepSeek
+        const result = await generateText({
+            model: gateway('deepseek/deepseek-v3.2'),
+            system: CAPTION_SYSTEM_PROMPT,
+            prompt: userPrompt,
+            temperature: 0.7,
+        });
+
+        const caption = result.text?.trim();
+
+        if (!caption) {
+            res.status(500).json({ error: 'No caption generated' });
+            return;
+        }
+
+        console.log('[Server] Caption generated successfully via Vercel Gateway');
+        res.status(200).json({ caption });
+
+    } catch (error: any) {
+        console.error('[Caption API] Error:', error);
+        res.status(500).json({ error: 'Failed to generate caption', details: error.message });
+    }
+});
+
+// 8. Delete Post Endpoint
+app.delete('/api/social/delete', async (req, res) => {
+    console.log('[Server] Delete Post Request Received');
+
+    const { locationId, postId, ghlPostId } = req.query;
+
+    if (!locationId || !postId) {
+        res.status(400).json({ error: 'Missing required params: locationId, postId' });
+        return;
+    }
+
+    const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+
+    try {
+        // 1. Get GHL access token
+        const { data: integration, error: intError } = await supabase
+            .from('ghl_integrations')
+            .select('access_token')
+            .eq('location_id', locationId)
+            .maybeSingle();
+
+        if (intError || !integration?.access_token) {
+            console.error('[Delete API] No integration found:', intError);
+            res.status(401).json({ error: 'GHL integration not found' });
+            return;
+        }
+
+        // 2. Delete from GHL (if we have a GHL post ID)
+        if (ghlPostId) {
+            console.log('[Delete API] Deleting from GHL:', ghlPostId);
+            const ghlResponse = await fetch(
+                `https://services.leadconnectorhq.com/social-media-posting/${locationId}/posts/${ghlPostId}`,
+                {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${integration.access_token}`,
+                        'Version': '2021-07-28',
+                        'Content-Type': 'application/json',
+                    },
+                    signal: AbortSignal.timeout(10000)
+                }
+            );
+
+            if (!ghlResponse.ok) {
+                const errorText = await ghlResponse.text();
+                console.error('[Delete API] GHL delete failed:', ghlResponse.status, errorText);
+                // Don't fail entirely - still delete local cache
+            } else {
+                console.log('[Delete API] Deleted from GHL successfully');
+            }
+        }
+
+        // 3. Delete from local Supabase cache
+        const { error: deleteError } = await supabase
+            .from('social_posts')
+            .delete()
+            .eq('id', postId);
+
+        if (deleteError) {
+            console.error('[Delete API] Supabase delete failed:', deleteError);
+            res.status(500).json({ error: 'Failed to delete from local cache' });
+            return;
+        }
+
+        console.log('[Delete API] Post deleted successfully:', postId);
+        res.status(200).json({ success: true, deletedId: postId });
+
+    } catch (error: any) {
+        console.error('[Delete API] Error:', error);
+        res.status(500).json({ error: 'Failed to delete post', details: error.message });
+    }
+});
+
+// 9. Reschedule Post Endpoint
+app.patch('/api/social/reschedule', async (req, res) => {
+    console.log('[Reschedule API] Request received:', JSON.stringify(req.body));
+
+    const { locationId, ghlPostId, newDate, localPostId } = req.body;
+
+    if (!locationId || !ghlPostId || !newDate) {
+        res.status(400).json({ error: 'Missing required fields: locationId, ghlPostId, newDate' });
+        return;
+    }
+
+    try {
+        const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+
+        // Get GHL token
+        const { data: integration, error: dbError } = await supabase
+            .from('ghl_integrations')
+            .select('*')
+            .eq('location_id', locationId)
+            .single();
+
+        if (dbError || !integration) {
+            res.status(404).json({ error: 'No GHL integration found' });
+            return;
+        }
+
+        let accessToken = integration.access_token;
+
+        // Check for expiry and refresh if needed
+        if (new Date(integration.expires_at) < new Date()) {
+            const refreshed = await refreshToken(integration.refresh_token);
+            if (!refreshed) {
+                res.status(401).json({ error: 'Token expired and refresh failed' });
+                return;
+            }
+            await supabase.from('ghl_integrations').update({
+                access_token: refreshed.access_token,
+                refresh_token: refreshed.refresh_token,
+                expires_at: new Date(Date.now() + refreshed.expires_in * 1000).toISOString(),
+                updated_at: new Date().toISOString(),
+            }).eq('location_id', locationId);
+            accessToken = refreshed.access_token;
+        }
+
+        // Fetch the local post to get the platform name
+        const { data: localPost } = await supabase
+            .from('social_posts')
+            .select('*')
+            .eq('id', localPostId)
+            .single();
+
+        if (!localPost) {
+            res.status(404).json({ error: 'Local post not found' });
+            return;
+        }
+
+        // Get the platform from the local post (e.g., ["google"])
+        const platforms = localPost.platforms || [];
+        console.log('[Reschedule API] Post platforms:', platforms);
+
+        // Fetch connected accounts to map platform name -> account ID
+        const accountsResponse = await fetch(
+            `https://services.leadconnectorhq.com/social-media-posting/${locationId}/accounts`,
+            {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Version': '2021-07-28',
+                },
+            }
+        );
+
+        if (!accountsResponse.ok) {
+            const errorText = await accountsResponse.text();
+            console.error('[Reschedule API] Failed to fetch accounts:', errorText);
+            res.status(500).json({ error: 'Failed to fetch accounts', details: errorText });
+            return;
+        }
+
+        const accountsData = await accountsResponse.json();
+        const accounts = accountsData.results?.accounts || accountsData.accounts || [];
+        console.log('[Reschedule API] Available accounts:', accounts.map((a: any) => ({ id: a.id, platform: a.platform })));
+
+        // Map our platform names to GHL account IDs
+        const accountIds = platforms
+            .map((platformName: string) => {
+                const account = accounts.find((a: any) =>
+                    a.platform?.toLowerCase() === platformName?.toLowerCase()
+                );
+                return account?.id;
+            })
+            .filter(Boolean);
+
+        console.log('[Reschedule API] Mapped accountIds:', accountIds);
+
+        if (accountIds.length === 0) {
+            res.status(400).json({ error: 'No matching account found for platforms: ' + platforms.join(', ') });
+            return;
+        }
+
+        // Build payload with real account IDs
+        const ghlPayload: any = {
+            scheduleDate: new Date(newDate).toISOString(),
+            accountIds,
+            media: localPost.media_urls?.length > 0
+                ? localPost.media_urls.map((url: string) => ({ url, type: 'image/jpeg' }))
+                : [],
+            type: 'post',
+            userId: integration.user_id,
+            summary: localPost.summary || '',
+        };
+
+        console.log('[Reschedule API] Sending to GHL:', JSON.stringify(ghlPayload));
+
+        // Update the post on GHL
+        const ghlResponse = await fetch(
+            `https://services.leadconnectorhq.com/social-media-posting/${locationId}/posts/${ghlPostId}`,
+            {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Version': '2021-07-28',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(ghlPayload),
+            }
+        );
+
+        if (!ghlResponse.ok) {
+            const errorText = await ghlResponse.text();
+            console.error('[Reschedule API] GHL Error:', errorText);
+            res.status(500).json({ error: 'Failed to reschedule on GHL', details: errorText });
+            return;
+        }
+
+        // Update local cache too
+        if (localPostId) {
+            console.log('[Reschedule API] Updating local post:', localPostId);
+            const { error: localError } = await supabase.from('social_posts').update({
+                scheduled_at: new Date(newDate).toISOString(),  // Column is scheduled_at not scheduled_date
+                updated_at: new Date().toISOString(),
+            }).eq('id', localPostId);
+
+            if (localError) {
+                console.error('[Reschedule API] Local DB error:', localError);
+            }
+        }
+
+        console.log('[Reschedule API] Post rescheduled successfully');
+        res.json({ success: true, newDate });
+
+    } catch (error: any) {
+        console.error('[Reschedule API] Error:', error);
+        res.status(500).json({ error: 'Failed to reschedule post', details: error.message });
+    }
+});
+
+// 10. Update Post Endpoint (Full Edit)
+app.put('/api/social/post', async (req, res) => {
+    console.log('[Server] Update Post Request Received');
+
+    const { locationId, ghlPostId, localPostId, caption, scheduledAt } = req.body;
+
+    if (!locationId || !ghlPostId) {
+        res.status(400).json({ error: 'Missing required fields: locationId, ghlPostId' });
+        return;
+    }
+
+    try {
+        const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+
+        // Get GHL token
+        const { data: integration, error: dbError } = await supabase
+            .from('ghl_integrations')
+            .select('*')
+            .eq('location_id', locationId)
+            .single();
+
+        if (dbError || !integration) {
+            res.status(404).json({ error: 'No GHL integration found' });
+            return;
+        }
+
+        let accessToken = integration.access_token;
+
+        // Check for expiry and refresh if needed
+        if (new Date(integration.expires_at) < new Date()) {
+            const refreshed = await refreshToken(integration.refresh_token);
+            if (!refreshed) {
+                res.status(401).json({ error: 'Token expired and refresh failed' });
+                return;
+            }
+            await supabase.from('ghl_integrations').update({
+                access_token: refreshed.access_token,
+                refresh_token: refreshed.refresh_token,
+                expires_at: new Date(Date.now() + refreshed.expires_in * 1000).toISOString(),
+                updated_at: new Date().toISOString(),
+            }).eq('location_id', locationId);
+            accessToken = refreshed.access_token;
+        }
+        // Fetch the local post to get existing data
+        const { data: localPost } = await supabase
+            .from('social_posts')
+            .select('*')
+            .eq('id', localPostId)
+            .single();
+
+        if (!localPost) {
+            res.status(404).json({ error: 'Local post not found' });
+            return;
+        }
+
+        // Get the platform from the local post to map to account ID
+        const platforms = localPost.platforms || [];
+
+        // Fetch connected accounts to get real account IDs
+        const accountsResponse = await fetch(
+            `https://services.leadconnectorhq.com/social-media-posting/${locationId}/accounts`,
+            {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Version': '2021-07-28',
+                },
+            }
+        );
+
+        const accountsData = await accountsResponse.json();
+        const accounts = accountsData.results?.accounts || accountsData.accounts || [];
+
+        // Map platform names to account IDs
+        const accountIds = platforms
+            .map((platformName: string) => {
+                const account = accounts.find((a: any) =>
+                    a.platform?.toLowerCase() === platformName?.toLowerCase()
+                );
+                return account?.id;
+            })
+            .filter(Boolean);
+
+        if (accountIds.length === 0) {
+            res.status(400).json({ error: 'No matching account found for platforms: ' + platforms.join(', ') });
+            return;
+        }
+
+        // Build full GHL payload (GHL requires complete payload for PUT)
+        const ghlPayload: any = {
+            accountIds,
+            media: localPost.media_urls?.length > 0
+                ? localPost.media_urls.map((url: string) => ({ url, type: 'image/jpeg' }))
+                : [],
+            type: 'post',
+            userId: integration.user_id,
+            summary: caption !== undefined ? caption : localPost.summary,
+        };
+
+        if (scheduledAt) {
+            ghlPayload.scheduleDate = new Date(scheduledAt).toISOString();
+        }
+
+        console.log('[Update Post API] Sending to GHL:', JSON.stringify(ghlPayload));
+
+        // Update the post on GHL
+        const ghlResponse = await fetch(
+            `https://services.leadconnectorhq.com/social-media-posting/${locationId}/posts/${ghlPostId}`,
+            {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Version': '2021-07-28',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(ghlPayload),
+            }
+        );
+
+        if (!ghlResponse.ok) {
+            const errorText = await ghlResponse.text();
+            console.error('[Update Post API] GHL Error:', errorText);
+            res.status(500).json({ error: 'Failed to update on GHL', details: errorText });
+            return;
+        }
+
+        // Update local cache with correct column names
+        const localUpdate: any = { updated_at: new Date().toISOString() };
+        if (caption !== undefined) localUpdate.summary = caption;  // Fixed: was 'caption'
+        if (scheduledAt) localUpdate.scheduled_at = new Date(scheduledAt).toISOString();  // Fixed: was 'scheduled_date'
+
+        const { error: localError } = await supabase.from('social_posts').update(localUpdate).eq('id', localPostId);
+
+        if (localError) {
+            console.error('[Update Post API] Local DB error:', localError);
+        }
+
+        console.log('[Update Post API] Post updated successfully');
+        res.json({ success: true });
+
+    } catch (error: any) {
+        console.error('[Update Post API] Error:', error);
+        res.status(500).json({ error: 'Failed to update post', details: error.message });
+    }
+});
+
+// --- TEAM API ROUTES ---
+import { Resend } from 'resend';
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+// Helper: Verify user's role in a business
+async function verifyBusinessRole(
+    supabase: any,
+    businessId: string,
+    userId: string,
+    allowedRoles: string[]
+): Promise<{ allowed: boolean; role?: string }> {
+    const { data, error } = await supabase
+        .from('business_members')
+        .select('role')
+        .eq('business_id', businessId)
+        .eq('user_id', userId)
+        .single();
+
+    if (error || !data) return { allowed: false };
+    return { allowed: allowedRoles.includes(data.role), role: data.role };
+}
+
+// 1. Create Invitation
+app.post('/api/team/invite', async (req, res) => {
+    console.log('[Team] Invite Request Received');
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+
+    const token = authHeader.split(' ')[1];
+    const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+        res.status(401).json({ error: 'Invalid token' });
+        return;
+    }
+
+    const { businessId, email, role, sendEmail = false } = req.body;
+
+    if (!businessId || !role) {
+        res.status(400).json({ error: 'businessId and role are required' });
+        return;
+    }
+
+    if (!['admin', 'editor', 'viewer'].includes(role)) {
+        res.status(400).json({ error: 'Invalid role' });
+        return;
+    }
+
+    // Verify permission
+    const { allowed } = await verifyBusinessRole(supabase, businessId, user.id, ['owner', 'admin']);
+    if (!allowed) {
+        res.status(403).json({ error: 'You do not have permission to invite members' });
+        return;
+    }
+
+    try {
+        // Get business name
+        const { data: business } = await supabase
+            .from('businesses')
+            .select('name')
+            .eq('id', businessId)
+            .single();
+
+        // Create invitation
+        const { data: invitation, error: inviteError } = await supabase
+            .from('invitations')
+            .insert({
+                business_id: businessId,
+                email: email || null,
+                role,
+                invited_by: user.id
+            })
+            .select()
+            .single();
+
+        if (inviteError) {
+            console.error('[Team] Invite error:', inviteError);
+            res.status(500).json({ error: 'Failed to create invitation' });
+            return;
+        }
+
+        const inviteLink = `http://localhost:5173/invite/${invitation.token}`;
+
+        // Send email if requested
+        if (sendEmail && email && process.env.RESEND_API_KEY) {
+            try {
+                await resend.emails.send({
+                    from: 'onboarding@resend.dev',
+                    to: email,
+                    subject: `You've been invited to ${business?.name || 'a business'}`,
+                    html: `
+                        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+                            <h1 style="color: #1a1a1a;">You're Invited! 🎉</h1>
+                            <p>You've been invited to join <strong>${business?.name || 'a business'}</strong> as a <strong>${role}</strong>.</p>
+                            <a href="${inviteLink}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; margin: 20px 0;">
+                                Accept Invitation
+                            </a>
+                            <p style="color: #888; font-size: 14px;">This invitation expires in 7 days.</p>
+                        </div>
+                    `
+                });
+                console.log('[Team] Invite email sent to:', email);
+            } catch (emailError) {
+                console.error('[Team] Email send error:', emailError);
+            }
+        }
+
+        res.json({
+            success: true,
+            invitation: { id: invitation.id, token: invitation.token, expiresAt: invitation.expires_at },
+            inviteLink
+        });
+
+    } catch (error) {
+        console.error('[Team] Invite error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 2. Accept Invitation
+app.post('/api/team/accept', async (req, res) => {
+    console.log('[Team] Accept Request Received');
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+
+    const token = authHeader.split(' ')[1];
+    const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+        res.status(401).json({ error: 'Invalid token' });
+        return;
+    }
+
+    const { inviteToken } = req.body;
+    if (!inviteToken) {
+        res.status(400).json({ error: 'inviteToken is required' });
+        return;
+    }
+
+    try {
+        // Get invitation
+        const { data: invitation, error: inviteError } = await supabase
+            .from('invitations')
+            .select('*, businesses(name)')
+            .eq('token', inviteToken)
+            .single();
+
+        if (inviteError || !invitation) {
+            res.status(404).json({ error: 'Invitation not found' });
+            return;
+        }
+
+        if (invitation.accepted_at) {
+            res.status(400).json({ error: 'Invitation already accepted' });
+            return;
+        }
+
+        if (new Date(invitation.expires_at) < new Date()) {
+            res.status(400).json({ error: 'Invitation expired' });
+            return;
+        }
+
+        // Check if already member
+        const { data: existing } = await supabase
+            .from('business_members')
+            .select('id')
+            .eq('business_id', invitation.business_id)
+            .eq('user_id', user.id)
+            .single();
+
+        if (existing) {
+            res.status(400).json({ error: 'Already a member' });
+            return;
+        }
+
+        // Add to members
+        const { error: memberError } = await supabase
+            .from('business_members')
+            .insert({
+                business_id: invitation.business_id,
+                user_id: user.id,
+                role: invitation.role,
+                invited_by: invitation.invited_by
+            });
+
+        if (memberError) {
+            console.error('[Team] Member add error:', memberError);
+            res.status(500).json({ error: 'Failed to add member' });
+            return;
+        }
+
+        // Mark accepted
+        await supabase
+            .from('invitations')
+            .update({ accepted_at: new Date().toISOString() })
+            .eq('id', invitation.id);
+
+        // Notify the inviter
+        if (invitation.invited_by) {
+            await supabase.from('notifications').insert({
+                user_id: invitation.invited_by,
+                type: 'success',
+                title: 'Invite Accepted!',
+                message: `${user.email} has joined ${invitation.businesses?.name || 'your business'} as ${invitation.role}`,
+                link: `/profile?tab=team`
+            });
+        }
+
+        console.log('[Team] Invite accepted, user added to:', invitation.business_id);
+
+        res.json({
+            success: true,
+            businessId: invitation.business_id,
+            businessName: invitation.businesses?.name,
+            role: invitation.role
+        });
+
+    } catch (error) {
+        console.error('[Team] Accept error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 3. Revoke Invitation
+app.delete('/api/team/revoke', async (req, res) => {
+    console.log('[Team] Revoke Request Received');
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+
+    const token = authHeader.split(' ')[1];
+    const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+        res.status(401).json({ error: 'Invalid token' });
+        return;
+    }
+
+    const { invitationId } = req.body;
+    if (!invitationId) {
+        res.status(400).json({ error: 'invitationId is required' });
+        return;
+    }
+
+    try {
+        // Get invitation
+        const { data: invitation } = await supabase
+            .from('invitations')
+            .select('business_id')
+            .eq('id', invitationId)
+            .single();
+
+        if (!invitation) {
+            res.status(404).json({ error: 'Invitation not found' });
+            return;
+        }
+
+        // Verify permission
+        const { allowed } = await verifyBusinessRole(supabase, invitation.business_id, user.id, ['owner', 'admin']);
+        if (!allowed) {
+            res.status(403).json({ error: 'No permission to revoke' });
+            return;
+        }
+
+        // Delete
+        await supabase.from('invitations').delete().eq('id', invitationId);
+
+        console.log('[Team] Invitation revoked:', invitationId);
+        res.json({ success: true });
+
+    } catch (error) {
+        console.error('[Team] Revoke error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ============================================================================
+// IMAGE GENERATION API (Server-Side with Job Persistence)
+// ============================================================================
+
+
+
+// Helper: Convert URL to Base64 (for image references)
+async function urlToBase64(url: string): Promise<string | null> {
+    try {
+        const response = await fetch(url);
+        const arrayBuffer = await response.arrayBuffer();
+        const base64 = Buffer.from(arrayBuffer).toString('base64');
+        return base64;
+    } catch (e) {
+        console.error("[Generate] Failed to fetch image:", e);
+        return null;
+    }
+}
+
+// Helper: Upload base64 to Supabase Storage
+async function uploadToStorage(base64Data: string, businessId: string, supabase: any): Promise<string | null> {
+    try {
+        const base64Response = await fetch(base64Data);
+        const blob = await base64Response.blob();
+        const arrayBuffer = await blob.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+
+        const fileName = `${businessId}/generated/${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
+
+        const { error: uploadError } = await supabase.storage
+            .from('business-assets')
+            .upload(fileName, buffer, {
+                contentType: 'image/png',
+                upsert: false
+            });
+
+        if (uploadError) throw uploadError;
+
+        const { data } = supabase.storage
+            .from('business-assets')
+            .getPublicUrl(fileName);
+
+        return data.publicUrl;
+    } catch (error) {
+        console.error('[Generate] Upload failed:', error);
+        return null;
+    }
+}
+
+// POST /api/generate-image
+// Creates a job, runs generation, saves result
+app.post('/api/generate-image', async (req, res) => {
+    console.log('[Generate] Image Generation Request Received');
+
+    const {
+        businessId,
+        prompt,
+        aspectRatio = '1:1',
+        styleId,
+        subjectId,
+        modelTier = 'pro',
+        thinkingMode, // 'LOW' | 'HIGH' | undefined (default = no thinkingConfig)
+        strategy,
+        subjectContext,
+        stylePreset
+    } = req.body;
+
+    if (!businessId || !prompt) {
+        res.status(400).json({ error: 'businessId and prompt are required' });
+        return;
+    }
+
+    // Vercel AI Gateway uses AI_GATEWAY_API_KEY (set automatically)
+
+    const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+
+    try {
+        // 1. Fetch Business Data
+        const { data: business, error: bizError } = await supabase
+            .from('businesses')
+            .select('*')
+            .eq('id', businessId)
+            .single();
+
+        if (bizError || !business) {
+            res.status(404).json({ error: 'Business not found' });
+            return;
+        }
+
+        // Map DB business to app format (simplified)
+        const mappedBusiness = {
+            id: business.id,
+            name: business.name,
+            type: business.type,
+            industry: business.industry,
+            description: business.description,
+            website: business.website,
+            currency: business.currency || 'USD',
+            credits: business.credits,
+            colors: business.colors || {},
+            voice: business.voice || {},
+            profile: business.profile || {},
+            adPreferences: business.ad_preferences || {},
+            offerings: business.offerings || [],
+            teamMembers: business.team_members || [],
+            logoUrl: business.logo_url,
+            typography: business.typography || {},
+            visualMotifs: business.visual_motifs || [],
+            locations: business.locations || []
+        };
+
+        // 2. Create Job Record
+        const { data: job, error: jobError } = await supabase
+            .from('generation_jobs')
+            .insert({
+                business_id: businessId,
+                status: 'processing',
+                prompt,
+                aspect_ratio: aspectRatio,
+                style_id: styleId,
+                subject_id: subjectId,
+                model_tier: modelTier,
+                strategy: strategy || null
+            })
+            .select()
+            .single();
+
+        if (jobError) {
+            console.error('[Generate] Failed to create job:', jobError);
+            res.status(500).json({ error: 'Failed to create job' });
+            return;
+        }
+
+        console.log('[Generate] Job created:', job.id);
+
+        // Return job ID immediately so frontend can track
+        res.json({ jobId: job.id, status: 'processing' });
+
+        // 3. Run Generation in Background (after response sent)
+        // This is a "fire-and-forget" pattern for the HTTP response
+        // The job status in DB is the source of truth
+        (async () => {
+            try {
+                // Dynamic import to avoid supabase init before dotenv
+                const { PromptFactory } = await import('./services/prompts.js');
+                // Using Vercel AI Gateway for image generation
+
+                // Build prompt using PromptFactory
+                let visualPrompt = prompt;
+                if (subjectContext) {
+                    visualPrompt += `\nPRIMARY SUBJECT: ${subjectContext.type}. ${subjectContext.preserveLikeness ? 'Maintain strict visual likeness.' : ''}`;
+                }
+
+                const finalPrompt = await PromptFactory.createImagePrompt(
+                    mappedBusiness as any,
+                    visualPrompt,
+                    mappedBusiness.voice.keywords || [],
+                    (stylePreset?.avoid || []).join(', '),
+                    undefined,
+                    undefined,
+                    subjectContext?.promotion,
+                    subjectContext?.benefits,
+                    subjectContext?.targetAudience || mappedBusiness.adPreferences?.targetAudience,
+                    subjectContext?.preserveLikeness || false,
+                    stylePreset,
+                    subjectContext?.price,
+                    subjectContext?.name,
+                    strategy
+                );
+
+                console.log('[Generate] Final prompt length:', finalPrompt.length);
+
+                // DEBUG BYPASS
+                if (prompt.toLowerCase().startsWith('debug:')) {
+                    // LOG THE FULL PROMPT - This is the whole point of debug mode!
+                    console.log('');
+                    console.log('='.repeat(60));
+                    console.log('=== DEBUG MODE: FULL CONSTRUCTED PROMPT ===');
+                    console.log('='.repeat(60));
+                    console.log(finalPrompt);
+                    console.log('='.repeat(60));
+                    console.log('=== END PROMPT ===');
+                    console.log('');
+                    console.log('[Generate] Prompt length:', finalPrompt.length, 'characters');
+                    console.log('[Generate] Subject context:', subjectContext ? JSON.stringify(subjectContext, null, 2) : 'None');
+                    console.log('[Generate] Style preset:', stylePreset?.name || 'None');
+                    console.log('[Generate] Strategy:', strategy ? JSON.stringify(strategy, null, 2) : 'Default');
+                    console.log('='.repeat(60));
+
+                    // Check for slow debug mode (debug: slow) - waits before completing
+                    const isSlowDebug = prompt.toLowerCase().includes('slow');
+                    if (isSlowDebug) {
+                        console.log('[Generate] DEBUG SLOW: Waiting 8 seconds to simulate generation...');
+                        await new Promise(r => setTimeout(r, 8000));
+                    }
+
+                    const debugUrl = "https://placehold.co/1024x1024/png?text=DEBUG+MODE";
+
+                    // Create asset
+                    const assetId = `asset_${Date.now()}`;
+                    await supabase.from('assets').insert({
+                        id: assetId,
+                        business_id: businessId,
+                        type: 'image',
+                        content: debugUrl,
+                        prompt: prompt,
+                        aspect_ratio: aspectRatio,
+                        style_id: styleId,
+                        subject_id: subjectId,
+                        model_tier: modelTier
+                    });
+
+                    await supabase
+                        .from('generation_jobs')
+                        .update({ status: 'completed', result_asset_id: assetId, updated_at: new Date().toISOString() })
+                        .eq('id', job.id);
+
+                    console.log('[Generate] DEBUG: Job completed (check full prompt above)');
+                    return;
+                }
+
+                // Build message content with images (Vercel AI Gateway format)
+                const contentParts: Array<{ type: 'text'; text: string } | { type: 'image'; image: string }> = [
+                    { type: 'text', text: finalPrompt }
+                ];
+
+                // Add subject image if provided
+                if (subjectContext?.imageUrl) {
+                    const subjectImage = await urlToBase64(subjectContext.imageUrl);
+                    if (subjectImage) {
+                        contentParts.push({ type: 'image', image: `data:image/png;base64,${subjectImage}` });
+                        contentParts.push({ type: 'text', text: ' [REFERENCE IMAGE 1: MAIN PRODUCT] ' });
+                    }
+                }
+
+                // Add logo if available
+                if (mappedBusiness.logoUrl) {
+                    const logoImage = await urlToBase64(mappedBusiness.logoUrl);
+                    if (logoImage) {
+                        contentParts.push({ type: 'image', image: `data:image/png;base64,${logoImage}` });
+                        contentParts.push({ type: 'text', text: ' [REFERENCE IMAGE: LOGO] ' });
+                    }
+                }
+
+                // Add style references if provided - FILTER to get ALL active, not just first
+                if (stylePreset?.referenceImages?.length > 0) {
+                    console.log('[Generate] Style has', stylePreset.referenceImages.length, 'reference images');
+
+                    // Handle both formats: plain URLs and objects with isActive
+                    const activeRefs = stylePreset.referenceImages.filter((r: any) => {
+                        // If it's an object with isActive property, check it
+                        if (typeof r === 'object' && r !== null && 'isActive' in r) {
+                            return r.isActive === true;
+                        }
+                        // If it's just a URL string, include it
+                        return typeof r === 'string';
+                    });
+
+                    console.log('[Generate] Active style references:', activeRefs.length);
+
+                    let refCount = 0;
+                    for (const ref of activeRefs) {
+                        const url = typeof ref === 'string' ? ref : (ref.url || ref);
+                        const styleImage = await urlToBase64(url);
+                        if (styleImage) {
+                            refCount++;
+                            contentParts.push({ type: 'image', image: `data:image/png;base64,${styleImage}` });
+                            contentParts.push({ type: 'text', text: ` [REFERENCE IMAGE ${refCount}: STYLE] ` });
+                        }
+                    }
+                    console.log('[Generate] Successfully loaded', refCount, 'style reference images');
+                } else if (stylePreset?.imageUrl) {
+                    const styleImage = await urlToBase64(stylePreset.imageUrl);
+                    if (styleImage) {
+                        contentParts.push({ type: 'image', image: `data:image/png;base64,${styleImage}` });
+                        contentParts.push({ type: 'text', text: ' [REFERENCE IMAGE: STYLE] ' });
+                        console.log('[Generate] Using single style imageUrl');
+                    }
+                }
+
+                // === DETAILED GENERATION LOG ===
+                const imageCount = contentParts.filter(p => p.type === 'image').length;
+                const totalPayloadSize = JSON.stringify(contentParts).length;
+                const payloadSizeMB = (totalPayloadSize / 1024 / 1024).toFixed(2);
+
+                console.log('');
+                console.log('='.repeat(60));
+                console.log('[Generate] === FINAL PAYLOAD SUMMARY ===');
+                console.log('[Generate] Prompt length:', finalPrompt.length, 'chars');
+                console.log('[Generate] Images included:', imageCount);
+                console.log('[Generate] Aspect ratio:', aspectRatio);
+                console.log('[Generate] Payload Size:', payloadSizeMB, 'MB');
+                console.log('[Generate] Image size config:', modelTier === 'ultra' ? '4K' : '2K');
+                console.log('[Generate] Model tier:', modelTier);
+                console.log('[Generate] Thinking mode:', thinkingMode || 'DEFAULT (no config)');
+                console.log('='.repeat(60));
+
+                // Debug large payloads
+                if (parseFloat(payloadSizeMB) > 10) {
+                    console.warn('[Generate] WARNING: Payload is very large (>10MB). This may cause timeouts.');
+                }
+
+                console.log('[Generate] Calling Gemini 3 Pro Image via Direct Google API...');
+                const genStartTime = Date.now();
+
+
+                // Initialize Google AI client
+                const googleClient = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY! });
+
+                // Convert contentParts to Google format
+                const googleParts: any[] = [];
+                for (const part of contentParts) {
+                    if (part.type === 'text') {
+                        googleParts.push({ text: part.text });
+                    } else if (part.type === 'image' && typeof part.image === 'string') {
+                        // Extract base64 from data URL
+                        const base64Match = part.image.match(/^data:([^;]+);base64,(.+)$/);
+                        if (base64Match) {
+                            googleParts.push({
+                                inlineData: {
+                                    mimeType: base64Match[1],
+                                    data: base64Match[2]
+                                }
+                            });
+                        }
+                    }
+                }
+
+                // Call Gemini 3 Pro Image directly
+                // NOTE: thinkingConfig is NOT supported by gemini-3-pro-image-preview
+                // despite Google's model docs claiming "Thinking: Supported"
+                // See: https://github.com/google-gemini/generative-ai-js/issues/XXX
+                const configToSend = {
+                    responseModalities: ['TEXT', 'IMAGE'],
+                    imageConfig: {
+                        aspectRatio: aspectRatio,
+                        imageSize: modelTier === 'ultra' ? '4K' : '2K',
+                    },
+                };
+                console.log('[Generate] Config being sent:', JSON.stringify(configToSend, null, 2));
+
+                const result = await googleClient.models.generateContent({
+                    model: 'gemini-3-pro-image-preview',
+                    contents: [{ role: 'user', parts: googleParts }],
+                    config: configToSend as any,
+                });
+
+                // Extract image from response
+                const genEndTime = Date.now();
+                console.log(`[Generate] ⏱️ AI Generation took: ${((genEndTime - genStartTime) / 1000).toFixed(2)}s`);
+
+                const parts = result.candidates?.[0]?.content?.parts || [];
+                const imagePart = parts.find((p: any) => p.inlineData?.mimeType?.startsWith('image/'));
+
+                if (!imagePart?.inlineData) {
+                    throw new Error('No image in response');
+                }
+
+                const resultImage = `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
+
+                // Upload to storage
+                const publicUrl = await uploadToStorage(resultImage, businessId, supabase);
+                if (!publicUrl) {
+                    throw new Error('Failed to upload to storage');
+                }
+
+                // Create asset record
+                const assetId = `asset_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+                await supabase.from('assets').insert({
+                    id: assetId,
+                    business_id: businessId,
+                    type: 'image',
+                    content: publicUrl,
+                    prompt: prompt,
+                    aspect_ratio: aspectRatio,
+                    style_preset: stylePreset?.name,
+                    style_id: styleId,
+                    subject_id: subjectId,
+                    model_tier: modelTier
+                });
+
+                // Update job to completed
+                await supabase
+                    .from('generation_jobs')
+                    .update({
+                        status: 'completed',
+                        result_asset_id: assetId,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', job.id);
+
+                console.log('[Generate] Job completed:', job.id, '-> Asset:', assetId);
+
+            } catch (error: any) {
+                console.error('[Generate] Generation failed:', error);
+
+                await supabase
+                    .from('generation_jobs')
+                    .update({
+                        status: 'failed',
+                        error_message: error.message || 'Unknown error',
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', job.id);
+            }
+        })();
+
+    } catch (error: any) {
+        console.error('[Generate] Error:', error);
+        res.status(500).json({ error: 'Generation failed', details: error.message });
+    }
+});
+
+// GET /api/generate-image/status/:jobId
+// Check job status (for polling)
+app.get('/api/generate-image/status/:jobId', async (req, res) => {
+    const { jobId } = req.params;
+
+    const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+
+    const { data: job, error } = await supabase
+        .from('generation_jobs')
+        .select('*')
+        .eq('id', jobId)
+        .single();
+
+    if (error || !job) {
+        res.status(404).json({ error: 'Job not found' });
+        return;
+    }
+
+    // If completed, also fetch the asset
+    let asset = null;
+    if (job.status === 'completed' && job.result_asset_id) {
+        const { data: assetData } = await supabase
+            .from('assets')
+            .select('*')
+            .eq('id', job.result_asset_id)
+            .single();
+
+        if (assetData) {
+            asset = {
+                id: assetData.id,
+                type: assetData.type,
+                content: assetData.content,
+                prompt: assetData.prompt,
+                createdAt: assetData.created_at,
+                stylePreset: assetData.style_preset,
+                aspectRatio: assetData.aspect_ratio
+            };
+        }
+    }
+
+    res.json({
+        id: job.id,
+        status: job.status,
+        errorMessage: job.error_message,
+        resultAssetId: job.result_asset_id,
+        asset,
+        createdAt: job.created_at,
+        updatedAt: job.updated_at
+    });
+});
+
+// GET /api/generate-image/pending/:businessId
+// Get all pending/processing jobs for a business (for page load)
+app.get('/api/generate-image/pending/:businessId', async (req, res) => {
+    const { businessId } = req.params;
+
+    const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+
+    const { data: jobs, error } = await supabase
+        .from('generation_jobs')
+        .select('*')
+        .eq('business_id', businessId)
+        .in('status', ['pending', 'processing'])
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        res.status(500).json({ error: 'Failed to fetch jobs' });
+        return;
+    }
+
+    res.json({ jobs: jobs || [] });
+});
+
 // Start Server
 app.listen(port, () => {
     console.log(`✅ Local API Server running at http://localhost:${port}`);
     console.log(`   - POST /api/generate-text`);
-    console.log(`   - POST /api/generate-image`);
+    console.log(`   - POST /api/generate-image (NEW: Job-based)`);
+    console.log(`   - GET  /api/generate-image/status/:jobId`);
+    console.log(`   - GET  /api/generate-image/pending/:businessId`);
     console.log(`   - POST /api/extract-website`);
+    console.log(`   - POST /api/export-print`);
+    console.log(`   - SOCIAL: /api/social/* (install, callback, accounts, post, sync)`);
+    console.log(`   - TEAM: /api/team/* (invite, accept, revoke)`);
 });
+

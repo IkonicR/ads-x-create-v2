@@ -1,11 +1,58 @@
 /**
  * Social Media Service
- * Wrapper for GoHighLevel Social Planner API
+ * Wrapper for GoHighLevel Social Planner API + Local Supabase Cache
  * 
- * All calls require a GHL Private Integration Token (per sub-account).
+ * All GHL calls require a GHL Private Integration Token (per sub-account).
+ * Local methods use Supabase for instant loading.
  */
 
+import { supabase } from './supabase';
+import { SocialPost, SocialAccount } from '../types';
+
 const GHL_BASE_URL = 'https://services.leadconnectorhq.com';
+
+// ============================================================================
+// LOCAL SUPABASE CACHE LAYER (for instant loading)
+// ============================================================================
+
+// Map from DB row to SocialPost type
+const mapPostFromDB = (row: any): SocialPost => ({
+    id: row.id,
+    ghlPostId: row.ghl_post_id,
+    parentPostId: row.parent_post_id,
+    businessId: row.business_id,
+    locationId: row.location_id,
+    summary: row.summary || '',
+    mediaUrls: row.media_urls || [],
+    status: row.status || 'draft',
+    scheduledAt: row.scheduled_at,
+    publishedAt: row.published_at,
+    platforms: row.platforms || [],
+    syncedAt: row.synced_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+});
+
+// Map SocialPost to DB payload
+const mapPostToDB = (post: Partial<SocialPost>) => ({
+    id: post.id,
+    ghl_post_id: post.ghlPostId,
+    parent_post_id: post.parentPostId,
+    business_id: post.businessId,
+    location_id: post.locationId,
+    summary: post.summary,
+    media_urls: post.mediaUrls,
+    status: post.status,
+    scheduled_at: post.scheduledAt,
+    published_at: post.publishedAt,
+    platforms: post.platforms,
+    synced_at: post.syncedAt,
+    updated_at: new Date().toISOString(),
+});
+
+// ============================================================================
+// LEGACY TYPES (Keep for compatibility)
+// ============================================================================
 
 // Types
 export interface ConnectedAccount {
@@ -33,6 +80,10 @@ export interface SchedulePostPayload {
     scheduledAt?: string; // ISO date, omit for immediate post
     hashtags?: string[];
 }
+
+// ============================================================================
+// GHL API LAYER
+// ============================================================================
 
 // Helper for GHL API calls
 const ghlFetch = async (
@@ -225,5 +276,119 @@ export const SocialService = {
         }
 
         return accounts;
+    },
+
+    // =========================================================================
+    // LOCAL SUPABASE CACHE METHODS (for instant loading)
+    // =========================================================================
+
+    /**
+     * Get posts from local Supabase cache (fast - no GHL call)
+     */
+    getLocalPosts: async (businessId: string, limit = 100, offset = 0): Promise<SocialPost[]> => {
+        const { data, error } = await supabase
+            .from('social_posts')
+            .select('*')
+            .eq('business_id', businessId)
+            .order('scheduled_at', { ascending: true, nullsFirst: false })
+            .range(offset, offset + limit - 1);
+
+        if (error) {
+            console.error('[SocialService] Error fetching local posts:', error);
+            return [];
+        }
+
+        return (data || []).map(mapPostFromDB);
+    },
+
+    /**
+     * Get posts by date range (for calendar view)
+     */
+    getLocalPostsByDateRange: async (
+        businessId: string,
+        startDate: string,
+        endDate: string
+    ): Promise<SocialPost[]> => {
+        const { data, error } = await supabase
+            .from('social_posts')
+            .select('*')
+            .eq('business_id', businessId)
+            .gte('scheduled_at', startDate)
+            .lte('scheduled_at', endDate)
+            .order('scheduled_at', { ascending: true });
+
+        if (error) {
+            console.error('[SocialService] Error fetching posts by date:', error);
+            return [];
+        }
+
+        return (data || []).map(mapPostFromDB);
+    },
+
+    /**
+     * Save a post to local cache (upsert)
+     */
+    saveLocalPost: async (post: SocialPost): Promise<void> => {
+        const { error } = await supabase
+            .from('social_posts')
+            .upsert(mapPostToDB(post), { onConflict: 'id' });
+
+        if (error) {
+            console.error('[SocialService] Error saving local post:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Delete a post from local cache
+     */
+    deleteLocalPost: async (postId: string): Promise<void> => {
+        const { error } = await supabase
+            .from('social_posts')
+            .delete()
+            .eq('id', postId);
+
+        if (error) {
+            console.error('[SocialService] Error deleting local post:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Bulk upsert posts (used by sync)
+     */
+    upsertLocalPosts: async (posts: SocialPost[]): Promise<void> => {
+        if (posts.length === 0) return;
+
+        const { error } = await supabase
+            .from('social_posts')
+            .upsert(
+                posts.map(mapPostToDB),
+                { onConflict: 'ghl_post_id' }
+            );
+
+        if (error) {
+            console.error('[SocialService] Error bulk upserting posts:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Get last sync timestamp for a business
+     */
+    getLastSyncTime: async (businessId: string): Promise<string | null> => {
+        const { data, error } = await supabase
+            .from('social_posts')
+            .select('synced_at')
+            .eq('business_id', businessId)
+            .order('synced_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        if (error || !data) {
+            return null;
+        }
+
+        return data.synced_at;
     },
 };

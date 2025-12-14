@@ -2,26 +2,21 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Asset } from '../types';
 import { useThemeStyles } from './NeuComponents';
-import { Download, Trash2 } from 'lucide-react'; // Removed Maximize2
-import { downloadImage } from '../utils/download';
+import { Download, Trash2 } from 'lucide-react';
+import { downloadImage, getAssetFilename } from '../utils/download';
 
 interface AssetCardProps {
   asset: Asset;
   aspectRatio?: string;
-  // primaryColor prop removed as it was unused
+  businessName?: string;
   onDelete?: (id: string) => void;
   onClick?: () => void;
 }
 
-const getPaddingBottom = (ratio: string = '1:1') => {
-  const [w, h] = ratio.split(':').map(Number);
-  if (!w || !h) return '100%';
-  return `${(h / w) * 100}%`;
-};
-
 const AssetCardComponent: React.FC<AssetCardProps> = ({
   asset,
   aspectRatio = '1:1',
+  businessName,
   onDelete,
   onClick
 }) => {
@@ -31,15 +26,13 @@ const AssetCardComponent: React.FC<AssetCardProps> = ({
 
   const handleDownload = (e: React.MouseEvent) => {
     e.stopPropagation();
-    downloadImage(asset.content, `ad-asset-${asset.id}.png`);
+    const filename = getAssetFilename(asset, businessName);
+    downloadImage(asset.content, filename);
   };
 
-  // Physical "Pop" Shadow - NOW USING STANDARD THEME
-  // const poppedShadow = ... (Removed)
-  // const bgStyle = ... (Removed)
-  // const borderColor = ... (Removed)
-
-  const paddingBottom = getPaddingBottom(aspectRatio);
+  // Parse aspect ratio for CSS
+  const [w, h] = aspectRatio.split(':').map(Number);
+  const aspectValue = w && h ? `${w}/${h}` : '1/1';
 
   return (
     <motion.div
@@ -49,28 +42,17 @@ const AssetCardComponent: React.FC<AssetCardProps> = ({
       transition={{ duration: 0.4, ease: "easeOut" }}
       onClick={onClick}
       className={`
-        relative group rounded-3xl mb-6 w-full 
+        relative group rounded-3xl p-6 w-full 
         ${onClick ? 'cursor-pointer' : ''}
         ${styles.shadowOut} 
         ${styles.bg}
       `}
-      style={{
-        // Padding Hack for Consistent Sizing
-        height: 0,
-        paddingBottom: paddingBottom,
-
-        // In Shape Mode: Solid Color (using morphColor logic if we had it here, or just bg).
-        // For now, relying on classes for Content Mode. 
-        // For Shape Mode, we need to ensure it has a background but no shadow.
-        // SYNCED COLOR: Using #0F1115 (Theme BG) to match LiquidSelector for seamless morph.
-        // backgroundColor: isShape ? (isDark ? '#0F1115' : '#E0E5EC') : undefined, // Removed
-        // boxShadow: isShape ? 'none' : undefined // Removed
-      }}
     >
-      {/* Container - Absolute with m-4 to create the Bezel */}
-      {/* In Shape Mode, we hide the content */}
-      <div className={`absolute inset-0 m-6 overflow-hidden rounded-2xl`}>
-
+      {/* Inner image container with CSS aspect-ratio */}
+      <div
+        className="relative w-full overflow-hidden rounded-2xl"
+        style={{ aspectRatio: aspectValue }}
+      >
         {/* Placeholder (Skeleton) until image loads */}
         {!isLoaded && (
           <div className="absolute inset-0 bg-gray-200 dark:bg-gray-800 animate-pulse" />
@@ -86,14 +68,10 @@ const AssetCardComponent: React.FC<AssetCardProps> = ({
           className="absolute inset-0 w-full h-full object-cover"
         />
 
-        {/* Gloss Sheen (One-time entrance could be added here if we track 'isNew') */}
-      </div>
-
-      {/* Hover Overlay - Adjusted to fit new structure */}
-      <div className={`absolute inset-0 m-6 pointer-events-none`}>
-        <div className="absolute inset-0 bg-gradient-to-t from-neu-dark/90 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4 z-30 rounded-2xl">
+        {/* Hover Overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-neu-dark/90 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4 z-30">
           <p className="text-white text-sm font-medium line-clamp-2 mb-3 drop-shadow-md">{asset.prompt}</p>
-          <div className="flex justify-between items-center pointer-events-auto">
+          <div className="flex justify-between items-center">
             <span className="text-[10px] text-gray-300 uppercase tracking-wider font-bold bg-white/10 px-2 py-1 rounded backdrop-blur-sm">
               {asset.stylePreset || 'Custom'}
             </span>
@@ -121,3 +99,4 @@ const AssetCardComponent: React.FC<AssetCardProps> = ({
 };
 
 export const AssetCard = React.memo(AssetCardComponent);
+

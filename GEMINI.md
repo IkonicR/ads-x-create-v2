@@ -12,45 +12,111 @@
 
 ## INFRASTRUCTURE
 * **Supabase Project:** `afzrfcqidscibmgptkcl`
-* **AI Logic:** 
-    * **The Engine:** Client-side `services/geminiService.ts` (Direct to Google Gemini API).
+* **AI Logic (Vercel AI Gateway):** 
+    * **All AI calls routed through Vercel AI Gateway** for consolidated billing.
+    * **Text Generation:** `google/gemini-2.5-flash` via `@ai-sdk/gateway`
+    * **Image Generation:** `google/gemini-3-pro-image` via `@ai-sdk/gateway`
+    * **Website Parsing:** `deepseek/deepseek-v3.2-thinking` (Firecrawl scrapes → DeepSeek parses)
+    * **Caption Generation:** `deepseek/deepseek-v3.2`
+    * **Client-side chat:** `services/geminiService.ts` (still uses `@google/genai` directly)
     * **Pipeline:** "Job Ticket" Architecture (`prompts.ts`). Separates Source Data, Creative Copywriting (Gaps), and Visual Execution instructions.
-    * **Context Injection:** Injects User Request + Brand Identity + Ad Preferences (Promotion, Benefits, Audience).
-    * **Preserve Product Integrity:** 
-        *   **Enabled:** "Use real product image (blended)" (Exact Geometry).
-        *   **Disabled:** "Stylize" (Creative Adaptation).
-    *   **Flexibility:** AI adapts output format (Infographic, List, Chart) based on user intent.
-* **Deployment:** Vercel (Static Hosting).
+* **Deployment:** Vercel (Static Hosting + Serverless Functions).
 
 ## LOCAL DEVELOPMENT
+
+### Quick Start (Frontend + Full API)
 ```bash
 npm install
 npm run dev
 ```
+This starts **Vite** (frontend on port 5173) + **Express** (API on port 3000).  
+✅ **All features work** including image generation, social posting, captions, etc.  
+⚠️ **GHL OAuth only** requires production (hardcoded callback URLs).
+
+---
+
+### Full Stack (Includes Social Media / GHL Features)
+```bash
+npx vercel dev --yes
+```
+This starts Vercel's dev server which handles:
+- Frontend (Vite)
+- ALL serverless API routes (`/api/*`) including social features
+
+> **First time?** If prompted to link project, select `ads-x-create-v2`. Say **No** to overwriting `.env.local`.
+
+---
+
 **Required `.env.local` variables:**
 ```env
 # Client-side (Public)
 VITE_SUPABASE_URL=https://afzrfcqidscibmgptkcl.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmenJmY3FpZHNjaWJtZ3B0a2NsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM4MDEzMzYsImV4cCI6MjA3OTM3NzMzNn0.ESSxfwK045eFKgbStvO044RZkpvFKhx822TWNx6C3Gg
+VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 # Server-side Only (Privileged)
 SUPABASE_SECRET_KEY=sb_secret_xxxxxxxxxxxxxxxxxxxx
 GHL_CLIENT_ID=xxxxxxxxxxxxxxxxxxxx
 GHL_CLIENT_SECRET=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 
-# AI & APIs
-VITE_GEMINI_API_KEY=AIzaSyxxxxxxxxxxxxxxxxxxxx
-GOOGLE_GENERATIVE_AI_API_KEY=AIzaSyxxxxxxxxxxxxxxxxxxxx
+# AI (Vercel Gateway - PRIMARY)
+AI_GATEWAY_API_KEY=xxxxxxxxxxxxxxxxxxxx  # From Vercel Dashboard > AI Gateway
+
+# AI (Direct APIs - for client-side geminiService.ts)
+VITE_GEMINI_API_KEY=AIzaSyxxxxxxxxxxxxxxxxxxxx  # Client-side chat only
+
+# Other APIs
 VITE_GOOGLE_MAPS_KEY=AIzaSyxxxxxxxxxxxxxxxxxxxx
-DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxx
 FIRECRAWL_API_KEY=fc-xxxxxxxxxxxxxxxxxxxx
 ```
 
-> **NOTE:** The `SUPABASE_SECRET_KEY` is a modern replacement for the service role key. It bypasses RLS and should ONLY be used in serverless API routes (`api/ghl/*`).
+> **NOTE:** The `SUPABASE_SECRET_KEY` bypasses RLS and should ONLY be used in serverless API routes (`api/*`).
 
-*Use `npx vercel dev` only when testing serverless API routes (e.g., `/api/extract-website`).*
+## CLI & DATABASE SETUP (CRITICAL)
+
+### 1. Fixing Supabase CLI (Migration History Mismatch)
+If `npx supabase db push` fails, your local history is out of sync with remote.
+**Fix:**
+```bash
+# 1. Link Project (if not linked)
+npx supabase link --project-ref afzrfcqidscibmgptkcl
+# Enter DB Password when prompted
+
+# 2. Pull Remote History (Sync)
+npx supabase db pull update_local_migrations
+
+# 3. Now you can Push new changes
+npx supabase db push
+```
+
+**Option A: Standard Development (Recommended)**
+*   Use for: All development work.
+*   Command: `npm run dev`
+*   ✅ All API routes work (image gen, social posting, captions, export).
+*   ⚠️ GHL OAuth install/callback won't work (hardcoded to production URL).
+
+**Option B: Vercel Dev (Only for OAuth Testing)**
+*   Use for: Testing GHL OAuth flow specifically.
+*   Command: `npx vercel dev --yes`
+*   ⚠️ Still won't work locally due to hardcoded callback URLs.
+
+
+## Workflow Preferences
+- **DEFAULT DEV SERVER: `npm run dev`** — ALWAYS use this for development. This runs Express server (server.ts) which handles ALL features except GHL social media OAuth. NEVER suggest `npx vercel dev` unless specifically working on GHL OAuth flows.
+- **NO BROWSER FOR CODE TASKS**: Do NOT use the browser subagent for code inspection, debugging, or UI verification. Use code analysis tools (grep, view_file, etc.) to understand styling and logic issues. The browser tool is slow and unnecessary for coding problems.
+
+> [!CAUTION]
+> ## ⛔ NEVER TOUCH GIT WITHOUT EXPLICIT PERMISSION
+> **DO NOT** run any git commands (`git checkout`, `git reset`, `git stash`, `git revert`, etc.) unless the user **explicitly asks you to**.
+> Running `git checkout -- <file>` destroys uncommitted work permanently. This has caused data loss before.
+> If you need to revert YOUR changes, ask the user first — they may have uncommitted work in the same files.
+
+## Gemini Added Memories
 
 ## ARCHITECTURAL PATTERNS
+* **Vercel AI Gateway:**
+    * All server-side AI calls use `@ai-sdk/gateway` with `generateText()` function.
+    * Models: `google/gemini-2.5-flash`, `google/gemini-3-pro-image`, `deepseek/deepseek-v3.2`, `deepseek/deepseek-v3.2-thinking`
+    * Consolidated billing under Vercel account.
 * **Single-Step Smart Injection:**
     * Instead of a separate "Planner" AI, we rely on the multimodal capabilities of Gemini 2.5 Flash (Text) & 3.0 Pro (Images).
     * We inject the full Brand Context, Style Rules, and Assets directly into the System Instructions for the image model.
@@ -137,37 +203,67 @@ Social media scheduling powered by GoHighLevel API v2. White-labeled—users nev
 * **Client ID:** `693810a3890d023eb434ed2e-miyjrfk3`
 * **Client Secret:** `bc77b6d9-4564-409b-a4bc-5aec3c0f19f9`
 
-### Architecture (Private Marketplace App)
-* **OAuth Flow:** Users install the app once per sub-account, then connect social accounts via OAuth popup.
-* **Backend Proxy:** Required because `/oauth/start` returns 302 redirect that needs header capture.
-* **Storage:** `ghl_integrations` table stores `access_token`, `refresh_token`, `location_id`, `expires_at`.
-* **White-Label Domain:** `leadconnectorhq.com` (not `gohighlevel.com`).
+### API Routes
+| Route | Purpose |
+|-------|---------|
+| `/api/social/install` | Initiates GHL OAuth (redirect to GHL) |
+| `/api/social/callback` | Handles OAuth callback, stores tokens |
+| `/api/social/accounts` | Lists connected social accounts |
+| `/api/social/post` | Creates/schedules posts |
+| `/api/social/social-oauth` | Proxies individual platform OAuth |
+
+### ⚠️ Critical Notes
+* **Hardcoded URLs:** `install.ts` and `callback.ts` use hardcoded `https://ads-x-create-v2.vercel.app` because GHL requires exact URL matching. When moving to a custom domain, update both files AND GHL Marketplace settings.
+* **Token Storage:** `ghl_integrations` table stores tokens. Includes `user_id` which is required for posting.
+* **Post Payload:** GHL expects `userId`, `accountIds`, `summary`, and `media` (array of `{url, type: 'image/jpeg'}`). Do NOT include `locationId` in body—it's in the URL path.
 
 ### Required GHL Scopes (Per Sub-Account)
 | Scope | Purpose |
 |-------|---------|
-| `socialplanner/post.readonly` | View scheduled posts |
 | `socialplanner/post.write` | Create/edit/delete posts |
 | `socialplanner/account.readonly` | List connected social accounts |
 | `socialplanner/account.write` | Trigger OAuth connections |
-| `socialplanner/csv.readonly` | Export posts as CSV |
-| `socialplanner/csv.write` | Import posts from CSV |
-| `socialplanner/category.readonly` | View post categories |
-| `socialplanner/category.write` | Create/edit categories |
-| `socialplanner/tag.readonly` | View hashtag tags |
-| `socialplanner/tag.write` | Create/edit tags |
-| `socialplanner/statistics.readonly` | View analytics/stats |
 
-### Supported Platforms (Image only)
-* Facebook (Pages, Groups)
-* Instagram (Posts, Stories)
-* LinkedIn (Personal, Business)
-* Pinterest
-* Google Business Profile
-* Threads
-* Bluesky
+### Supported Platforms
+Facebook, Instagram, LinkedIn, Google Business, Pinterest, Threads, Bluesky
 
 ### Key Files
-* `views/admin/AccountsTab.tsx` — Admin social config modal
-* `services/socialService.ts` — GHL API wrapper (TODO)
-* `types.ts` — `Business.socialConfig` interface
+* `api/social/*` — All serverless API routes
+* `components/ConnectedAccountsCard.tsx` — UI for connecting accounts
+* `components/AssetViewer.tsx` — UI for scheduling posts (Social tab)
+
+### Data Architecture (New V2.1)
+*   **Problem:** GHL API is slow (~2-3s).
+*   **Solution:** Local Cache First Pattern using `SocialContext`.
+*   **Components:**
+    *   `services/socialService.ts`: Hybrid service.
+        *   `getLocalPosts()`: Fetches from `social_posts` table (Instant).
+        *   `api/social/sync`: Background job fetches GHL -> Upserts to `social_posts`.
+    *   `context/SocialContext.tsx`:
+        *   Loads from `localStorage` immediately (0ms).
+        *   Then loads from `social_posts` table (50ms).
+        *   Background syncs with GHL (Async).
+*   **Database:**
+    *   `social_posts`: Local mirror of GHL posts.
+    *   `ghl_integrations`: Stores Auth tokens.
+
+
+
+## PRINT EXPORT ARCHITECTURE (V4.1)
+
+### Overview
+Professional-grade Asset Export. No paid APIs. Uses `sharp` + `pdf-lib`.
+
+### Features
+- **Formats:** PNG, JPEG, WebP, PDF
+- **Print-Ready:** CMYK, DPI (72-600), Bleed (0-5mm+), Crop Marks
+- **Paper Sizes:** A4, Letter, Instagram Square/Story
+- **Fit Modes:** Fit / Fill / Stretch (when aspect differs)
+- **Presets:** Save/load configs per-business (`businesses.export_presets`)
+
+### Smart Footer
+When Export Panel opens, "Reuse Everything" and secondary actions collapse (AnimatePresence).
+
+### Key Files
+- `components/ExportPanel.tsx` — Full export UI
+- `api/export-print.ts` — Server processing (registered in `server.ts` for local dev)

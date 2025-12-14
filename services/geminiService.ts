@@ -97,7 +97,7 @@ export const generateImage = async (
   stylePreset?: StylePreset,
   subjectContext?: {
     type: string;
-    name?: string; // Product/Person name
+    name?: string;
     imageUrl: string;
     preserveLikeness: boolean;
     promotion?: string;
@@ -107,206 +107,59 @@ export const generateImage = async (
   },
   aspectRatio: string = "1:1",
   modelTier: 'flash' | 'pro' | 'ultra' = 'pro',
-  strategy?: GenerationStrategy // NEW: Strategy override
-): Promise<string> => {
-  const ai = getAiClient();
-  if (!ai) throw new Error("Gemini API Key not found");
+  strategy?: GenerationStrategy,
+  thinkingMode?: 'LOW' | 'HIGH' // NEW: Optional thinking mode
+): Promise<{ jobId: string; status: string }> => {
+  // Call the server-side API instead of generating client-side
+  // This enables job persistence across page refreshes
+  const response = await fetch('/api/generate-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      businessId: business.id,
+      prompt,
+      aspectRatio,
+      styleId: stylePreset?.id,
+      subjectId: subjectContext ? undefined : undefined, // Will be passed via subjectContext
+      modelTier,
+      thinkingMode, // NEW: Pass thinking mode to server
+      strategy,
+      subjectContext,
+      stylePreset
+    })
+  });
 
-  // 1. Prepare Prompt Inputs
-  let visualPrompt = prompt;
-  if (subjectContext) {
-    visualPrompt += `\nPRIMARY SUBJECT: ${subjectContext.type}. ${subjectContext.preserveLikeness ? 'Maintain strict visual likeness.' : ''}`;
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Generation failed');
   }
 
-  // 2. Generate the "Job Ticket" Prompt
-  const finalPrompt = await PromptFactory.createImagePrompt(
-    business,
-    visualPrompt,
-    business.voice.keywords || [],
-    (stylePreset?.avoid || []).join(', '),
-    undefined, // logoMaterial - now handled by config.brandApplication
-    undefined, // logoPlacement - now handled by config.brandApplication
-    subjectContext?.promotion, // Promotion
-    subjectContext?.benefits, // Benefits
-    subjectContext?.targetAudience || business.adPreferences?.targetAudience, // Target Audience
-    subjectContext?.preserveLikeness || false, // Preserve Likeness
-    stylePreset,
-    subjectContext?.price, // Price
-    subjectContext?.name, // Product/Person Name
-    strategy // Strategy override
-  );
-
-  console.log("[Gemini] Strategy Override:", strategy);
-  console.log("[Gemini] Generated Prompt:", finalPrompt);
-
-  // DEBUG BYPASS: Skip API call if prompt starts with 'debug:'
-  if (prompt.toLowerCase().startsWith('debug:')) {
-    console.log("[Gemini] DEBUG MODE: Skipping Image Generation");
-    return "https://placehold.co/1024x1024/png?text=DEBUG+MODE";
-  }
-
-  // 3. Select Model
-  let modelName = 'gemini-3-pro-image-preview'; // Default to Pro
-  // if (modelTier === 'ultra') modelName = 'gemini-3-pro-image-preview'; // Placeholder for Ultra
-  // if (modelTier === 'flash') modelName = 'gemini-2.5-flash-image'; // Placeholder for Flash
-
-  // 4. Call Gemini
-  try {
-    // Log the attempt
-    await supabase.from('generation_logs').insert({
-      business_id: business.id,
-      prompt: prompt,
-      model: modelName,
-      status: 'started',
-      metadata: { aspectRatio, mega_prompt: finalPrompt }
-    });
-
-    // Prepare Parts
-    const parts: Part[] = [{ text: finalPrompt }];
-
-    // --- ATTACHMENT ORDER: PRODUCT -> LOGO -> STYLE ---
-
-    // 1. Product / Subject (Image #1 if present)
-    if (subjectContext?.imageUrl) {
-      const subjectImagePart = await urlToBase64(subjectContext.imageUrl);
-      if (subjectImagePart) {
-        parts.push({ inlineData: { mimeType: "image/png", data: subjectImagePart } });
-        parts.push({ text: " [REFERENCE IMAGE 1: MAIN PRODUCT] " });
-      }
-    }
-
-    // 2. Logo (Image #2 or #1)
-    if (business.logoUrl) {
-      const logoPart = await urlToBase64(business.logoUrl);
-      if (logoPart) {
-        parts.push({ inlineData: { mimeType: "image/png", data: logoPart } });
-        parts.push({ text: " [REFERENCE IMAGE: LOGO] " });
-      }
-    }
-
-    // 3. Style Reference (Image #3 or #2 or #1)
-    if (stylePreset?.referenceImages && stylePreset.referenceImages.length > 0) {
-      // Filter for ACTIVE images only
-      const activeRefs = stylePreset.referenceImages.filter(r => {
-        // Handle legacy string array if mixed (though storage service should map it)
-        if (typeof r === 'string') return true;
-        return r.isActive;
-      });
-
-      if (activeRefs.length > 0) {
-        // Use the first ACTIVE one as the primary anchor for now
-        // Or loop if model supports multiple style inputs well.
-        // For the "Job Ticket" logic, it expects one main style anchor, but we could potentially send more.
-        // Let's stick to the first active one for the main reference to avoid token overload/confusion.
-        const firstRef = activeRefs[0];
-        const refUrl = typeof firstRef === 'string' ? firstRef : firstRef.url;
-
-        const styleImagePart = await urlToBase64(refUrl);
-        if (styleImagePart) {
-          parts.push({ inlineData: { mimeType: "image/png", data: styleImagePart } });
-          parts.push({ text: " [REFERENCE IMAGE: STYLE] " });
-        }
-      }
-    } else if (stylePreset?.imageUrl) {
-      const styleImagePart = await urlToBase64(stylePreset.imageUrl);
-      if (styleImagePart) {
-        parts.push({ inlineData: { mimeType: "image/png", data: styleImagePart } });
-        parts.push({ text: " [REFERENCE IMAGE: STYLE] " });
-      }
-    }
-
-    // Wait, Type definition says contents: Content[] | string | Part[]
-    // If I pass Part[], it might be interpreted as a single Content with those parts?
-    // Let's try wrapping it in a Content object.
-
-    // Actually, let's look at how I did it before.
-    // contents: [{ role: 'user', parts }]
-    // That seems correct for the API.
-
-    // RE-EDITING THE CALL BELOW TO WRAP IN CONTENT OBJECT
-    const result = await ai.models.generateContent({
-      model: modelName,
-      contents: [{ role: 'user', parts: parts }],
-      config: {
-        temperature: 0.7,
-        imageConfig: {
-          aspectRatio: aspectRatio,
-          imageSize: '2K' // Bonus: High resolution
-        }
-      }
-    });
-
-    // PARSE IMAGE RESPONSE (Gemini 3 Pro returns inlineData, not text)
-    const response = result; // The result IS the response in this SDK version
-    const candidate = response.candidates?.[0];
-
-    let resultImage = "";
-    let thoughts = "";
-
-    for (const part of candidate?.content?.parts || []) {
-      if (part.inlineData) {
-        resultImage = `data:image/png;base64,${part.inlineData.data}`;
-      }
-      // @ts-ignore - 'thought' property might not be in the strict type definition yet
-      if (part.thought) {
-        // Thoughts can be text
-        if (part.text) {
-          thoughts += part.text + "\n";
-        }
-      }
-    }
-
-    if (!resultImage) {
-      // Fallback if no image found (maybe text error?)
-      const text = response.text || "";
-      console.warn("[Gemini] No image found. Text response:", text);
-      if (text.startsWith('http')) return text;
-      return "https://placehold.co/1024x1024/png?text=Gemini+Generation+Failed";
-    }
-
-    // Log Success
-    await supabase.from('generation_logs').insert({
-      business_id: business.id,
-      prompt: finalPrompt,
-      model: modelName,
-      status: 'success',
-      image_url: '(base64 data)',
-      metadata: {
-        finishReason: candidate?.finishReason,
-        aspectRatio,
-        stylePresetId: stylePreset?.id,
-        subjectContext,
-        modelTier,
-        thoughts: thoughts.trim() // Capture the thoughts
-      }
-    });
-
-    return resultImage;
-
-  } catch (error: any) {
-    console.error("Gemini Generation Failed:", error);
-    // DEBUG: List models if 404 to help diagnose
-    if (error.message && error.message.includes('404')) {
-      try {
-        console.log("[Gemini-Debug] Listing available models...");
-        const models = await ai.models.list();
-        console.log("[Gemini-Debug] Available Models:", models);
-      } catch (listErr) {
-        console.error("[Gemini-Debug] Failed to list models:", listErr);
-      }
-    }
-
-    // Log Failure
-    await supabase.from('generation_logs').insert({
-      business_id: business.id,
-      prompt: finalPrompt,
-      model: modelName,
-      status: 'error',
-      metadata: { error: error.message || error }
-    });
-    throw error;
-  }
+  return response.json();
 };
+
+// Poll for job completion
+export const pollJobStatus = async (jobId: string): Promise<{
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  asset?: any;
+  errorMessage?: string;
+}> => {
+  const response = await fetch(`/api/generate-image/status/${jobId}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch job status');
+  }
+  return response.json();
+};
+
+// Get pending jobs for a business (for page load recovery)
+export const getPendingJobs = async (businessId: string): Promise<any[]> => {
+  const response = await fetch(`/api/generate-image/pending/${businessId}`);
+  if (!response.ok) {
+    return [];
+  }
+  const data = await response.json();
+  return data.jobs || [];
+};
+
 
 export const enhanceOffering = async (
   name: string,
@@ -434,8 +287,8 @@ export const sendChatMessage = async (
         // @ts-ignore
         const imagePrompt = call.args['prompt'] as string;
 
-        // Use the new generateImage signature
-        const generatedImageBase64 = await generateImage(
+        // Use the job-based generateImage - returns job ID, not base64
+        const { jobId } = await generateImage(
           imagePrompt,
           business,
           undefined, // No style preset for chat yet
@@ -444,9 +297,10 @@ export const sendChatMessage = async (
           'pro'
         );
 
+        // Return a message with the job ID - UI can poll for completion
         return {
-          text: `I've generated that image for you based on: "${imagePrompt}"`,
-          image: generatedImageBase64
+          text: `I'm generating that image for you based on: "${imagePrompt}". Head to the Generator tab to see it when it's ready!`,
+          image: undefined // No immediate image - job is processing
         };
       }
     }

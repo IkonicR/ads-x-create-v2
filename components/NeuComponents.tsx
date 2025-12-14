@@ -91,8 +91,9 @@ interface NeuButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 // --- ANIMATION HOOK ---
-export const useNeuAnimations = () => {
-  const { theme } = useTheme();
+export const useNeuAnimations = (forceTheme?: 'light' | 'dark') => {
+  const { theme: contextTheme } = useTheme();
+  const theme = forceTheme || contextTheme;
   const isDark = theme === 'dark';
 
   // --- THE PREMIUM ENGINE ---
@@ -128,7 +129,7 @@ export const NeuButton: React.FC<NeuButtonProps> = ({ children, className, activ
   const { theme: contextTheme } = useTheme();
   const theme = forceTheme || contextTheme;
   const styles = THEMES[theme];
-  const variants = useNeuAnimations(); // Use the hook
+  const variants = useNeuAnimations(forceTheme); // Use the hook, respecting forceTheme
 
   const baseStyles = "rounded-xl px-6 py-3 font-bold flex items-center justify-center gap-2 select-none outline-none focus:ring-2 focus:ring-offset-2";
 
@@ -159,10 +160,13 @@ export const NeuButton: React.FC<NeuButtonProps> = ({ children, className, activ
   );
 };
 
-interface NeuInputProps extends React.InputHTMLAttributes<HTMLInputElement> { }
+interface NeuInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+  forceTheme?: 'light' | 'dark';
+}
 
-export const NeuInput: React.FC<NeuInputProps> = ({ className, ...props }) => {
-  const { theme } = useTheme();
+export const NeuInput: React.FC<NeuInputProps> = ({ className, forceTheme, ...props }) => {
+  const { theme: contextTheme } = useTheme();
+  const theme = forceTheme || contextTheme;
   const styles = THEMES[theme];
 
   return (
@@ -605,6 +609,296 @@ export const NeuListBuilder: React.FC<NeuListBuilderProps> = ({
         {items.length === 0 && (
           <div className={`w-full h-full flex items-center justify-center py-2 ${styles.textSub} text-xs italic opacity-50`}>
             No items yet. Add one above!
+          </div>
+        )}
+      </motion.div>
+    </div>
+  );
+};
+
+// --- NeuTagInput (Autocomplete Tag Input) ---
+
+interface NeuTagInputProps {
+  /** Current list of tags */
+  items: string[];
+  /** Callback when tags change */
+  onItemsChange: (items: string[]) => void;
+  /** List of all available suggestions (e.g., all existing tags) */
+  suggestions?: string[];
+  /** Input placeholder */
+  placeholder?: string;
+  /** Label above the component */
+  title?: string;
+  /** Maximum number of tags allowed */
+  maxItems?: number;
+  /** Trigger character for autocomplete (default: none, shows on any input) */
+  triggerChar?: string;
+  /** Whether to show the # prefix in the suggestions dropdown */
+  showHashPrefix?: boolean;
+}
+
+export const NeuTagInput: React.FC<NeuTagInputProps> = ({
+  items = [],
+  onItemsChange,
+  suggestions = [],
+  placeholder = "Add a tag...",
+  title,
+  maxItems,
+  triggerChar,
+  showHashPrefix = true
+}) => {
+  const { theme } = useTheme();
+  const styles = THEMES[theme];
+  const [inputValue, setInputValue] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Filter suggestions based on input
+  const getFilteredSuggestions = () => {
+    const query = triggerChar
+      ? inputValue.startsWith(triggerChar) ? inputValue.slice(1) : ''
+      : inputValue;
+
+    if (!query.trim()) return [];
+
+    return suggestions
+      .filter(s =>
+        s.toLowerCase().includes(query.toLowerCase()) &&
+        !items.includes(s) // Don't show already-added tags
+      )
+      .slice(0, 8); // Limit suggestions
+  };
+
+  const filteredSuggestions = getFilteredSuggestions();
+  const showDropdown = isOpen && filteredSuggestions.length > 0;
+
+  // Close on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Reset highlight when suggestions change
+  useEffect(() => {
+    setHighlightedIndex(0);
+  }, [inputValue]);
+
+  const addTag = (tag: string) => {
+    const cleanTag = tag.trim();
+    if (!cleanTag) return;
+    if (items.includes(cleanTag)) return; // No duplicates
+    if (maxItems && items.length >= maxItems) return;
+
+    onItemsChange([...items, cleanTag]);
+    setInputValue('');
+    setIsOpen(false);
+    inputRef.current?.focus();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown' && showDropdown) {
+      e.preventDefault();
+      setHighlightedIndex(prev =>
+        prev < filteredSuggestions.length - 1 ? prev + 1 : prev
+      );
+    } else if (e.key === 'ArrowUp' && showDropdown) {
+      e.preventDefault();
+      setHighlightedIndex(prev => prev > 0 ? prev - 1 : 0);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (showDropdown && filteredSuggestions[highlightedIndex]) {
+        addTag(filteredSuggestions[highlightedIndex]);
+      } else if (inputValue.trim()) {
+        // Add as new tag (strip trigger char if present)
+        const newTag = triggerChar && inputValue.startsWith(triggerChar)
+          ? inputValue.slice(1).trim()
+          : inputValue.trim();
+        addTag(newTag);
+      }
+    } else if (e.key === 'Escape') {
+      setIsOpen(false);
+    } else if (e.key === 'Backspace' && inputValue === '' && items.length > 0) {
+      // Remove last tag on backspace when input is empty
+      onItemsChange(items.slice(0, -1));
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInputValue(value);
+
+    // Open dropdown if we have a query (respecting triggerChar if set)
+    if (triggerChar) {
+      setIsOpen(value.startsWith(triggerChar) && value.length > 1);
+    } else {
+      setIsOpen(value.length > 0);
+    }
+  };
+
+  const handleRemove = (index: number) => {
+    onItemsChange(items.filter((_, i) => i !== index));
+  };
+
+  // Animation variants
+  const dropdownVariants = {
+    hidden: {
+      opacity: 0,
+      y: -8,
+      scale: 0.95,
+      transition: { duration: 0.15 }
+    },
+    visible: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: { type: "spring", stiffness: 400, damping: 25 }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, x: -10 },
+    visible: { opacity: 1, x: 0 }
+  };
+
+  return (
+    <div className="space-y-3" ref={containerRef}>
+      {title && (
+        <label className={`block text-xs font-bold ${styles.textSub} uppercase tracking-wider`}>
+          {title}
+        </label>
+      )}
+
+      {/* Input with Dropdown */}
+      <div className="relative">
+        <div className="flex gap-2">
+          <input
+            ref={inputRef}
+            value={inputValue}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            onFocus={() => {
+              if (inputValue.length > 0) setIsOpen(true);
+            }}
+            placeholder={maxItems && items.length >= maxItems ? "Limit reached" : placeholder}
+            disabled={!!maxItems && items.length >= maxItems}
+            className={cn(
+              "flex-1 rounded-xl px-4 py-3 outline-none transition-all",
+              styles.bg,
+              styles.shadowIn,
+              styles.textMain,
+              styles.inputPlaceholder,
+              "focus:ring-2 focus:ring-brand/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            )}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              const newTag = triggerChar && inputValue.startsWith(triggerChar)
+                ? inputValue.slice(1).trim()
+                : inputValue.trim();
+              addTag(newTag);
+            }}
+            disabled={!inputValue.trim() || (!!maxItems && items.length >= maxItems)}
+            className={cn(
+              "w-12 flex items-center justify-center rounded-xl transition-all duration-200 active:scale-95",
+              styles.bg,
+              !inputValue.trim() ? styles.shadowOut : "shadow-neu-in text-brand",
+              (!!maxItems && items.length >= maxItems) && "opacity-50 cursor-not-allowed"
+            )}
+          >
+            <Plus size={20} className={inputValue.trim() ? "text-brand" : "text-gray-400"} />
+          </button>
+        </div>
+
+        {/* Autocomplete Dropdown */}
+        <AnimatePresence>
+          {showDropdown && (
+            <motion.div
+              variants={dropdownVariants}
+              initial="hidden"
+              animate="visible"
+              exit="hidden"
+              className={cn(
+                "absolute z-50 w-full mt-2 rounded-xl overflow-hidden",
+                styles.bg,
+                styles.shadowOut,
+                "border border-black/5 dark:border-white/5"
+              )}
+            >
+              <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
+                {filteredSuggestions.map((suggestion, index) => (
+                  <motion.button
+                    key={suggestion}
+                    variants={itemVariants}
+                    initial="hidden"
+                    animate="visible"
+                    transition={{ delay: index * 0.03 }}
+                    onClick={() => addTag(suggestion)}
+                    onMouseEnter={() => setHighlightedIndex(index)}
+                    className={cn(
+                      "w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2",
+                      index === highlightedIndex
+                        ? "bg-brand/10 text-brand font-bold"
+                        : `hover:bg-black/5 dark:hover:bg-white/5 ${styles.textMain}`
+                    )}
+                  >
+                    {showHashPrefix && <span className="opacity-50">#</span>}
+                    <span>{suggestion}</span>
+                  </motion.button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Tags Display Tray */}
+      <motion.div
+        layout
+        className={cn(
+          "min-h-[60px] p-3 rounded-xl flex flex-wrap gap-2 content-start",
+          styles.bg,
+          "border border-black/5 dark:border-white/5"
+        )}
+      >
+        <AnimatePresence mode="popLayout">
+          {items.map((item, index) => (
+            <motion.div
+              key={`${item}-${index}`}
+              layout
+              initial={{ opacity: 0, scale: 0.8, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.5, transition: { duration: 0.15 } }}
+              className={cn(
+                "group flex items-center gap-2 pl-3 pr-1 py-1.5 rounded-lg text-sm font-medium cursor-default",
+                styles.bg,
+                styles.shadowOut,
+                styles.textMain
+              )}
+            >
+              <span className="text-brand/60">#</span>
+              <span>{item}</span>
+              <button
+                type="button"
+                onClick={() => handleRemove(index)}
+                className="p-1 rounded-md hover:bg-red-500/10 hover:text-red-500 text-gray-400 transition-colors"
+              >
+                <X size={14} />
+              </button>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+
+        {items.length === 0 && (
+          <div className={`w-full h-full flex items-center justify-center py-2 ${styles.textSub} text-xs italic opacity-50`}>
+            No tags yet. Add one above!
           </div>
         )}
       </motion.div>

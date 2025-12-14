@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useTheme } from '../../context/ThemeContext';
 import { useNavigation } from '../../context/NavigationContext';
+import { useAuth } from '../../context/AuthContext';
 import {
   LayoutDashboard,
   Zap,
@@ -12,7 +13,8 @@ import {
   ShoppingBag,
   Palette,
   Settings,
-  LockKeyhole
+  LockKeyhole,
+  Calendar
 } from 'lucide-react';
 import { DockKey } from './DockKey';
 import { Business, ViewState } from '../../types';
@@ -28,8 +30,10 @@ export const OrbitalDock: React.FC<OrbitalDockProps> = ({
 }) => {
   const { theme } = useTheme();
   const { navigate, currentView } = useNavigation();
+  const { profile } = useAuth();
   const isDark = theme === 'dark';
   const [isHovered, setIsHovered] = useState(false);
+  const isAdmin = profile?.is_admin === true;
 
   // Container Styles - ETCHED / RECESSED LOOK
   const containerStyles = isDark
@@ -38,7 +42,7 @@ export const OrbitalDock: React.FC<OrbitalDockProps> = ({
 
   return (
     <>
-      <div className="fixed left-6 top-1/2 -translate-y-1/2 z-50 hidden md:block">
+      <div className="fixed left-6 top-1/2 -translate-y-1/2 z-40 hidden md:block">
         <motion.div
           layout
           initial={{ x: -100, opacity: 0, width: 80 }}
@@ -80,6 +84,14 @@ export const OrbitalDock: React.FC<OrbitalDockProps> = ({
               active={currentView === ViewState.CHAT}
               expanded={isHovered}
               onClick={() => navigate(ViewState.CHAT)}
+            />
+
+            <DockKey
+              icon={Calendar}
+              label="Planner"
+              active={currentView === ViewState.PLANNER}
+              expanded={isHovered}
+              onClick={() => navigate(ViewState.PLANNER)}
             />
 
             <div className={`h-px bg-gray-300/20 dark:bg-gray-700/50 my-1 shrink-0 w-full`} />
@@ -136,14 +148,16 @@ export const OrbitalDock: React.FC<OrbitalDockProps> = ({
               onClick={() => navigate(ViewState.USER_PROFILE)}
             />
 
-            {/* Admin Link */}
-            <DockKey
-              icon={LockKeyhole}
-              label="Admin"
-              active={currentView === ViewState.ADMIN}
-              expanded={isHovered}
-              onClick={() => navigate(ViewState.ADMIN)}
-            />
+            {/* Admin Link - Only visible for super admins */}
+            {isAdmin && (
+              <DockKey
+                icon={LockKeyhole}
+                label="Admin"
+                active={currentView === ViewState.ADMIN}
+                expanded={isHovered}
+                onClick={() => navigate(ViewState.ADMIN)}
+              />
+            )}
           </div>
 
         </motion.div>
