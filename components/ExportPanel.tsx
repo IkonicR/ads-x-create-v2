@@ -305,8 +305,8 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
                                 key={opt.value}
                                 onClick={() => { setFormat(opt.value); setSelectedPresetId(null); }}
                                 className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${format === opt.value
-                                        ? 'bg-brand text-white shadow-lg shadow-brand/30'
-                                        : `${styles.shadowOut} ${styles.textSub} hover:${styles.textMain}`
+                                    ? 'bg-brand text-white shadow-lg shadow-brand/30'
+                                    : `${styles.shadowOut} ${styles.textSub} hover:${styles.textMain}`
                                     }`}
                             >
                                 {opt.icon}

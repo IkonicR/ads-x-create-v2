@@ -123,7 +123,9 @@ export const MobileDock: React.FC<MobileDockProps> = ({
 
     const handleNav = (view: ViewState) => {
         navigate(view);
-        handleToggleVault();
+        if (isVaultOpen) {
+            handleToggleVault();
+        }
     };
 
     return (
@@ -292,7 +294,7 @@ export const MobileDock: React.FC<MobileDockProps> = ({
             </AnimatePresence>
 
             {/* THE TACTICAL STRIP (Bottom Bar) */}
-            <div className={`fixed bottom-0 left-0 right-0 z-40 md:hidden pb-safe`}>
+            <div className={`fixed bottom-0 left-0 right-0 z-50 md:hidden pb-safe`}>
                 <div className={`flex items-center justify-around px-2 pb-2 pt-2 transition-all duration-500 ease-in-out ${dockStyles}`}>
 
                     <MobileKey

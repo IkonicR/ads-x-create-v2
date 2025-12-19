@@ -13,6 +13,7 @@ import Layout from './components/Layout';
 import Onboarding from './views/Onboarding';
 import UserOnboarding from './views/UserOnboarding';
 import Login from './views/Login';
+import LandingPage from './views/LandingPage';
 import Dashboard from './views/Dashboard';
 import BrandKit from './views/BrandKit';
 import Generator from './views/Generator';
@@ -274,7 +275,14 @@ const AppContent: React.FC = () => {
     );
   }
 
-  if (!user) return <Login />;
+  if (!user) {
+    return (
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="*" element={<LandingPage />} />
+      </Routes>
+    );
+  }
   // If user exists but has no profile (or onboarding not done), force onboarding
   if (user && (!profile || !profile.onboarding_completed)) return <UserOnboarding />;
 

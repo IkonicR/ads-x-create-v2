@@ -78,7 +78,7 @@ const DEFAULT_BUSINESS: Business = {
   },
   competitors: [],
   visualMotifs: [],
-  locations: []
+  businessImages: []
 };
 
 const DEFAULT_TASKS: Task[] = [
@@ -114,7 +114,7 @@ const mapBusinessFromDB = (row: any): Business => ({
   coreCustomerProfile: row.core_customer_profile,
   competitors: row.competitors,
   visualMotifs: row.visual_motifs || [],
-  locations: row.locations || [],
+  businessImages: row.business_images || [],
   socialConfig: row.social_config || undefined, // <--- GHL Integration
   socialSettings: row.social_settings || undefined, // <--- Social Posting Settings
   exportPresets: row.export_presets || [] // <--- Export Presets
@@ -148,7 +148,7 @@ const mapBusinessToDB = (business: Business) => ({
   core_customer_profile: business.coreCustomerProfile,
   competitors: business.competitors,
   visual_motifs: business.visualMotifs,
-  locations: business.locations,
+  business_images: business.businessImages,
   social_config: business.socialConfig || null, // <--- GHL Integration
   social_settings: business.socialSettings || null, // <--- Social Posting Settings
   export_presets: business.exportPresets || null // <--- Export Presets

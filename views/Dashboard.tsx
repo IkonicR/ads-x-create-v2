@@ -32,7 +32,7 @@ const Dashboard: React.FC<DashboardProps> = ({ business, tasks, onNavigate }) =>
 
   return (
     <div className="space-y-8 pb-10">
-      <header className="flex justify-between items-center">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <GalaxyHeading
             text={`Good morning, ${business.role}`}

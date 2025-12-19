@@ -85,6 +85,13 @@ export const ExtractionPreview: React.FC<ExtractionPreviewProps> = ({
         result.data || {}
     );
 
+    // Sync editedData when result.data changes (fixes logo not displaying)
+    useEffect(() => {
+        if (result.data) {
+            setEditedData(result.data);
+        }
+    }, [result.data]);
+
     // Log extracted data for debugging
     useEffect(() => {
         console.log('=== EXTRACTION PREVIEW DATA ===');

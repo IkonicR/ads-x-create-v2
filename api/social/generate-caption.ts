@@ -1,6 +1,6 @@
 /**
  * AI Caption Generator API
- * Uses DeepSeek V3.2 via Vercel AI Gateway
+ * Uses Gemini via Vercel AI Gateway
  * 
  * Usage: POST /api/social/generate-caption
  * Body: { assetPrompt: string, business: { name, industry, voice, targetAudience } }
@@ -9,6 +9,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { gateway } from '@ai-sdk/gateway';
 import { generateText } from 'ai';
+import { AI_MODELS } from '../../config/ai-models';
 
 interface CaptionRequest {
     assetPrompt: string;
@@ -109,11 +110,11 @@ ${assetPrompt}
 
 Write the caption now:`;
 
-        console.log('[Caption API] Generating via Vercel Gateway (DeepSeek V3.2)...');
+        console.log('[Caption API] Generating via Vercel Gateway...');
 
-        // Use Vercel AI Gateway for DeepSeek
+        // Use Vercel AI Gateway (Gemini 3 Flash)
         const result = await generateText({
-            model: gateway('deepseek/deepseek-v3.2'),
+            model: gateway(AI_MODELS.text as any),
             system: CAPTION_SYSTEM_PROMPT,
             prompt: userPrompt,
             temperature: 0.7,

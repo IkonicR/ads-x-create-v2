@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host & npx tsx server.ts",
+    "dev": "concurrently \"vite --host\" \"tsx server.ts\"",
     "server": "npx tsx server.ts",
     "build": "vite build",
     "preview": "vite preview"
@@ -42,6 +42,7 @@
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.22",
     "body-parser": "^2.2.1",
+    "concurrently": "^9.2.1",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "postcss": "^8.5.6",

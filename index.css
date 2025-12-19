@@ -138,3 +138,47 @@ body {
     radial-gradient(rgba(50, 50, 80, 0.9) 1.5px, transparent 2px),
     radial-gradient(rgba(80, 20, 100, 0.9) 2px, transparent 3px);
 }
+
+/* ==============================================
+   GLASSMORPHISM SYSTEM (V3)
+   - Designed to work WITH GalaxyCanvas background
+   - No solid fills, all transparency
+   ============================================== */
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 4px 24px rgba(0, 0, 0, 0.2);
+}
+
+.glass-card-hover {
+  transition: all 0.3s ease;
+}
+.glass-card-hover:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+/* Neumorphic accents for key elements */
+.neu-glow {
+  box-shadow: 
+    0 0 20px rgba(109, 93, 252, 0.15),
+    0 0 40px rgba(109, 93, 252, 0.08);
+}
+
+/* Animation: Scan line for holographic effects */
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+.animate-scan {
+  animation: scanline 4s linear infinite;
+}

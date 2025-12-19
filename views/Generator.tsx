@@ -13,6 +13,7 @@ import { DEFAULT_STRATEGY } from '../constants/campaignPresets';
 import { generateImage, pollJobStatus, getPendingJobs } from '../services/geminiService';
 import { StorageService } from '../services/storage';
 import { useAssets } from '../context/AssetContext';
+import { CREDITS } from '../config/pricing';
 
 interface GeneratorProps {
   business: Business;
@@ -257,14 +258,9 @@ const Generator: React.FC<GeneratorProps> = ({
     subjectId: string,
     modelTier: 'flash' | 'pro' | 'ultra'
   ) => {
-    // Pricing Logic (Visual Check Only - Server Enforces)
-    const COST_MAP = {
-      flash: 10,
-      pro: 40,
-      ultra: 80
-    };
-
-    const cost = COST_MAP[modelTier];
+    // Pricing Logic - Uses config/pricing.ts as source of truth
+    // flash/pro = 2K = 1 credit, ultra = 4K = 2 credits
+    const cost = modelTier === 'ultra' ? CREDITS.perImage4K : CREDITS.perImage2K;
     const isDebug = prompt.toLowerCase().startsWith('debug:');
 
     if (!isDebug && business.credits < cost) {
@@ -588,7 +584,7 @@ const Generator: React.FC<GeneratorProps> = ({
         message={
           <>
             You are about to generate a **4096x4096px** high-fidelity asset using our most advanced model.
-            This will consume **80 Credits**.
+            This will consume **{CREDITS.perImage4K} Credits**.
             <br /><br />
             Are you sure you want to proceed?
           </>

@@ -60,7 +60,7 @@ export interface Business {
   adPreferences: AdPreferences;
   offerings: Offering[];
   teamMembers: TeamMember[];
-  locations: Location[];
+  businessImages: BusinessImage[];
   inspirationImages: string[];
 
   // Brand Identity
@@ -196,12 +196,12 @@ export interface TeamMember {
   imageUrl: string; // Base64 or URL
 }
 
-export interface Location {
+export interface BusinessImage {
   id: string;
-  name: string;
-  description: string;
+  name: string;           // e.g. "Storefront", "Interior", "Product Display"
+  description?: string;   // Optional context for AI
   imageUrl: string;
-  additionalImages: string[];
+  additionalImages?: string[];
 }
 
 export interface ContactMethod {
@@ -281,16 +281,18 @@ export interface Offering {
   name: string;
   description: string;
   price: string;
+  isFree?: boolean;              // NEW: For free offerings (delivery, consultation, etc.)
   category: string;
   active: boolean;
   imageUrl?: string;
-  additionalImages?: string[]; // <--- NEW: Multiple angles/details
+  additionalImages?: string[];   // Multiple angles/details
   preserveLikeness?: boolean;
   // Marketing Brain Fields
   targetAudience?: string;
   benefits?: string[];
-  features?: string[]; // Distinct from benefits (technical specs vs outcomes)
-  promotion?: string; // e.g., "20% off"
+  features?: string[];           // Technical specs vs outcomes
+  promotion?: string;            // e.g., "20% off"
+  termsAndConditions?: string;   // NEW: Per-offering T&Cs
 }
 
 export interface Task {

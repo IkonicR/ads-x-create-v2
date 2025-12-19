@@ -12,14 +12,14 @@
 
 ## INFRASTRUCTURE
 * **Supabase Project:** `afzrfcqidscibmgptkcl`
-* **AI Logic (Vercel AI Gateway):** 
-    * **All AI calls routed through Vercel AI Gateway** for consolidated billing.
-    * **Text Generation:** `google/gemini-2.5-flash` via `@ai-sdk/gateway`
-    * **Image Generation:** `google/gemini-3-pro-image` via `@ai-sdk/gateway`
-    * **Website Parsing:** `deepseek/deepseek-v3.2-thinking` (Firecrawl scrapes → DeepSeek parses)
-    * **Caption Generation:** `deepseek/deepseek-v3.2`
-    * **Client-side chat:** `services/geminiService.ts` (still uses `@google/genai` directly)
-    * **Pipeline:** "Job Ticket" Architecture (`prompts.ts`). Separates Source Data, Creative Copywriting (Gaps), and Visual Execution instructions.
+*   **AI Logic (Vercel AI Gateway):** 
+    *   **All AI calls routed through Vercel AI Gateway** for consolidated billing.
+    *   **Text Generation:** `google/gemini-3-flash` text via Gateway (Centralized in `config/ai-models.ts`)
+    *   **Image Generation:** `gemini-3-pro-image-preview` via Direct Google SDK (Direct API)
+    *   **Website Parsing:** `google/gemini-3-flash` (via Gateway)
+    *   **Caption Generation:** `google/gemini-3-flash` (via Gateway)
+    *   **Client-side chat:** `services/geminiService.ts` (still uses `@google/genai` directly)
+    *   **Pipeline:** "Job Ticket" Architecture (`prompts.ts`). Separates Source Data, Creative Copywriting (Gaps), and Visual Execution instructions.
 * **Deployment:** Vercel (Static Hosting + Serverless Functions).
 
 ## LOCAL DEVELOPMENT

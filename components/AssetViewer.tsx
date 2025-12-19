@@ -1177,113 +1177,112 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
                   ) : null}
                 </AnimatePresence>
 
-              </div>
-
-              {/* Footer Actions (Only visible on Details tab) */}
-              {activeTab === 'details' && (
-                <div className={`border-t border-white/5`}>
-                  {/* Primary Actions Row */}
-                  <div className="p-4 flex gap-3">
-                    <NeuButton className="flex-1 py-3" onClick={handleDownload}>
-                      <Download size={16} /> Quick Download
-                    </NeuButton>
-                    <NeuButton
-                      className="flex-1 py-3"
-                      variant={showExportPanel ? 'primary' : undefined}
-                      onClick={() => setShowExportPanel(!showExportPanel)}
-                    >
-                      <FileOutput size={16} /> Export...
-                    </NeuButton>
-                    <NeuButton
-                      className="py-3 px-4"
-                      variant={showShareModal ? 'primary' : undefined}
-                      onClick={() => setShowShareModal(true)}
-                      title="Share to Printer"
-                    >
-                      <Share2 size={16} />
-                    </NeuButton>
-                  </div>
-
-                  {/* Export Panel (Slides Down) */}
-                  <AnimatePresence>
-                    {showExportPanel && (
-                      <ExportPanel
-                        imageUrl={asset.content}
-                        onClose={() => setShowExportPanel(false)}
-                        businessName={business?.name}
-                        savedPresets={business?.exportPresets || []}
-                        onSavePreset={handleSaveExportPreset}
-                        onDeletePreset={handleDeleteExportPreset}
-                      />
-                    )}
-                  </AnimatePresence>
-
-                  {/* Reuse Everything - Primary CTA (Hidden when Export Panel open) */}
-                  <AnimatePresence>
-                    {!showExportPanel && onReuse && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="px-4 pb-3 overflow-hidden"
+                {/* Footer Actions (Only visible on Details tab) - Inside Scrollable Area */}
+                {activeTab === 'details' && (
+                  <div className={`border-t border-white/5 mt-6`}>
+                    {/* Primary Actions Row */}
+                    <div className="p-4 flex gap-3">
+                      <NeuButton className="flex-1 py-3" onClick={handleDownload}>
+                        <Download size={16} /> Quick Download
+                      </NeuButton>
+                      <NeuButton
+                        className="flex-1 py-3"
+                        variant={showExportPanel ? 'primary' : undefined}
+                        onClick={() => setShowExportPanel(!showExportPanel)}
                       >
-                        <button
-                          onClick={() => onReuse(asset, 'all')}
-                          className={`w-full py-3 rounded-xl text-sm font-bold transition-all bg-gradient-to-r from-brand to-purple-500 text-white shadow-lg shadow-brand/30 hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2`}
-                        >
-                          <Sparkles size={16} /> Reuse Everything
-                        </button>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  {/* Secondary Actions (Hidden when Export Panel open) */}
-                  <AnimatePresence>
-                    {!showExportPanel && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="px-4 pb-4 flex justify-center gap-2 overflow-hidden"
+                        <FileOutput size={16} /> Export...
+                      </NeuButton>
+                      <NeuButton
+                        className="py-3 px-4"
+                        variant={showShareModal ? 'primary' : undefined}
+                        onClick={() => setShowShareModal(true)}
+                        title="Share to Printer"
                       >
-                        <button
-                          onClick={() => navigator.clipboard.writeText(asset.prompt)}
-                          title="Copy Prompt"
-                          className={`p-2.5 rounded-xl transition-all ${styles.shadowOut} ${styles.textSub} hover:${styles.textMain} hover:scale-105 active:scale-95`}
+                        <Share2 size={16} />
+                      </NeuButton>
+                    </div>
+
+                    {/* Export Panel (Slides Down) */}
+                    <AnimatePresence>
+                      {showExportPanel && (
+                        <ExportPanel
+                          imageUrl={asset.content}
+                          onClose={() => setShowExportPanel(false)}
+                          businessName={business?.name}
+                          savedPresets={business?.exportPresets || []}
+                          onSavePreset={handleSaveExportPreset}
+                          onDeletePreset={handleDeleteExportPreset}
+                        />
+                      )}
+                    </AnimatePresence>
+
+                    {/* Reuse Everything - Primary CTA (Hidden when Export Panel open) */}
+                    <AnimatePresence>
+                      {!showExportPanel && onReuse && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="px-4 pb-3 overflow-hidden"
                         >
-                          <Copy size={16} />
-                        </button>
-                        {onReuse && (
                           <button
-                            onClick={() => onReuse(asset, 'prompt_only')}
-                            title="Reuse Prompt Only"
+                            onClick={() => onReuse(asset, 'all')}
+                            className={`w-full py-3 rounded-xl text-sm font-bold transition-all bg-gradient-to-r from-brand to-purple-500 text-white shadow-lg shadow-brand/30 hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2`}
+                          >
+                            <Sparkles size={16} /> Reuse Everything
+                          </button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    {/* Secondary Actions (Hidden when Export Panel open) */}
+                    <AnimatePresence>
+                      {!showExportPanel && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="px-4 pb-4 flex justify-center gap-2 overflow-hidden"
+                        >
+                          <button
+                            onClick={() => navigator.clipboard.writeText(asset.prompt)}
+                            title="Copy Prompt"
                             className={`p-2.5 rounded-xl transition-all ${styles.shadowOut} ${styles.textSub} hover:${styles.textMain} hover:scale-105 active:scale-95`}
                           >
-                            <RotateCcw size={16} />
+                            <Copy size={16} />
                           </button>
-                        )}
-                        {onDelete && (
-                          <button
-                            onClick={() => {
-                              if (confirm('Delete this asset permanently?')) {
-                                onDelete(asset.id);
-                                onClose();
-                              }
-                            }}
-                            title="Delete Asset"
-                            className={`p-2.5 rounded-xl transition-all ${styles.shadowOut} ${styles.textSub} hover:text-red-500 hover:scale-105 active:scale-95`}
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        )}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              )}
+                          {onReuse && (
+                            <button
+                              onClick={() => onReuse(asset, 'prompt_only')}
+                              title="Reuse Prompt Only"
+                              className={`p-2.5 rounded-xl transition-all ${styles.shadowOut} ${styles.textSub} hover:${styles.textMain} hover:scale-105 active:scale-95`}
+                            >
+                              <RotateCcw size={16} />
+                            </button>
+                          )}
+                          {onDelete && (
+                            <button
+                              onClick={() => {
+                                if (confirm('Delete this asset permanently?')) {
+                                  onDelete(asset.id);
+                                  onClose();
+                                }
+                              }}
+                              title="Delete Asset"
+                              className={`p-2.5 rounded-xl transition-all ${styles.shadowOut} ${styles.textSub} hover:text-red-500 hover:scale-105 active:scale-95`}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
 
+              </div> {/* End Scrollable Info Body */}
             </div>
           </motion.div>
         </motion.div>

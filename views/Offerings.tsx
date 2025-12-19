@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { Business, Offering, TeamMember, Location } from '../types';
+import { Business, Offering, TeamMember, BusinessImage } from '../types';
 import { NeuCard, NeuInput, NeuButton, NeuTextArea, NeuDropdown, useThemeStyles, NeuBadge, NeuListBuilder } from '../components/NeuComponents';
 import { NeuImageUploader } from '../components/NeuImageUploader';
-import { ShoppingBag, Plus, Trash2, DollarSign, Tag, Edit2, Save, X, Sparkles, Target, List, Gift, Users, Briefcase, MapPin } from 'lucide-react';
+import { ShoppingBag, Plus, Trash2, DollarSign, Tag, Edit2, Save, X, Sparkles, Target, List, Gift, Users, Briefcase, ImageIcon } from 'lucide-react';
 import { useNavigation } from '../context/NavigationContext';
 import { useNotification } from '../context/NotificationContext';
 import { GalaxyHeading } from '../components/GalaxyHeading';
@@ -25,7 +25,7 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
   const { styles } = useThemeStyles();
   const localBusinessRef = React.useRef(localBusiness);
 
-  const [activeTab, setActiveTab] = useState<'products' | 'team' | 'locations'>('products');
+  const [activeTab, setActiveTab] = useState<'offerings' | 'team' | 'gallery'>('offerings');
   const [isTeamFormOpen, setIsTeamFormOpen] = useState(false);
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
   const [teamFormState, setTeamFormState] = useState<Partial<TeamMember>>({
@@ -34,10 +34,10 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
     imageUrl: ''
   });
 
-  // Location state
-  const [isLocationFormOpen, setIsLocationFormOpen] = useState(false);
-  const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
-  const [locationFormState, setLocationFormState] = useState<Partial<Location>>({
+  // Business Image state (was Location)
+  const [isGalleryFormOpen, setIsGalleryFormOpen] = useState(false);
+  const [editingGalleryId, setEditingGalleryId] = useState<string | null>(null);
+  const [galleryFormState, setGalleryFormState] = useState<Partial<BusinessImage>>({
     name: '',
     description: '',
     imageUrl: '',
@@ -48,6 +48,7 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
     name: '',
     description: '',
     price: '',
+    isFree: false,
     category: 'Product',
     imageUrl: '',
     additionalImages: [],
@@ -55,7 +56,8 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
     targetAudience: '',
     benefits: [],
     features: [],
-    promotion: ''
+    promotion: '',
+    termsAndConditions: ''
   });
 
   useEffect(() => {
@@ -98,8 +100,8 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
 
   const resetForm = () => {
     setFormState({
-      name: '', description: '', price: '', category: 'Product', imageUrl: '', additionalImages: [], preserveLikeness: false,
-      targetAudience: '', benefits: [], features: [], promotion: ''
+      name: '', description: '', price: '', isFree: false, category: 'Product', imageUrl: '', additionalImages: [], preserveLikeness: false,
+      targetAudience: '', benefits: [], features: [], promotion: '', termsAndConditions: ''
     });
     setEditingId(null);
     setIsFormOpen(false);
@@ -153,6 +155,7 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
       name: formState.name!,
       description: formState.description || '',
       price: cleanPrice,
+      isFree: formState.isFree || false,
       category: formState.category || 'Product',
       active: true,
       imageUrl: formState.imageUrl || '',
@@ -161,7 +164,8 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
       targetAudience: formState.targetAudience || '',
       benefits: formState.benefits || [],
       features: formState.features || [],
-      promotion: formState.promotion || ''
+      promotion: formState.promotion || '',
+      termsAndConditions: formState.termsAndConditions || ''
     };
 
     if (editingId) {
@@ -250,61 +254,61 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
     }
   };
 
-  // --- LOCATION HANDLERS ---
-  const resetLocationForm = () => {
-    setLocationFormState({ name: '', description: '', imageUrl: '', additionalImages: [] });
-    setEditingLocationId(null);
-    setIsLocationFormOpen(false);
+  // --- BUSINESS GALLERY HANDLERS ---
+  const resetGalleryForm = () => {
+    setGalleryFormState({ name: '', description: '', imageUrl: '', additionalImages: [] });
+    setEditingGalleryId(null);
+    setIsGalleryFormOpen(false);
   };
 
-  const handleEditLocationClick = (location: Location) => {
-    setLocationFormState({ ...location });
-    setEditingLocationId(location.id);
-    setIsLocationFormOpen(true);
+  const handleEditGalleryClick = (image: BusinessImage) => {
+    setGalleryFormState({ ...image });
+    setEditingGalleryId(image.id);
+    setIsGalleryFormOpen(true);
   };
 
-  const handleSaveLocation = () => {
-    if (!locationFormState.name) return;
+  const handleSaveGallery = () => {
+    if (!galleryFormState.name) return;
 
-    const baseLocation: Location = {
-      id: editingLocationId || Date.now().toString(),
-      name: locationFormState.name!,
-      description: locationFormState.description || '',
-      imageUrl: locationFormState.imageUrl || '',
-      additionalImages: locationFormState.additionalImages || []
+    const baseImage: BusinessImage = {
+      id: editingGalleryId || Date.now().toString(),
+      name: galleryFormState.name!,
+      description: galleryFormState.description || '',
+      imageUrl: galleryFormState.imageUrl || '',
+      additionalImages: galleryFormState.additionalImages || []
     };
 
-    let newLocations = [...(localBusiness.locations || [])];
-    if (editingLocationId) {
-      newLocations = newLocations.map(l => l.id === editingLocationId ? baseLocation : l);
-      toast({ title: 'Location Updated', type: 'success' });
+    let newImages = [...(localBusiness.businessImages || [])];
+    if (editingGalleryId) {
+      newImages = newImages.map(img => img.id === editingGalleryId ? baseImage : img);
+      toast({ title: 'Image Updated', type: 'success' });
     } else {
-      newLocations.push(baseLocation);
-      toast({ title: 'Location Added', type: 'success' });
+      newImages.push(baseImage);
+      toast({ title: 'Image Added', type: 'success' });
     }
 
-    setLocalBusiness(prev => ({ ...prev, locations: newLocations }));
-    resetLocationForm();
+    setLocalBusiness(prev => ({ ...prev, businessImages: newImages }));
+    resetGalleryForm();
   };
 
-  const handleDeleteLocation = (id: string) => {
-    if (confirm('Remove this location?')) {
+  const handleDeleteGallery = (id: string) => {
+    if (confirm('Remove this image?')) {
       setLocalBusiness(prev => ({
         ...prev,
-        locations: prev.locations?.filter(l => l.id !== id) || []
+        businessImages: prev.businessImages?.filter(img => img.id !== id) || []
       }));
     }
   };
 
-  const addLocationImage = (url: string) => {
-    setLocationFormState(prev => ({
+  const addGalleryImage = (url: string) => {
+    setGalleryFormState(prev => ({
       ...prev,
       additionalImages: [...(prev.additionalImages || []), url]
     }));
   };
 
-  const removeLocationImage = (index: number) => {
-    setLocationFormState(prev => ({
+  const removeGalleryImage = (index: number) => {
+    setGalleryFormState(prev => ({
       ...prev,
       additionalImages: (prev.additionalImages || []).filter((_, i) => i !== index)
     }));
@@ -328,16 +332,18 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
 
   return (
     <div className="space-y-8 pb-10">
-      <header className="flex justify-between items-center sticky top-0 z-10 py-4 bg-opacity-90 backdrop-blur-sm">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sticky top-0 z-10 py-4 bg-opacity-90 backdrop-blur-sm">
         <div>
           <GalaxyHeading
-            text={activeTab === 'products' ? "Product Lab" : "Team Roster"}
+            text={activeTab === 'offerings' ? "Offerings Studio" : activeTab === 'team' ? "Team Roster" : "Business Gallery"}
             className="text-4xl md:text-5xl font-extrabold tracking-tight mb-1 pb-2"
           />
           <p className={styles.textSub}>
-            {activeTab === 'products'
-              ? "Define your products with AI-powered marketing intelligence."
-              : "Manage your team members for AI-generated content."}
+            {activeTab === 'offerings'
+              ? "Define your products and services with AI-powered marketing intelligence."
+              : activeTab === 'team'
+                ? "Manage your team members for AI-generated content."
+                : "Add photos for AI to use in generations."}
           </p>
         </div>
         <div className="flex gap-3">
@@ -351,9 +357,9 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
             {isSaving ? 'Saving...' : 'Save Changes'}
           </NeuButton>
 
-          {activeTab === 'products' && !isFormOpen && (
+          {activeTab === 'offerings' && !isFormOpen && (
             <NeuButton variant="primary" onClick={() => setIsFormOpen(true)}>
-              <Plus size={18} /> Add Product
+              <Plus size={18} /> Add Offering
             </NeuButton>
           )}
 
@@ -363,9 +369,9 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
             </NeuButton>
           )}
 
-          {activeTab === 'locations' && !isLocationFormOpen && (
-            <NeuButton variant="primary" onClick={() => setIsLocationFormOpen(true)}>
-              <Plus size={18} /> Add Location
+          {activeTab === 'gallery' && !isGalleryFormOpen && (
+            <NeuButton variant="primary" onClick={() => setIsGalleryFormOpen(true)}>
+              <Plus size={18} /> Add Image
             </NeuButton>
           )}
         </div>
@@ -374,9 +380,9 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
       {/* Tab Switcher */}
       <div className={`flex p-1 ${styles.bg} rounded-xl ${styles.shadowIn} max-w-md mb-8`}>
         {[
-          { id: 'products', label: 'Products', icon: ShoppingBag },
+          { id: 'offerings', label: 'Offerings', icon: ShoppingBag },
           { id: 'team', label: 'Team', icon: Users },
-          { id: 'locations', label: 'Locations', icon: MapPin }
+          { id: 'gallery', label: 'Gallery', icon: ImageIcon }
         ].map(tab => (
           <button
             key={tab.id}
@@ -392,7 +398,7 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
         ))}
       </div>
 
-      {activeTab === 'products' && (
+      {activeTab === 'offerings' && (
         <>
           {isFormOpen && (
             <NeuCard className="animate-fade-in border-2 border-brand/20 ring-4 ring-brand/5">
@@ -403,7 +409,7 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
                   </div>
                   <div>
                     <h3 className={`text-xl font-bold ${styles.textMain}`}>
-                      {editingId ? 'Edit Product Strategy' : 'New Product Strategy'}
+                      {editingId ? 'Edit Offering Strategy' : 'New Offering Strategy'}
                     </h3>
                     <p className={`text-xs ${styles.textSub}`}>
                       Enter basic details and let AI flesh out the marketing strategy.
@@ -510,20 +516,30 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
                       <label className={`block text-xs font-bold ${styles.textSub} mb-1`}>Price ({currencySymbol})</label>
                       <div className="relative">
                         <div className={`absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none ${styles.textSub} font-bold`}>
-                          {currencySymbol}
+                          {formState.isFree ? '' : currencySymbol}
                         </div>
                         <input
-                          type="number"
+                          type={formState.isFree ? 'text' : 'number'}
                           step="0.01"
-                          placeholder="0.00"
-                          className={`w-full rounded-xl pl-10 pr-4 py-3 outline-none transition-all ${styles.bg} ${styles.shadowIn} ${styles.textMain} ${styles.inputPlaceholder} focus:ring-2 focus:ring-brand/20`}
-                          value={formState.price ? String(formState.price).replace(/[^0-9.]/g, '') : ''}
+                          placeholder={formState.isFree ? 'Free' : '0.00'}
+                          disabled={formState.isFree}
+                          className={`w-full rounded-xl ${formState.isFree ? 'pl-4' : 'pl-10'} pr-4 py-3 outline-none transition-all ${styles.bg} ${styles.shadowIn} ${styles.textMain} ${styles.inputPlaceholder} focus:ring-2 focus:ring-brand/20 ${formState.isFree ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          value={formState.isFree ? 'Free' : (formState.price ? String(formState.price).replace(/[^0-9.]/g, '') : '')}
                           onChange={e => {
                             const val = e.target.value.replace(/[^0-9.]/g, '');
                             setFormState(prev => ({ ...prev, price: val }));
                           }}
                         />
                       </div>
+                      <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formState.isFree || false}
+                          onChange={e => setFormState(prev => ({ ...prev, isFree: e.target.checked, price: e.target.checked ? '' : prev.price }))}
+                          className="w-4 h-4 rounded border-gray-300 text-brand focus:ring-brand"
+                        />
+                        <span className={`text-xs ${styles.textSub}`}>This is free (no price)</span>
+                      </label>
                     </div>
 
                     <div className="flex items-end col-span-1">
@@ -578,6 +594,19 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
                           value={formState.promotion}
                           onChange={e => setFormState(prev => ({ ...prev, promotion: e.target.value }))}
                         />
+                      </div>
+
+                      <div>
+                        <label className={`block text-xs font-bold ${styles.textSub} mb-1`}>Terms & Conditions (optional)</label>
+                        <NeuTextArea
+                          placeholder="Specific T&Cs for this offering (e.g. Subject to availability)"
+                          value={formState.termsAndConditions}
+                          onChange={e => setFormState(prev => ({ ...prev, termsAndConditions: e.target.value }))}
+                          className="min-h-[60px]"
+                        />
+                        <p className={`text-xs ${styles.textSub} mt-1 opacity-70`}>
+                          Will be combined with your global compliance text if active
+                        </p>
                       </div>
                     </div>
 
@@ -690,18 +719,18 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
             ))}
 
             {localBusiness.offerings.length === 0 && !isFormOpen && (
-              <div className={`col-span-1 md:col-span-2 text-center py-20 ${styles.textSub} border-2 border-dashed border-gray-300/20 rounded-3xl bg-gray-50/50`}>
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Sparkles size={32} className="text-brand opacity-50" />
+              <NeuCard className="col-span-1 md:col-span-2 text-center py-16 flex flex-col items-center justify-center">
+                <div className={`w-20 h-20 ${styles.bg} ${styles.shadowIn} rounded-full flex items-center justify-center mx-auto mb-6`}>
+                  <Sparkles size={36} className="text-brand opacity-70" />
                 </div>
-                <p className="text-xl font-bold mb-2">Your Product Lab is Empty</p>
-                <p className="text-sm opacity-70 mb-8 max-w-md mx-auto">
+                <h3 className={`text-2xl font-bold ${styles.textMain} mb-2`}>Your Offerings Studio is Empty</h3>
+                <p className={`text-sm ${styles.textSub} mb-8 max-w-md`}>
                   Add your products and services. Our AI will automatically generate marketing angles, benefits, and target audiences for you.
                 </p>
                 <NeuButton variant="primary" onClick={() => setIsFormOpen(true)}>
-                  <Plus size={18} /> Add First Product
+                  <Plus size={18} /> Add First Offering
                 </NeuButton>
-              </div>
+              </NeuCard>
             )}
 
           </div>
@@ -803,42 +832,42 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
             ))}
 
             {(localBusiness.teamMembers || []).length === 0 && !isTeamFormOpen && (
-              <div className={`col-span-1 md:col-span-3 text-center py-20 ${styles.textSub} border-2 border-dashed border-gray-300/20 rounded-3xl bg-black/5`}>
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Users size={32} className="text-brand opacity-50" />
+              <NeuCard className="col-span-1 md:col-span-3 text-center py-16 flex flex-col items-center justify-center">
+                <div className={`w-20 h-20 ${styles.bg} ${styles.shadowIn} rounded-full flex items-center justify-center mx-auto mb-6`}>
+                  <Users size={36} className="text-brand opacity-70" />
                 </div>
-                <p className="text-xl font-bold mb-2">No Team Members Yet</p>
-                <p className="text-sm opacity-70 mb-8 max-w-md mx-auto">
+                <h3 className={`text-2xl font-bold ${styles.textMain} mb-2`}>No Team Members Yet</h3>
+                <p className={`text-sm ${styles.textSub} mb-8 max-w-md`}>
                   Add your team to generate personalized content featuring your real employees.
                 </p>
                 <NeuButton variant="primary" onClick={() => setIsTeamFormOpen(true)}>
                   <Plus size={18} /> Add Team Member
                 </NeuButton>
-              </div>
+              </NeuCard>
             )}
           </div>
         </>
       )}
 
-      {activeTab === 'locations' && (
+      {activeTab === 'gallery' && (
         <>
-          {isLocationFormOpen && (
+          {isGalleryFormOpen && (
             <NeuCard className="animate-fade-in border-2 border-brand/20 ring-4 ring-brand/5 mb-8">
               <div className="flex justify-between items-center mb-6">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-brand/10 rounded-lg">
-                    {editingLocationId ? <Edit2 className="text-brand" size={20} /> : <Plus className="text-brand" size={20} />}
+                    {editingGalleryId ? <Edit2 className="text-brand" size={20} /> : <Plus className="text-brand" size={20} />}
                   </div>
                   <div>
                     <h3 className={`text-xl font-bold ${styles.textMain}`}>
-                      {editingLocationId ? 'Edit Location' : 'Add Location'}
+                      {editingGalleryId ? 'Edit Image' : 'Add Business Image'}
                     </h3>
                     <p className={`text-xs ${styles.textSub}`}>
-                      Upload photos of your storefront or physical space.
+                      Upload photos of your storefront, interior, or products in context.
                     </p>
                   </div>
                 </div>
-                <button onClick={resetLocationForm} className="p-2 hover:bg-black/5 rounded-full transition-colors">
+                <button onClick={resetGalleryForm} className="p-2 hover:bg-black/5 rounded-full transition-colors">
                   <X size={20} className={styles.textSub} />
                 </button>
               </div>
@@ -848,34 +877,34 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
                   <div>
                     <label className={`block text-xs font-bold ${styles.textSub} mb-2 uppercase tracking-wider`}>Hero Image</label>
                     <NeuImageUploader
-                      currentValue={locationFormState.imageUrl || ''}
-                      onUpload={(url) => setLocationFormState(prev => ({ ...prev, imageUrl: url }))}
-                      folder="locations"
+                      currentValue={galleryFormState.imageUrl || ''}
+                      onUpload={(url) => setGalleryFormState(prev => ({ ...prev, imageUrl: url }))}
+                      folder="gallery"
                     />
                   </div>
 
                   <div>
                     <label className={`block text-xs font-bold ${styles.textSub} mb-2 uppercase tracking-wider`}>
-                      Additional Views ({(locationFormState.additionalImages || []).length}/3)
+                      Additional Views ({(galleryFormState.additionalImages || []).length}/3)
                     </label>
                     <div className="grid grid-cols-3 gap-2">
-                      {(locationFormState.additionalImages || []).map((url, index) => (
+                      {(galleryFormState.additionalImages || []).map((url, index) => (
                         <div key={index} className="relative aspect-square rounded-lg overflow-hidden group border border-white/10">
                           <img src={url} className="w-full h-full object-cover" />
                           <button
-                            onClick={() => removeLocationImage(index)}
+                            onClick={() => removeGalleryImage(index)}
                             className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all text-white"
                           >
                             <Trash2 size={16} />
                           </button>
                         </div>
                       ))}
-                      {(locationFormState.additionalImages?.length || 0) < 3 && (
+                      {(galleryFormState.additionalImages?.length || 0) < 3 && (
                         <div className="aspect-square">
                           <NeuImageUploader
                             currentValue=""
-                            onUpload={addLocationImage}
-                            folder="locations/extras"
+                            onUpload={addGalleryImage}
+                            folder="gallery/extras"
                             compact
                           />
                         </div>
@@ -886,19 +915,19 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
 
                 <div className="md:col-span-8 space-y-4">
                   <div>
-                    <label className={`block text-xs font-bold ${styles.textSub} mb-1`}>Location Name</label>
+                    <label className={`block text-xs font-bold ${styles.textSub} mb-1`}>Image Name</label>
                     <NeuInput
-                      placeholder="e.g. Main Store, Downtown Branch"
-                      value={locationFormState.name}
-                      onChange={e => setLocationFormState(prev => ({ ...prev, name: e.target.value }))}
+                      placeholder="e.g. Storefront, Interior, Product Display"
+                      value={galleryFormState.name}
+                      onChange={e => setGalleryFormState(prev => ({ ...prev, name: e.target.value }))}
                     />
                   </div>
                   <div>
-                    <label className={`block text-xs font-bold ${styles.textSub} mb-1`}>Description / Vibe</label>
+                    <label className={`block text-xs font-bold ${styles.textSub} mb-1`}>Description / Context</label>
                     <NeuTextArea
-                      placeholder="Describe the atmosphere, what makes this space special..."
-                      value={locationFormState.description}
-                      onChange={e => setLocationFormState(prev => ({ ...prev, description: e.target.value }))}
+                      placeholder="Describe what this image shows, for AI context..."
+                      value={galleryFormState.description}
+                      onChange={e => setGalleryFormState(prev => ({ ...prev, description: e.target.value }))}
                       expandable
                       className="min-h-[100px]"
                     />
@@ -907,33 +936,33 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
               </div>
 
               <div className="flex gap-4 justify-end border-t pt-6 border-gray-200/10">
-                <NeuButton onClick={resetLocationForm}>Cancel</NeuButton>
-                <NeuButton variant="primary" onClick={handleSaveLocation}>
-                  {editingLocationId ? 'Update Location' : 'Add Location'}
+                <NeuButton onClick={resetGalleryForm}>Cancel</NeuButton>
+                <NeuButton variant="primary" onClick={handleSaveGallery}>
+                  {editingGalleryId ? 'Update Image' : 'Add Image'}
                 </NeuButton>
               </div>
             </NeuCard>
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {(localBusiness.locations || []).map(location => (
-              <NeuCard key={location.id} className="group relative overflow-hidden hover:shadow-lg transition-all duration-300">
+            {(localBusiness.businessImages || []).map(image => (
+              <NeuCard key={image.id} className="group relative overflow-hidden hover:shadow-lg transition-all duration-300">
                 <div className="aspect-video rounded-xl overflow-hidden bg-gray-100 mb-4 relative">
-                  {location.imageUrl ? (
-                    <img src={location.imageUrl} alt={location.name} className="w-full h-full object-cover" />
+                  {image.imageUrl ? (
+                    <img src={image.imageUrl} alt={image.name} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-gray-300">
-                      <MapPin size={48} />
+                      <ImageIcon size={48} />
                     </div>
                   )}
                 </div>
 
-                <h4 className={`font-bold ${styles.textMain} text-lg`}>{location.name}</h4>
-                <p className={`text-sm ${styles.textSub} line-clamp-2`}>{location.description || 'No description'}</p>
+                <h4 className={`font-bold ${styles.textMain} text-lg`}>{image.name}</h4>
+                <p className={`text-sm ${styles.textSub} line-clamp-2`}>{image.description || 'No description'}</p>
 
-                {(location.additionalImages?.length || 0) > 0 && (
+                {(image.additionalImages?.length || 0) > 0 && (
                   <div className="flex gap-1 mt-3">
-                    {location.additionalImages?.slice(0, 3).map((img, i) => (
+                    {image.additionalImages?.slice(0, 3).map((img, i) => (
                       <div key={i} className="w-10 h-10 rounded overflow-hidden">
                         <img src={img} className="w-full h-full object-cover" />
                       </div>
@@ -943,13 +972,13 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
 
                 <div className={`mt-4 pt-4 border-t ${styles.border} flex justify-end gap-3 opacity-60 group-hover:opacity-100 transition-all duration-300`}>
                   <button
-                    onClick={() => handleEditLocationClick(location)}
+                    onClick={() => handleEditGalleryClick(image)}
                     className={`text-blue-500 hover:text-blue-700 text-xs font-bold flex items-center gap-1 transition-colors`}
                   >
                     <Edit2 size={14} /> Edit
                   </button>
                   <button
-                    onClick={() => handleDeleteLocation(location.id)}
+                    onClick={() => handleDeleteGallery(image.id)}
                     className="text-red-400 hover:text-red-600 text-xs font-bold flex items-center gap-1 transition-colors"
                   >
                     <Trash2 size={14} /> Remove
@@ -958,19 +987,19 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
               </NeuCard>
             ))}
 
-            {(localBusiness.locations || []).length === 0 && !isLocationFormOpen && (
-              <div className={`col-span-1 md:col-span-2 text-center py-20 ${styles.textSub} border-2 border-dashed border-gray-300/20 rounded-3xl bg-black/5`}>
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <MapPin size={32} className="text-brand opacity-50" />
+            {(localBusiness.businessImages || []).length === 0 && !isGalleryFormOpen && (
+              <NeuCard className="col-span-1 md:col-span-2 text-center py-16 flex flex-col items-center justify-center">
+                <div className={`w-20 h-20 ${styles.bg} ${styles.shadowIn} rounded-full flex items-center justify-center mx-auto mb-6`}>
+                  <ImageIcon size={36} className="text-brand opacity-70" />
                 </div>
-                <p className="text-xl font-bold mb-2">No Locations Yet</p>
-                <p className="text-sm opacity-70 mb-8 max-w-md mx-auto">
-                  Add your storefront or physical locations to generate ads featuring your real space.
+                <h3 className={`text-2xl font-bold ${styles.textMain} mb-2`}>No Business Images Yet</h3>
+                <p className={`text-sm ${styles.textSub} mb-8 max-w-md`}>
+                  Add photos of your storefront, interior, or products in context for AI to use in generations.
                 </p>
-                <NeuButton variant="primary" onClick={() => setIsLocationFormOpen(true)}>
-                  <Plus size={18} /> Add Location
+                <NeuButton variant="primary" onClick={() => setIsGalleryFormOpen(true)}>
+                  <Plus size={18} /> Add Image
                 </NeuButton>
-              </div>
+              </NeuCard>
             )}
           </div>
         </>

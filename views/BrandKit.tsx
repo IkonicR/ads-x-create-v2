@@ -786,7 +786,7 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
 
   return (
     <div className="space-y-8 pb-10">
-      <header className="flex justify-between items-center sticky top-0 z-10 py-4 bg-opacity-90 backdrop-blur-sm">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sticky top-0 z-10 py-4 bg-opacity-90 backdrop-blur-sm">
         <div>
           <GalaxyHeading
             text="Brand Kit"

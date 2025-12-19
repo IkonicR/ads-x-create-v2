@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { gateway } from '@ai-sdk/gateway';
 import { generateText } from 'ai';
 import { GoogleGenAI } from '@google/genai';
+import sharp from 'sharp';
 import bodyParser from 'body-parser';
 // Note: PromptFactory is imported dynamically in generateImage route to avoid
 // supabase client initialization before dotenv.config() runs
@@ -11,17 +12,37 @@ import bodyParser from 'body-parser';
 // Load environment variables
 dotenv.config({ path: '.env.local' });
 
+
+import { AI_MODELS } from './config/ai-models';
+
 const app = express();
 const port = 3000;
 
-// Middleware
-app.use(cors());
+// Middleware - Explicit CORS for Vite dev server
+app.use(cors({
+    origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
+}));
 app.use(bodyParser.json({ limit: '10mb' })); // Allow large images
 
 // Prevent EIO errors (Standard Input conflict)
-if (typeof process !== 'undefined' && process.stdin && process.stdin.destroy) {
-    process.stdin.destroy();
-}
+// Prevent EIO errors (Standard Input conflict)
+// if (typeof process !== 'undefined' && process.stdin && process.stdin.destroy) {
+//     process.stdin.destroy();
+// }
+
+// Debugging: Log process exit
+process.on('exit', (code) => {
+    console.log(`[Server] Process exiting with code: ${code}`);
+});
+process.on('uncaughtException', (err) => {
+    console.error('[Server] Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[Server] Unhandled Rejection at:', promise, 'reason:', reason);
+});
 
 // --- API ROUTE: Generate Text ---
 app.post('/api/generate-text', async (req, res) => {
@@ -30,8 +51,8 @@ app.post('/api/generate-text', async (req, res) => {
         const { messages, prompt, system, modelTier = 'standard' } = req.body;
 
         // Use Vercel AI Gateway - gemini-2.5-flash for all tiers (2.0-flash is outdated)
-        const modelId = modelTier === 'premium' ? 'google/gemini-2.5-pro' : 'google/gemini-2.5-flash';
-        const model = gateway(modelId);
+        // Use Vercel AI Gateway with centralized config
+        const model = gateway(AI_MODELS.text as any);
 
         const result = await generateText({
             model,
@@ -516,7 +537,7 @@ app.post('/api/discover-pages', async (req, res) => {
 });
 
 // --- API ROUTE: Extract Website (Local Development) ---
-// Uses Firecrawl V2 + DeepSeek V3.2 for intelligent extraction
+// Uses Firecrawl V2 + Gemini 3 Flash for intelligent extraction
 // Supports: 'single' (1 page), 'select' (batch URLs), 'full' (crawl site)
 const FIRECRAWL_V2_BASE = 'https://api.firecrawl.dev/v2';
 
@@ -552,6 +573,84 @@ async function pollFirecrawlJob(
         }
     }
     return { success: false, error: 'Job timed out' };
+}
+
+// ============================================================================
+// SVG TO PNG CONVERSION HELPER
+// ============================================================================
+
+/**
+ * Check if a URL points to an SVG image
+ */
+function isSvgUrl(url: string): boolean {
+    const lowerUrl = url.toLowerCase();
+    return lowerUrl.endsWith('.svg') || lowerUrl.includes('.svg?');
+}
+
+/**
+ * Convert an SVG URL to PNG, upload to Supabase Storage, return the PNG URL
+ * If not SVG or conversion fails, returns the original URL
+ */
+async function convertSvgToPngIfNeeded(
+    imageUrl: string,
+    businessId: string,
+    supabase: any,
+    label: string = 'image'
+): Promise<string> {
+    // Skip if not SVG
+    if (!isSvgUrl(imageUrl)) {
+        return imageUrl;
+    }
+
+    console.log(`[SVG Convert] Converting ${label} SVG to PNG:`, imageUrl);
+
+    try {
+        // 1. Fetch the SVG
+        const response = await fetch(imageUrl, {
+            signal: AbortSignal.timeout(10000)
+        });
+
+        if (!response.ok) {
+            console.error(`[SVG Convert] Failed to fetch SVG: ${response.status}`);
+            return imageUrl;
+        }
+
+        const svgBuffer = Buffer.from(await response.arrayBuffer());
+
+        // 2. Convert SVG to PNG using Sharp
+        // Sharp automatically handles SVG input and converts to PNG
+        const pngBuffer = await sharp(svgBuffer)
+            .resize(1024, 1024, { fit: 'inside', withoutEnlargement: false })
+            .png({ quality: 90 })
+            .toBuffer();
+
+        // 3. Upload to Supabase Storage
+        const fileName = `${businessId || 'system'}/logos/${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
+
+        const { error: uploadError } = await supabase.storage
+            .from('business-assets')
+            .upload(fileName, pngBuffer, {
+                contentType: 'image/png',
+                upsert: false
+            });
+
+        if (uploadError) {
+            console.error('[SVG Convert] Upload failed:', uploadError);
+            return imageUrl;
+        }
+
+        // 4. Get the public URL
+        const { data: urlData } = supabase.storage
+            .from('business-assets')
+            .getPublicUrl(fileName);
+
+        console.log(`[SVG Convert] ✅ Converted ${label} to PNG:`, urlData.publicUrl);
+        return urlData.publicUrl;
+
+    } catch (error) {
+        console.error('[SVG Convert] Conversion error:', error);
+        return imageUrl; // Fallback to original on error
+    }
 }
 
 app.post('/api/extract-website', async (req, res) => {
@@ -592,21 +691,7 @@ app.post('/api/extract-website', async (req, res) => {
                 },
                 body: JSON.stringify({
                     url,
-                    formats: ['markdown', 'branding', 'extract'],
-                    extract: {
-                        schema: {
-                            type: "object",
-                            properties: {
-                                contactEmail: { type: "string" },
-                                contactPhone: { type: "string" },
-                                socialLinks: {
-                                    type: "array",
-                                    items: { type: "string" }
-                                },
-                                address: { type: "string" }
-                            }
-                        }
-                    }
+                    formats: ['markdown', 'branding']
                 }),
                 signal: AbortSignal.timeout(25000)
             });
@@ -713,30 +798,113 @@ app.post('/api/extract-website', async (req, res) => {
 
         const branding = pages[0]?.branding || {};
 
-        // Step 3: DeepSeek extraction
+        // Step 2b: Call Firecrawl /extract for structured contact info (more reliable than LLM)
+        let firecrawlExtractData: any = null;
+        try {
+            console.log('[Server] Calling Firecrawl /extract for contact info...');
+            const extractUrl = mode === 'single' ? url : (urls?.[0] || url);
+            const extractResponse = await fetch(`${FIRECRAWL_V2_BASE}/extract`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    urls: [extractUrl],
+                    prompt: "Extract contact information from this website including email addresses, phone numbers, physical address, and social media links (Instagram, Facebook, LinkedIn, Twitter/X, TikTok, YouTube, Pinterest, WhatsApp)",
+                    schema: {
+                        type: "object",
+                        properties: {
+                            emails: { type: "array", items: { type: "string" } },
+                            phones: { type: "array", items: { type: "string" } },
+                            address: { type: "string" },
+                            socials: {
+                                type: "array",
+                                items: {
+                                    type: "object",
+                                    properties: {
+                                        platform: { type: "string" },
+                                        url: { type: "string" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }),
+                signal: AbortSignal.timeout(15000) // 15s timeout for extract
+            });
+
+            if (extractResponse.ok) {
+                const extractResult = await extractResponse.json();
+                if (extractResult.success && extractResult.data) {
+                    firecrawlExtractData = extractResult.data;
+                    console.log('[Server] Firecrawl /extract success:', firecrawlExtractData);
+                }
+            } else {
+                console.log('[Server] Firecrawl /extract failed (non-critical):', await extractResponse.text());
+            }
+        } catch (extractError) {
+            console.log('[Server] Firecrawl /extract error (non-critical):', extractError);
+        }
+
+        // Step 3: Gemini 3 Flash extraction
         const EXTRACTION_PROMPT = `You are an expert business analyst. Extract business data from this website into JSON.
+
+HALLUCINATION FIREWALL (SAFETY FIRST):
+1. HARD FACTS (Hours, Phone, Team, Address): STRICTLY extract. Return null if not explicitly found. DO NOT INFER or invent.
+2. VIBE (Archetype, Strategy, Voice): Infer from content and intent. If not explicit, analyze the brand's potential strategy.
+3. CREATIVE (Slogan): Extract if present. Do not generate unless instructed.
 
 ## REQUIRED FORMAT
 Return ONLY valid JSON with these fields:
 
 {
   "name": "Business Name",
-  "industry": "MUST be one of: Retail | E-Commerce | Service | Tech | Food | Health | Beauty | Real Estate | Education | Finance | Legal | Construction | Automotive | Entertainment | Travel | Marketing | Non-Profit | Consulting | Fashion | Fitness | Art | Events | Photography | Agriculture | Manufacturing | Logistics",
-  "type": "MUST be one of: Retail | E-Commerce | Service | Other",
+  "industry": "Specific Industry",
+  "type": "Retail | E-Commerce | Service | Other",
   "description": "2-3 sentence description",
   "slogan": "Tagline if found",
+  
   "profile": {
     "contactEmail": "email if found",
     "contactPhone": "phone if found", 
     "address": "full address if found",
+    "publicLocationLabel": "City, Country",
+    "hours": { "Mon-Fri": "9am-5pm" },
+    "timezone": "e.g. Africa/Johannesburg",
+    "bookingUrl": "booking url if found",
     "operatingMode": "MUST be one of: storefront | online | service | appointment",
     "socials": [{"platform": "instagram", "handle": "@example"}]
   },
+
+  "brandKit": {
+     "colors": { "primary": "#hex", "secondary": "#hex", "accent": "#hex" },
+     "typography": { "headings": "Font Name", "body": "Font Name" },
+     "visualMotifs": ["motif 1", "motif 2"]
+  },
+  
+  "strategy": {
+     "coreCustomerProfile": {
+        "demographics": "e.g. Women 25-45, urban",
+        "psychographics": "e.g. Eco-conscious, value quality",
+        "painPoints": ["pain 1", "pain 2 or NULL"],
+        "desires": ["desire 1", "desire 2"]
+     },
+     "competitors": ["Competitor A", "Competitor B"]
+  },
+
   "voice": {
     "archetypeInferred": "MUST be one of: The Innocent | The Explorer | The Sage | The Hero | The Outlaw | The Magician | The Guy/Girl Next Door | The Lover | The Jester | The Caregiver | The Creator | The Ruler",
-    "tonePillsInferred": ["Professional", "Friendly", etc - max 3],
+    "tonePillsInferred": "MUST select exactly 4 from: Bold, Premium, Minimal, Playful, Modern, Classic, Elegant, Timeless, Sophisticated, Luxurious, Refined, Curated, Professional, Creative, Energetic, Witty, Urgent, Calm, Warm, Approachable, Sincere, Trustworthy, Friendly, Exclusive, Rebellious, Community Focused, Authoritative, Supportive, Personable, Welcoming, Educational, Insightful, Analytical, Geeky, Direct, Informative, Expert",
     "keywords": ["key", "brand", "words"]
   },
+  
+  "content": {
+     "teamMembers": [{"name": "Name", "role": "Role", "imageUrl": "url"}],
+     "locations": [{"name": "Branch Name", "address": "Address", "imageUrl": "url"}],
+     "testimonials": [{"text": "Quote", "author": "Name"}]
+  },
+
   "usps": ["Unique selling point 1", "USP 2"],
   "offerings": [{"name": "Product/Service", "description": "Brief desc", "price": "R100 or $50", "category": "Products or Services"}],
   "targetAudience": "Description of who they serve",
@@ -751,19 +919,19 @@ CONTACT EXTRACTION RULES:
 - US phones: (xxx) xxx-xxxx
 - Extract ANY email or phone you find - do not skip them
 
-Do your best to extract all available information.`;
+Do your best to extract all available information while respecting the Hallucination Firewall.`;
 
-        console.log('[Server] Calling DeepSeek V3.2-Thinking via Vercel Gateway...');
+        console.log('[Server] Calling Gemini 3 Flash via Vercel AI Gateway...');
 
-        // Use Vercel AI Gateway for DeepSeek
+        // Use Vercel AI Gateway for Text Generation
         const deepseekResult = await generateText({
-            model: gateway('deepseek/deepseek-v3.2-thinking'),
+            model: gateway(AI_MODELS.text as any),
             system: EXTRACTION_PROMPT,
             prompt: `BRANDING:\n${JSON.stringify(branding)}\n\nCONTENT:\n${combinedMarkdown.slice(0, 50000)}`,
             temperature: 0.2,
         });
 
-        console.log('[Server] DeepSeek parsing complete via Vercel Gateway');
+        console.log('[Server] Gemini 3 Flash parsing complete');
 
         let extractedData;
         try {
@@ -803,33 +971,54 @@ Do your best to extract all available information.`;
             extractedData.logoUrl = (branding as any).images.logo;
         }
 
-        // Feature: Merge Firecrawl "extract" data (structured JSON)
+        // Convert SVG logos to PNG for Gemini compatibility
+        if (extractedData.logoUrl && isSvgUrl(extractedData.logoUrl)) {
+            console.log('[Server] Detected SVG logo, converting to PNG...');
+            const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+            extractedData.logoUrl = await convertSvgToPngIfNeeded(
+                extractedData.logoUrl,
+                'extracted', // Temporary ID for extraction, will be moved when business is created
+                supabase,
+                'logo'
+            );
+        }
+
+        // Feature: Merge Firecrawl /extract data (structured JSON from Step 2b)
         // This is more reliable for contact info than the LLM extraction
-        const firecrawlExtract = (pages[0] as any).extract;
-        if (firecrawlExtract) {
+        if (firecrawlExtractData) {
             if (!extractedData.profile) extractedData.profile = {};
 
             // Prioritize Firecrawl extraction for contact info
-            if (firecrawlExtract.contactEmail) extractedData.profile.contactEmail = firecrawlExtract.contactEmail;
-            if (firecrawlExtract.contactPhone) extractedData.profile.contactPhone = firecrawlExtract.contactPhone;
-            if (firecrawlExtract.address) extractedData.profile.address = firecrawlExtract.address;
+            if (firecrawlExtractData.emails?.length) {
+                extractedData.profile.contactEmail = firecrawlExtractData.emails[0];
+            }
+            if (firecrawlExtractData.phones?.length) {
+                extractedData.profile.contactPhone = firecrawlExtractData.phones[0];
+            }
+            if (firecrawlExtractData.address) {
+                extractedData.profile.address = firecrawlExtractData.address;
+            }
 
-            // Merge socials
-            if (firecrawlExtract.socialLinks && Array.isArray(firecrawlExtract.socialLinks)) {
+            // Merge socials from /extract endpoint
+            if (firecrawlExtractData.socials && Array.isArray(firecrawlExtractData.socials)) {
                 const currentSocials = extractedData.profile.socials || [];
-                firecrawlExtract.socialLinks.forEach((link: string) => {
-                    // Simple parser for social links
-                    let platform = 'website';
-                    if (link.includes('instagram')) platform = 'instagram';
-                    else if (link.includes('facebook')) platform = 'facebook';
-                    else if (link.includes('twitter') || link.includes('x.com')) platform = 'twitter';
-                    else if (link.includes('linkedin')) platform = 'linkedin';
-                    else if (link.includes('tiktok')) platform = 'tiktok';
-                    else if (link.includes('whatsapp')) platform = 'whatsapp';
+                firecrawlExtractData.socials.forEach((social: { platform?: string; url?: string }) => {
+                    if (!social.url) return;
+
+                    // Normalize platform name
+                    let platform = social.platform?.toLowerCase() || 'website';
+                    if (social.url.includes('instagram')) platform = 'instagram';
+                    else if (social.url.includes('facebook')) platform = 'facebook';
+                    else if (social.url.includes('twitter') || social.url.includes('x.com')) platform = 'twitter';
+                    else if (social.url.includes('linkedin')) platform = 'linkedin';
+                    else if (social.url.includes('tiktok')) platform = 'tiktok';
+                    else if (social.url.includes('youtube')) platform = 'youtube';
+                    else if (social.url.includes('pinterest')) platform = 'pinterest';
+                    else if (social.url.includes('whatsapp')) platform = 'whatsapp';
 
                     // Add if not already present
-                    if (!currentSocials.some(s => s.handle === link)) {
-                        currentSocials.push({ platform, handle: link });
+                    if (!currentSocials.some(s => s.handle === social.url)) {
+                        currentSocials.push({ platform, handle: social.url });
                     }
                 });
                 extractedData.profile.socials = currentSocials;
@@ -1401,7 +1590,7 @@ app.post('/api/social/sync', async (req, res) => {
     }
 });
 
-// 7. Generate Caption Endpoint (DeepSeek V3.2)
+// 7. Generate Caption Endpoint (Gemini 3 Flash)
 app.post('/api/social/generate-caption', async (req, res) => {
     console.log('[Server] Caption Generation Request Received');
 
@@ -1476,11 +1665,11 @@ ${assetPrompt}
 
 Write the caption now:`;
 
-        console.log('[Server] Generating caption via Vercel Gateway (DeepSeek V3.2)...');
+        console.log('[Server] Generating caption via Gemini 3 Flash...');
 
-        // Use Vercel AI Gateway for DeepSeek
+        // Use Vercel AI Gateway for Captioning
         const result = await generateText({
-            model: gateway('deepseek/deepseek-v3.2'),
+            model: gateway(AI_MODELS.text as any),
             system: CAPTION_SYSTEM_PROMPT,
             prompt: userPrompt,
             temperature: 0.7,
@@ -2175,17 +2364,51 @@ app.delete('/api/team/revoke', async (req, res) => {
 
 
 
-// Helper: Convert URL to Base64 (for image references)
-async function urlToBase64(url: string): Promise<string | null> {
+// Helper: Convert URL to Base64 with proper MIME type detection
+// Automatically converts SVG to PNG since Gemini doesn't support SVG
+async function urlToBase64WithMime(url: string): Promise<{ base64: string; mimeType: string } | null> {
     try {
         const response = await fetch(url);
+        if (!response.ok) {
+            console.error(`[Generate] Failed to fetch image: ${response.status} ${url}`);
+            return null;
+        }
+
+        // Get actual MIME type from response headers
+        const contentType = response.headers.get('content-type') || 'image/png';
+        // Clean up MIME type (remove charset or other parameters)
+        let mimeType = contentType.split(';')[0].trim();
+
         const arrayBuffer = await response.arrayBuffer();
-        const base64 = Buffer.from(arrayBuffer).toString('base64');
-        return base64;
+        let buffer: Buffer = Buffer.from(arrayBuffer) as Buffer;
+
+        // Convert SVG to PNG since Gemini doesn't support SVG
+        if (mimeType === 'image/svg+xml' || url.toLowerCase().endsWith('.svg')) {
+            console.log(`[Generate] Converting SVG to PNG: ${url.substring(0, 80)}...`);
+            try {
+                buffer = await sharp(buffer)
+                    .resize(1024, 1024, { fit: 'inside', withoutEnlargement: false })
+                    .png({ quality: 90 })
+                    .toBuffer();
+                mimeType = 'image/png';
+            } catch (conversionError) {
+                console.error(`[Generate] SVG conversion failed: ${url}`, conversionError);
+                return null; // Skip this image if conversion fails
+            }
+        }
+
+        const base64 = buffer.toString('base64');
+        return { base64, mimeType };
     } catch (e) {
-        console.error("[Generate] Failed to fetch image:", e);
+        console.error("[Generate] Failed to fetch image:", url, e);
         return null;
     }
+}
+
+// Backward compat wrapper
+async function urlToBase64(url: string): Promise<string | null> {
+    const result = await urlToBase64WithMime(url);
+    return result?.base64 || null;
 }
 
 // Helper: Upload base64 to Supabase Storage
@@ -2397,18 +2620,18 @@ app.post('/api/generate-image', async (req, res) => {
 
                 // Add subject image if provided
                 if (subjectContext?.imageUrl) {
-                    const subjectImage = await urlToBase64(subjectContext.imageUrl);
-                    if (subjectImage) {
-                        contentParts.push({ type: 'image', image: `data:image/png;base64,${subjectImage}` });
+                    const subjectResult = await urlToBase64WithMime(subjectContext.imageUrl);
+                    if (subjectResult) {
+                        contentParts.push({ type: 'image', image: `data:${subjectResult.mimeType};base64,${subjectResult.base64}` });
                         contentParts.push({ type: 'text', text: ' [REFERENCE IMAGE 1: MAIN PRODUCT] ' });
                     }
                 }
 
                 // Add logo if available
                 if (mappedBusiness.logoUrl) {
-                    const logoImage = await urlToBase64(mappedBusiness.logoUrl);
-                    if (logoImage) {
-                        contentParts.push({ type: 'image', image: `data:image/png;base64,${logoImage}` });
+                    const logoResult = await urlToBase64WithMime(mappedBusiness.logoUrl);
+                    if (logoResult) {
+                        contentParts.push({ type: 'image', image: `data:${logoResult.mimeType};base64,${logoResult.base64}` });
                         contentParts.push({ type: 'text', text: ' [REFERENCE IMAGE: LOGO] ' });
                     }
                 }
@@ -2432,18 +2655,18 @@ app.post('/api/generate-image', async (req, res) => {
                     let refCount = 0;
                     for (const ref of activeRefs) {
                         const url = typeof ref === 'string' ? ref : (ref.url || ref);
-                        const styleImage = await urlToBase64(url);
-                        if (styleImage) {
+                        const styleResult = await urlToBase64WithMime(url);
+                        if (styleResult) {
                             refCount++;
-                            contentParts.push({ type: 'image', image: `data:image/png;base64,${styleImage}` });
+                            contentParts.push({ type: 'image', image: `data:${styleResult.mimeType};base64,${styleResult.base64}` });
                             contentParts.push({ type: 'text', text: ` [REFERENCE IMAGE ${refCount}: STYLE] ` });
                         }
                     }
                     console.log('[Generate] Successfully loaded', refCount, 'style reference images');
                 } else if (stylePreset?.imageUrl) {
-                    const styleImage = await urlToBase64(stylePreset.imageUrl);
-                    if (styleImage) {
-                        contentParts.push({ type: 'image', image: `data:image/png;base64,${styleImage}` });
+                    const styleResult = await urlToBase64WithMime(stylePreset.imageUrl);
+                    if (styleResult) {
+                        contentParts.push({ type: 'image', image: `data:${styleResult.mimeType};base64,${styleResult.base64}` });
                         contentParts.push({ type: 'text', text: ' [REFERENCE IMAGE: STYLE] ' });
                         console.log('[Generate] Using single style imageUrl');
                     }
@@ -2668,3 +2891,72 @@ app.listen(port, () => {
     console.log(`   - TEAM: /api/team/* (invite, accept, revoke)`);
 });
 
+// ============================================================================
+// ADMIN: Migrate SVG logos to PNG (one-time cleanup)
+// ============================================================================
+app.post('/api/admin/migrate-svg-logos', async (req, res) => {
+    console.log('[Admin] Migrating SVG logos to PNG...');
+
+    const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+
+    try {
+        // Find all businesses with SVG logos
+        const { data: businesses, error } = await supabase
+            .from('businesses')
+            .select('id, name, logo_url')
+            .or('logo_url.ilike.%.svg,logo_url.ilike.%.svg?%');
+
+        if (error) {
+            console.error('[Admin] Query error:', error);
+            res.status(500).json({ error: 'Query failed' });
+            return;
+        }
+
+        if (!businesses || businesses.length === 0) {
+            res.json({ success: true, message: 'No SVG logos found', converted: 0 });
+            return;
+        }
+
+        console.log(`[Admin] Found ${businesses.length} businesses with SVG logos`);
+        const results: { id: string; name: string; oldUrl: string; newUrl: string }[] = [];
+
+        for (const biz of businesses) {
+            if (!biz.logo_url || !isSvgUrl(biz.logo_url)) continue;
+
+            console.log(`[Admin] Converting logo for: ${biz.name}`);
+
+            const newLogoUrl = await convertSvgToPngIfNeeded(
+                biz.logo_url,
+                biz.id,
+                supabase,
+                `logo-${biz.name}`
+            );
+
+            if (newLogoUrl !== biz.logo_url) {
+                // Update the business with the new PNG URL
+                const { error: updateError } = await supabase
+                    .from('businesses')
+                    .update({ logo_url: newLogoUrl })
+                    .eq('id', biz.id);
+
+                if (updateError) {
+                    console.error(`[Admin] Failed to update ${biz.name}:`, updateError);
+                } else {
+                    results.push({
+                        id: biz.id,
+                        name: biz.name,
+                        oldUrl: biz.logo_url,
+                        newUrl: newLogoUrl
+                    });
+                }
+            }
+        }
+
+        console.log(`[Admin] ✅ Converted ${results.length} SVG logos`);
+        res.json({ success: true, converted: results.length, results });
+
+    } catch (error) {
+        console.error('[Admin] Migration error:', error);
+        res.status(500).json({ error: 'Migration failed' });
+    }
+});

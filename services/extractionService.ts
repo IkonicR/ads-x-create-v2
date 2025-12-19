@@ -1,7 +1,7 @@
 /**
  * Extraction Service
  * Client-side wrapper for the /api/extract-website endpoint
- * Uses Firecrawl v2.7.0 + DeepSeek V3.2 for intelligent website extraction
+ * Uses Firecrawl v2.7.0 + Gemini via Vercel Gateway for intelligent website extraction
  */
 
 import { Business, Offering } from '../types';
@@ -13,26 +13,63 @@ export interface ExtractedBusinessData {
     type?: 'Retail' | 'E-Commerce' | 'Service' | 'Other';
     description?: string;
     slogan?: string;
+
+    // Brand Kit moved/expanded here
+    brandKit?: {
+        colors?: {
+            primary?: string;
+            secondary?: string;
+            accent?: string;
+        };
+        typography?: {
+            headings?: string;
+            body?: string;
+        };
+        visualMotifs?: string[];
+    };
+
     colors?: {
         primary?: string;
         secondary?: string;
         accent?: string;
     };
     logoUrl?: string;
+
     profile?: {
         contactEmail?: string;
         contactPhone?: string;
         address?: string;
         publicLocationLabel?: string;
+        hours?: Record<string, string>; // New
+        timezone?: string; // New
+        bookingUrl?: string; // New
         operatingMode?: 'storefront' | 'online' | 'service' | 'appointment';
         socials?: { platform: string; handle: string }[];
         website?: string;
     };
+
     voice?: {
         archetypeInferred?: string;
         tonePillsInferred?: string[];
         keywords?: string[];
     };
+
+    strategy?: { // New
+        coreCustomerProfile?: {
+            demographics?: string;
+            psychographics?: string;
+            painPoints?: string[];
+            desires?: string[];
+        };
+        competitors?: string[];
+    };
+
+    content?: { // New
+        teamMembers?: { name: string; role: string; imageUrl?: string }[];
+        locations?: { name: string; address: string; imageUrl?: string }[];
+        testimonials?: { text: string; author: string }[];
+    };
+
     usps?: string[];
     offerings?: {
         name: string;
@@ -40,6 +77,9 @@ export interface ExtractedBusinessData {
         price?: string;
         category?: string;
     }[];
+
+    targetAudience?: string;
+    targetLanguage?: string;
 }
 
 export interface ExtractionResult {
@@ -244,8 +284,38 @@ export function extractedDataToBusiness(
             displayStyle: 'standard',
         });
     }
-    // NOTE: Address is NOT added to contacts - it's stored in profile.address
-    // and uses adPreferences.locationDisplay for visibility control
+
+    // Map Competitors (String[] -> Object[])
+    const competitors = (extracted.strategy?.competitors || []).map(comp => ({
+        name: comp,
+        website: ''
+    }));
+
+    // Map Visual Motifs (String[] -> Object[]) - Default to hidden so user can enable
+    const visualMotifs = (extracted.brandKit?.visualMotifs || []).map((motif, index) => ({
+        id: `extracted-motif-${index}`,
+        name: motif,
+        prominence: 'hidden' as const
+    }));
+
+    // Map Team Members
+    const teamMembers = (extracted.content?.teamMembers || []).map((member, index) => ({
+        id: `extracted-team-${index}`,
+        name: member.name,
+        role: member.role,
+        imageUrl: member.imageUrl || ''
+    }));
+
+    // Map Business Images (empty array - extraction doesn't provide these)
+    const businessImages: any[] = [];
+
+    // Format Hours Text
+    let hoursText = '';
+    if (extracted.profile?.hours) {
+        hoursText = Object.entries(extracted.profile.hours)
+            .map(([days, time]) => `${days}: ${time}`)
+            .join(' | ');
+    }
 
     return {
         name: extracted.name || '',
@@ -254,11 +324,20 @@ export function extractedDataToBusiness(
         description: extracted.description || '',
         website: extracted.profile?.website || '',
         logoUrl: extracted.logoUrl || '',
+
+        // Brand Kit
         colors: {
-            primary: extracted.colors?.primary || '#000000',
-            secondary: extracted.colors?.secondary || '#ffffff',
-            accent: extracted.colors?.accent || '#a855f7',
+            primary: extracted.brandKit?.colors?.primary || extracted.colors?.primary || '#000000',
+            secondary: extracted.brandKit?.colors?.secondary || extracted.colors?.secondary || '#ffffff',
+            accent: extracted.brandKit?.colors?.accent || extracted.colors?.accent || '#a855f7',
         },
+        typography: {
+            headingFont: extracted.brandKit?.typography?.headings || 'Inter',
+            bodyFont: extracted.brandKit?.typography?.body || 'Inter',
+            scale: 'medium'
+        },
+        visualMotifs: visualMotifs,
+
         voice: {
             sliders: { identity: 50, style: 50, emotion: 50 },
             archetype: mapArchetype(extracted.voice?.archetypeInferred),
@@ -267,6 +346,16 @@ export function extractedDataToBusiness(
             slogan: extracted.slogan || '',
             negativeKeywords: [],
         },
+
+        // Strategy
+        coreCustomerProfile: {
+            demographics: extracted.strategy?.coreCustomerProfile?.demographics || '',
+            psychographics: extracted.strategy?.coreCustomerProfile?.psychographics || '',
+            painPoints: extracted.strategy?.coreCustomerProfile?.painPoints || [],
+            desires: extracted.strategy?.coreCustomerProfile?.desires || []
+        },
+        competitors: competitors,
+
         profile: {
             contactEmail: extracted.profile?.contactEmail || '',
             contactPhone: extracted.profile?.contactPhone || '',
@@ -274,9 +363,12 @@ export function extractedDataToBusiness(
             publicLocationLabel: extracted.profile?.publicLocationLabel || '',
             operatingMode: operatingMode,
             socials: extracted.profile?.socials || [],
-            hours: [],
+            hours: [], // TODO: Parse logic or rely on hoursText
             contacts: contacts,
+            timezone: extracted.profile?.timezone,
+            bookingUrl: extracted.profile?.bookingUrl,
         },
+
         adPreferences: {
             targetAudience: (extracted as any).targetAudience || '',
             goals: '',
@@ -289,11 +381,22 @@ export function extractedDataToBusiness(
             hoursProminence: 'standard',
             contactIds: contacts.map(c => c.id),
             locationDisplay: locationDisplay as any,
-            hoursDisplay: 'hidden',
+            hoursDisplay: hoursText ? 'custom_text' : 'hidden',
+            hoursText: hoursText,
             holidayMode: { isActive: false, name: '', hours: '' },
             targetLanguage: (extracted as any).targetLanguage || 'English',
         },
+
         usps: extracted.usps || [],
+
+        // Content
+        teamMembers: teamMembers,
+        businessImages: businessImages,
+        testimonials: (extracted.content?.testimonials || []).map((t, i) => ({
+            id: `extracted-test-${i}`,
+            author: t.author,
+            quote: t.text
+        }))
     };
 }
 

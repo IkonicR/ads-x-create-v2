@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { gateway } from '@ai-sdk/gateway';
 import { generateText } from 'ai';
+import { AI_MODELS } from '../config/ai-models';
 
 /**
  * Website Extraction API - Firecrawl V2
@@ -10,7 +11,7 @@ import { generateText } from 'ai';
  * - 'select': Batch scrape selected URLs (async, poll)
  * - 'full': Crawl entire site (async, poll)
  * 
- * Uses Firecrawl V2 + DeepSeek V3.2 for intelligent extraction
+ * Uses Firecrawl V2 + Gemini via Vercel Gateway for intelligent extraction
  */
 
 // Types for Firecrawl v2 response
@@ -41,33 +42,72 @@ interface FirecrawlPage {
     images?: string[];
 }
 
-// DeepSeek extraction result matching our Business type
+// Extraction result matching our Business type
 interface ExtractedBusinessData {
     name?: string;
     industry?: string;
     type?: 'Retail' | 'E-Commerce' | 'Service' | 'Other';
     description?: string;
     slogan?: string;
+
+    // Brand Kit moved/expanded here
+    brandKit?: {
+        colors?: {
+            primary?: string;
+            secondary?: string;
+            accent?: string;
+        };
+        typography?: {
+            headings?: string;
+            body?: string;
+        };
+        visualMotifs?: string[];
+    };
+
+    // Legacy support
     colors?: {
         primary?: string;
         secondary?: string;
         accent?: string;
     };
+
     logoUrl?: string;
+
     profile?: {
         contactEmail?: string;
         contactPhone?: string;
         address?: string;
         publicLocationLabel?: string;
+        hours?: Record<string, string>; // New
+        timezone?: string; // New
+        bookingUrl?: string; // New
         operatingMode?: 'storefront' | 'online' | 'service' | 'appointment';
         socials?: { platform: string; handle: string }[];
         website?: string;
     };
+
     voice?: {
         archetypeInferred?: string;
         tonePillsInferred?: string[];
         keywords?: string[];
     };
+
+    strategy?: { // New
+        coreCustomerProfile?: {
+            demographics?: string;
+            psychographics?: string;
+            painPoints?: string[];
+            desires?: string[];
+        };
+        competitors?: string[];
+    };
+
+    content?: { // New
+        teamMembers?: { name: string; role: string; imageUrl?: string }[];
+        locations?: { name: string; address: string; imageUrl?: string }[];
+        testimonials?: { text: string; author: string }[];
+    };
+
     usps?: string[];
     offerings?: {
         name: string;
@@ -75,6 +115,8 @@ interface ExtractedBusinessData {
         price?: string;
         category?: string;
     }[];
+
+    // Moved these to top level if needed, but keeping interface strict
     targetAudience?: string;
     targetLanguage?: string;
 }
@@ -88,8 +130,13 @@ interface ExtractionResponse {
     pagesScraped?: number;
 }
 
-// DeepSeek system prompt for business extraction
+// System prompt for business extraction
 const EXTRACTION_SYSTEM_PROMPT = `You are an expert business analyst. Given website content (markdown) and branding info (JSON), extract structured business data.
+
+HALLUCINATION FIREWALL (SAFETY FIRST):
+1. HARD FACTS (Hours, Phone, Team, Address): STRICTLY extract. Return null if not explicitly found. DO NOT INFER or invent.
+2. VIBE (Archetype, Strategy, Voice): Infer from content and intent. If not explicit, analyze the brand's potential strategy.
+3. CREATIVE (Slogan): Extract if present. Do not generate unless instructed.
 
 Return ONLY valid JSON with these fields (omit any you can't confidently determine):
 
@@ -104,15 +151,41 @@ Return ONLY valid JSON with these fields (omit any you can't confidently determi
     "contactEmail": "email if found",
     "contactPhone": "phone if found",
     "address": "full address if found",
+    "publicLocationLabel": "City, Country",
+    "hours": { "Mon-Fri": "9am-5pm" },
+    "timezone": "e.g. Africa/Johannesburg",
+    "bookingUrl": "booking url if found",
     "operatingMode": "MUST be one of: storefront | online | service | appointment",
     "socials": [{"platform": "instagram", "handle": "@example"}],
     "website": "canonical URL"
   },
+
+  "brandKit": {
+     "colors": { "primary": "#hex", "secondary": "#hex", "accent": "#hex" },
+     "typography": { "headings": "Font Name", "body": "Font Name" },
+     "visualMotifs": ["motif 1", "motif 2"]
+  },
+  
+  "strategy": {
+     "coreCustomerProfile": {
+        "demographics": "e.g. Women 25-45, urban",
+        "psychographics": "e.g. Eco-conscious, value quality",
+        "painPoints": ["pain 1", "pain 2 or NULL"],
+        "desires": ["desire 1", "desire 2"]
+     },
+     "competitors": ["Competitor A", "Competitor B"]
+  },
   
   "voice": {
     "archetypeInferred": "MUST be one of: The Innocent | The Explorer | The Sage | The Hero | The Outlaw | The Magician | The Guy/Girl Next Door | The Lover | The Jester | The Caregiver | The Creator | The Ruler",
-    "tonePillsInferred": "MUST select 0-4 from this EXACT list (plain text only, NO emojis): Bold, Premium, Minimal, Playful, Modern, Classic, Elegant, Timeless, Sophisticated, Luxurious, Refined, Curated, Professional, Creative, Energetic, Witty, Urgent, Calm, Warm, Approachable, Sincere, Trustworthy, Friendly, Exclusive, Rebellious, Community Focused, Authoritative, Supportive, Personable, Welcoming, Educational, Insightful, Analytical, Geeky, Direct, Informative, Expert",
+    "tonePillsInferred": "MUST select exactly 4 from this EXACT list (plain text only, NO emojis): Bold, Premium, Minimal, Playful, Modern, Classic, Elegant, Timeless, Sophisticated, Luxurious, Refined, Curated, Professional, Creative, Energetic, Witty, Urgent, Calm, Warm, Approachable, Sincere, Trustworthy, Friendly, Exclusive, Rebellious, Community Focused, Authoritative, Supportive, Personable, Welcoming, Educational, Insightful, Analytical, Geeky, Direct, Informative, Expert",
     "keywords": ["key", "brand", "words"]
+  },
+  
+  "content": {
+     "teamMembers": [{"name": "Name", "role": "Role", "imageUrl": "url"}],
+     "locations": [{"name": "Branch Name", "address": "Address", "imageUrl": "url"}],
+     "testimonials": [{"text": "Quote", "author": "Name"}]
   },
   
   "usps": ["Unique selling point 1", "USP 2"],
@@ -139,7 +212,7 @@ CONTACT EXTRACTION RULES:
 - US phones: (xxx) xxx-xxxx
 - Extract ANY email or phone you find - do not skip them
 
-Do your best to extract all available information.`;
+Do your best to extract all available information while respecting the Hallucination Firewall.`;
 
 // Firecrawl V2 API base
 const FIRECRAWL_V2_BASE = 'https://api.firecrawl.dev/v2';
@@ -213,21 +286,7 @@ async function scrapeSinglePage(
         },
         body: JSON.stringify({
             url,
-            formats: ['markdown', 'branding', 'extract'],
-            extract: {
-                schema: {
-                    type: "object",
-                    properties: {
-                        contactEmail: { type: "string" },
-                        contactPhone: { type: "string" },
-                        socialLinks: {
-                            type: "array",
-                            items: { type: "string" }
-                        },
-                        address: { type: "string" }
-                    }
-                }
-            }
+            formats: ['markdown', 'branding']
         }),
         signal: AbortSignal.timeout(25000) // 25s timeout
     });
@@ -325,18 +384,19 @@ async function crawlSite(
 }
 
 /**
- * Call DeepSeek to extract structured business data
+ * Call Gateway to extract structured business data
  */
-async function extractWithDeepSeek(
+async function extractWithAI(
     combinedMarkdown: string,
     branding: FirecrawlBranding,
     _apiKey: string // kept for signature compatibility, not used with gateway
 ): Promise<{ success: boolean; data?: ExtractedBusinessData; error?: string }> {
-    console.log('[Extract] Calling DeepSeek V3.2-Thinking via Vercel Gateway...');
+    console.log('[Extract] Calling AI via Vercel Gateway...');
 
     try {
+        // Use Vercel AI Gateway (Gemini 3 Flash)
         const result = await generateText({
-            model: gateway('deepseek/deepseek-v3.2-thinking'),
+            model: gateway(AI_MODELS.text as any),
             system: EXTRACTION_SYSTEM_PROMPT,
             prompt: `BRANDING:\n${JSON.stringify(branding)}\n\nCONTENT:\n${combinedMarkdown.slice(0, 50000)}`,
             temperature: 0.2,
@@ -359,10 +419,10 @@ async function extractWithDeepSeek(
         }
 
         const extractedData = JSON.parse(jsonText.trim());
-        console.log('[Extract] DeepSeek parsing complete via Vercel Gateway');
+        console.log('[Extract] AI parsing complete via Vercel Gateway');
         return { success: true, data: extractedData };
     } catch (error) {
-        console.error('[Extract] DeepSeek error:', error);
+        console.error('[Extract] AI error:', error);
         return { success: false, error: 'AI analysis failed' };
     }
 }
@@ -454,8 +514,8 @@ export default async function handler(
         // Get branding from first page (usually homepage)
         const branding = pages[0]?.branding || {};
 
-        // Step 3: DeepSeek extraction (via Vercel Gateway, no API key needed)
-        const extractionResult = await extractWithDeepSeek(combinedMarkdown, branding, '');
+        // Step 3: AI extraction (via Vercel Gateway, no API key needed)
+        const extractionResult = await extractWithAI(combinedMarkdown, branding, '');
 
         if (!extractionResult.success || !extractionResult.data) {
             res.status(500).json({ error: extractionResult.error || 'AI extraction failed' });
