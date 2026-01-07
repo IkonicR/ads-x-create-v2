@@ -130,6 +130,36 @@ app.post('/api/export-print', async (req, res) => {
     }
 });
 
+// --- API ROUTE: Convert SVG to PNG ---
+app.post('/api/convert-svg', async (req, res) => {
+    console.log('[Server] SVG Conversion Request Received');
+    try {
+        const { svgData } = req.body;
+
+        if (!svgData) {
+            res.status(400).json({ error: 'No SVG data provided' });
+            return;
+        }
+
+        // Convert base64 SVG to PNG using Sharp
+        const svgBuffer = Buffer.from(svgData, 'base64');
+        const pngBuffer = await sharp(svgBuffer)
+            .resize(1024, 1024, { fit: 'inside', withoutEnlargement: false })
+            .png({ quality: 90 })
+            .toBuffer();
+
+        console.log('[Server] SVG converted to PNG successfully');
+        res.json({
+            success: true,
+            pngData: pngBuffer.toString('base64'),
+            mimeType: 'image/png'
+        });
+    } catch (error: any) {
+        console.error('[Server] SVG Conversion Error:', error);
+        res.status(500).json({ error: 'Failed to convert SVG', details: error.message });
+    }
+});
+
 // --- API ROUTES: Share (Printer Share Link Feature) ---
 app.post('/api/share/create', async (req, res) => {
     console.log('[Server] Share Create Request');
@@ -232,8 +262,8 @@ app.post('/api/share/send-email', async (req, res) => {
         }
 
         // Build share URL
-        const baseUrl = process.env.VERCEL_URL
-            ? `https://${process.env.VERCEL_URL}`
+        const baseUrl = process.env.NODE_ENV === 'production'
+            ? 'https://app.xcreate.io'
             : 'http://localhost:5173';
         const shareUrl = `${baseUrl}/print/${share.token}`;
 
@@ -243,30 +273,19 @@ app.post('/api/share/send-email', async (req, res) => {
 
         const businessName = share.businesses?.name || 'a business';
 
+        const emailHtml = await render(
+            React.createElement(ShareAssetEmail, {
+                businessName,
+                shareUrl,
+                expiresAt: share.expires_at
+            })
+        );
+
         const response = await resend.emails.send({
-            from: 'onboarding@resend.dev',
+            from: 'Ads x Create <team@xcreate.io>',
             to: recipientEmail,
             subject: `Print-Ready Asset from ${businessName}`,
-            html: `
-                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; background: #f9fafb;">
-                    <div style="background: white; border-radius: 16px; padding: 32px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
-                        <h1 style="color: #1a1a1a; margin: 0 0 16px 0; font-size: 24px;">Print-Ready Asset 🎨</h1>
-                        <p style="color: #4b5563; line-height: 1.6; margin: 0 0 24px 0;">
-                            <strong>${businessName}</strong> has shared a print-ready asset with you. 
-                            Click below to access and download in your preferred format.
-                        </p>
-                        <a href="${shareUrl}" style="display: inline-block; background: linear-gradient(135deg, #6D5DFC 0%, #8B7DFC 100%); color: white; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-weight: 600; font-size: 16px;">
-                            Download Asset
-                        </a>
-                        <p style="color: #9ca3af; font-size: 13px; margin: 24px 0 0 0;">
-                            ${share.expires_at ? `This link expires on ${new Date(share.expires_at).toLocaleDateString()}.` : 'This link does not expire.'}
-                        </p>
-                    </div>
-                    <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 24px 0 0 0;">
-                        Powered by Ads x Create
-                    </p>
-                </div>
-            `
+            html: emailHtml
         });
 
         if (response.error) {
@@ -2067,8 +2086,292 @@ app.put('/api/social/post', async (req, res) => {
     }
 });
 
+// ============================================================================
+// INVITE CODE API ROUTES (Platform Access Codes)
+// ============================================================================
+
+// Validate an invite code (public endpoint - called before OAuth)
+app.post('/api/invite/validate', async (req, res) => {
+    console.log('[Invite] Validate Request');
+
+    const { code } = req.body;
+    if (!code) {
+        res.status(400).json({ valid: false, error: 'Code is required' });
+        return;
+    }
+
+    const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+
+    try {
+        const { data: invite, error } = await supabase
+            .from('invite_codes')
+            .select('*')
+            .eq('code', code.toUpperCase().trim())
+            .single();
+
+        if (error || !invite) {
+            res.json({ valid: false, error: 'Invalid code' });
+            return;
+        }
+
+        // Check if active
+        if (!invite.is_active) {
+            res.json({ valid: false, error: 'This code has been deactivated' });
+            return;
+        }
+
+        // Check if maxed out
+        if (invite.max_uses && invite.current_uses >= invite.max_uses) {
+            res.json({ valid: false, error: 'This code has reached its usage limit' });
+            return;
+        }
+
+        // Check if expired
+        if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
+            res.json({ valid: false, error: 'This code has expired' });
+            return;
+        }
+
+        res.json({ valid: true, note: invite.note });
+
+    } catch (error) {
+        console.error('[Invite] Validate error:', error);
+        res.status(500).json({ valid: false, error: 'Validation failed' });
+    }
+});
+
+// Use/consume an invite code (called after successful OAuth signup)
+app.post('/api/invite/use', async (req, res) => {
+    console.log('[Invite] Use Code Request');
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+
+    const token = authHeader.split(' ')[1];
+    const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+        res.status(401).json({ error: 'Invalid token' });
+        return;
+    }
+
+    const { code } = req.body;
+    if (!code) {
+        res.status(400).json({ error: 'Code is required' });
+        return;
+    }
+
+    try {
+        // Re-validate (in case of race condition)
+        const { data: invite, error } = await supabase
+            .from('invite_codes')
+            .select('*')
+            .eq('code', code.toUpperCase().trim())
+            .single();
+
+        if (error || !invite || !invite.is_active) {
+            res.status(400).json({ error: 'Invalid or inactive code' });
+            return;
+        }
+
+        if (invite.max_uses && invite.current_uses >= invite.max_uses) {
+            res.status(400).json({ error: 'Code maxed out' });
+            return;
+        }
+
+        // Increment usage
+        await supabase
+            .from('invite_codes')
+            .update({ current_uses: (invite.current_uses || 0) + 1 })
+            .eq('id', invite.id);
+
+        // Mark code used on profile
+        await supabase
+            .from('profiles')
+            .update({ invite_code_used: code.toUpperCase().trim() })
+            .eq('id', user.id);
+
+        console.log('[Invite] Code used by:', user.email, 'Code:', code);
+        res.json({ success: true });
+
+    } catch (error) {
+        console.error('[Invite] Use error:', error);
+        res.status(500).json({ error: 'Failed to use code' });
+    }
+});
+
+// Admin: List all invite codes
+app.get('/api/invite/list', async (req, res) => {
+    console.log('[Invite] List Request');
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+
+    const token = authHeader.split(' ')[1];
+    const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+        res.status(401).json({ error: 'Invalid token' });
+        return;
+    }
+
+    // Check admin
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_admin')
+        .eq('id', user.id)
+        .single();
+
+    if (!profile?.is_admin) {
+        res.status(403).json({ error: 'Admin access required' });
+        return;
+    }
+
+    const { data: codes, error } = await supabase
+        .from('invite_codes')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    res.json({ codes: codes || [] });
+});
+
+// Admin: Create new invite code
+app.post('/api/invite/create', async (req, res) => {
+    console.log('[Invite] Create Request');
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+
+    const token = authHeader.split(' ')[1];
+    const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+        res.status(401).json({ error: 'Invalid token' });
+        return;
+    }
+
+    // Check admin
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_admin')
+        .eq('id', user.id)
+        .single();
+
+    if (!profile?.is_admin) {
+        res.status(403).json({ error: 'Admin access required' });
+        return;
+    }
+
+    const { prefix = 'BETA', maxUses = 1, expiresInDays, note } = req.body;
+
+    // Generate unique code: PREFIX-XXXX (4 alphanumeric)
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Removed confusing chars (0,O,1,I)
+    let suffix = '';
+    for (let i = 0; i < 4; i++) {
+        suffix += chars[Math.floor(Math.random() * chars.length)];
+    }
+    const code = `${prefix.toUpperCase()}-${suffix}`;
+
+    const expiresAt = expiresInDays
+        ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000).toISOString()
+        : null;
+
+    try {
+        const { data: newCode, error } = await supabase
+            .from('invite_codes')
+            .insert({
+                code,
+                created_by: user.id,
+                max_uses: maxUses,
+                expires_at: expiresAt,
+                note,
+                is_active: true
+            })
+            .select()
+            .single();
+
+        if (error) {
+            // Handle duplicate (unlikely but possible)
+            if (error.code === '23505') {
+                res.status(409).json({ error: 'Code collision, please try again' });
+                return;
+            }
+            throw error;
+        }
+
+        console.log('[Invite] Created code:', code);
+        res.json({ success: true, code: newCode });
+
+    } catch (error) {
+        console.error('[Invite] Create error:', error);
+        res.status(500).json({ error: 'Failed to create code' });
+    }
+});
+
+// Admin: Deactivate an invite code
+app.post('/api/invite/deactivate', async (req, res) => {
+    console.log('[Invite] Deactivate Request');
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+
+    const token = authHeader.split(' ')[1];
+    const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+        res.status(401).json({ error: 'Invalid token' });
+        return;
+    }
+
+    // Check admin
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_admin')
+        .eq('id', user.id)
+        .single();
+
+    if (!profile?.is_admin) {
+        res.status(403).json({ error: 'Admin access required' });
+        return;
+    }
+
+    const { codeId } = req.body;
+    if (!codeId) {
+        res.status(400).json({ error: 'codeId is required' });
+        return;
+    }
+
+    await supabase
+        .from('invite_codes')
+        .update({ is_active: false })
+        .eq('id', codeId);
+
+    console.log('[Invite] Deactivated code:', codeId);
+    res.json({ success: true });
+});
+
 // --- TEAM API ROUTES ---
 import { Resend } from 'resend';
+import { render } from '@react-email/render';
+import { InviteEmail } from './emails/InviteEmail';
+import { ShareAssetEmail } from './emails/ShareAssetEmail';
+import React from 'react';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -2154,25 +2457,27 @@ app.post('/api/team/invite', async (req, res) => {
             return;
         }
 
-        const inviteLink = `http://localhost:5173/invite/${invitation.token}`;
+        const baseUrl = process.env.NODE_ENV === 'production'
+            ? 'https://app.xcreate.io'
+            : 'http://localhost:5173';
+        const inviteLink = `${baseUrl}/invite/${invitation.token}`;
 
         // Send email if requested
         if (sendEmail && email && process.env.RESEND_API_KEY) {
             try {
+                const emailHtml = await render(
+                    React.createElement(InviteEmail, {
+                        businessName: business?.name || 'a business',
+                        role,
+                        inviteLink
+                    })
+                );
+
                 await resend.emails.send({
-                    from: 'onboarding@resend.dev',
+                    from: 'Ads x Create <team@xcreate.io>',
                     to: email,
                     subject: `You've been invited to ${business?.name || 'a business'}`,
-                    html: `
-                        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-                            <h1 style="color: #1a1a1a;">You're Invited! 🎉</h1>
-                            <p>You've been invited to join <strong>${business?.name || 'a business'}</strong> as a <strong>${role}</strong>.</p>
-                            <a href="${inviteLink}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; margin: 20px 0;">
-                                Accept Invitation
-                            </a>
-                            <p style="color: #888; font-size: 14px;">This invitation expires in 7 days.</p>
-                        </div>
-                    `
+                    html: emailHtml
                 });
                 console.log('[Team] Invite email sent to:', email);
             } catch (emailError) {
@@ -2355,6 +2660,86 @@ app.delete('/api/team/revoke', async (req, res) => {
     } catch (error) {
         console.error('[Team] Revoke error:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Admin: Send Test Email
+app.post('/api/admin/test-email', async (req, res) => {
+    console.log('[Admin] Test Email Request');
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+
+    const token = authHeader.split(' ')[1];
+    const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+        res.status(401).json({ error: 'Invalid token' });
+        return;
+    }
+
+    // Check admin
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_admin')
+        .eq('id', user.id)
+        .single();
+
+    if (!profile?.is_admin) {
+        res.status(403).json({ error: 'Admin access required' });
+        return;
+    }
+
+    const { type } = req.body;
+    if (!type) {
+        res.status(400).json({ error: 'Type is required' });
+        return;
+    }
+
+    try {
+        let emailHtml;
+        let subject;
+
+        if (type === 'invite') {
+            subject = 'Test: You\'re Invited!';
+            emailHtml = await render(
+                React.createElement(InviteEmail, {
+                    businessName: 'Acme Corp (Test)',
+                    role: 'Admin',
+                    inviteLink: 'https://app.xcreate.io/test-invite'
+                })
+            );
+        } else if (type === 'share') {
+            subject = 'Test: Asset Shared';
+            emailHtml = await render(
+                React.createElement(ShareAssetEmail, {
+                    businessName: 'Acme Corp (Test)',
+                    shareUrl: 'https://app.xcreate.io/test-share',
+                    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+                })
+            );
+        } else {
+            res.status(400).json({ error: 'Invalid email type' });
+            return;
+        }
+
+        await resend.emails.send({
+            from: 'Ads x Create <team@xcreate.io>',
+            to: user.email!,
+            subject,
+            html: emailHtml
+        });
+
+        console.log('[Admin] Test email sent to:', user.email);
+        res.json({ success: true });
+
+    } catch (error) {
+        console.error('[Admin] Test email error:', error);
+        res.status(500).json({ error: 'Failed to send test email' });
     }
 });
 
@@ -2559,7 +2944,9 @@ app.post('/api/generate-image', async (req, res) => {
                     stylePreset,
                     subjectContext?.price,
                     subjectContext?.name,
-                    strategy
+                    strategy,
+                    subjectContext?.isFree,
+                    subjectContext?.termsAndConditions
                 );
 
                 console.log('[Generate] Final prompt length:', finalPrompt.length);
@@ -2632,7 +3019,7 @@ app.post('/api/generate-image', async (req, res) => {
                     const logoResult = await urlToBase64WithMime(mappedBusiness.logoUrl);
                     if (logoResult) {
                         contentParts.push({ type: 'image', image: `data:${logoResult.mimeType};base64,${logoResult.base64}` });
-                        contentParts.push({ type: 'text', text: ' [REFERENCE IMAGE: LOGO] ' });
+                        contentParts.push({ type: 'text', text: ' [REFERENCE IMAGE: BUSINESS LOGO — PRESERVE ALL TEXT/LETTERING EXACTLY] ' });
                     }
                 }
 

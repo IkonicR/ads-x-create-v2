@@ -495,7 +495,9 @@ export const PromptFactory = {
     stylePreset?: any,
     price?: string,
     subjectName?: string, // Product/Person Name
-    strategy?: GenerationStrategy // Strategy override
+    strategy?: GenerationStrategy, // Strategy override
+    isFree?: boolean, // NEW: Free offering flag
+    termsAndConditions?: string // NEW: Per-offering T&Cs
   ): Promise<string> => {
     const customPrompts = await StorageService.getSystemPrompts();
 
@@ -532,7 +534,9 @@ export const PromptFactory = {
     }
 
     const cta = prefs?.preferredCta || ''; // Empty = let AI decide
-    const compliance = prefs?.complianceText || '';
+    const globalCompliance = prefs?.complianceText || '';
+    // Combine per-offering T&Cs with global compliance
+    const compliance = [termsAndConditions, globalCompliance].filter(Boolean).join('. ');
     const sloganProminence = prefs?.sloganProminence || 'standard';
 
     // --- STRATEGY OVERRIDES ---
@@ -770,19 +774,22 @@ export const PromptFactory = {
       }
     );
 
-    // Format price with currency symbol
+    // Format price with currency symbol (or "Free" if isFree)
     const currencySymbol = business.currency === 'ZAR' ? 'R'
       : business.currency === 'USD' ? '$'
         : business.currency === 'EUR' ? '€'
           : business.currency === 'GBP' ? '£'
             : business.currency || '';
-    const formattedPrice = price ? `${currencySymbol}${parseFloat(price).toFixed(2)}` : '';
+    const formattedPrice = isFree ? 'Free' : (price ? `${currencySymbol}${parseFloat(price).toFixed(2)}` : '');
+
+    // STRATEGY: Only include if showPrice is true, UNLESS it's free (Free is always a good hook)
+    const shouldShowPrice = isFree || effectiveShowPrice;
 
     const subjectContextBlock = buildSubjectContextBlock(subjectType, {
       name: subjectName || 'Featured Product', // Use actual product name
       benefits: benefits,
       promotion: effectiveShowPromo ? promotion : undefined, // STRATEGY: Only include if showPromo is true
-      price: effectiveShowPrice ? formattedPrice : undefined, // STRATEGY: Only include if showPrice is true
+      price: shouldShowPrice ? formattedPrice : undefined,
       preserveLikeness: effectiveStrictLikeness
     });
 
@@ -934,10 +941,14 @@ ${v2ProductionBlock}
 1.  **DIEGETIC TEXT (CRITICAL):**
     *   **Rule:** Text must be PHYSICALLY INTEGRATED. NO flat digital overlays.
     *   **Physics:** Text must cast shadows, reflect scene lighting, and respect perspective.
-2.  **ASSET HANDLING:**
+2.  **LOGO TEXT FIDELITY (CRITICAL):**
+    *   **Rule:** The logo reference image contains the exact brand name and lettering.
+    *   **Mandate:** Reproduce ALL text from the logo EXACTLY as shown. Do NOT invent, substitute, or modify any words.
+    *   **Allow:** Stylize the logo's material, color, and integration per style rules — but the TEXT must remain identical.
+3.  **ASSET HANDLING:**
 ${assetMapping || '    *   No specific assets. Create a relevant scene.'}
-3.  **COMPOSITION:** ${compositionDirective}
-${negativeConstraints ? `4.  **NEGATIVE CONSTRAINTS:** ${negativeConstraints}` : ''}
+4.  **COMPOSITION:** ${compositionDirective}
+${negativeConstraints ? `5.  **NEGATIVE CONSTRAINTS:** ${negativeConstraints}` : ''}
 
 /// GENERATE ///
 Execute. High fidelity. 8k resolution.

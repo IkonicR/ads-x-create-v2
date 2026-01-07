@@ -23,10 +23,12 @@ const data = [
 ];
 
 import { useAssets } from '../context/AssetContext';
+import { useSubscription } from '../context/SubscriptionContext';
 
 const Dashboard: React.FC<DashboardProps> = ({ business, tasks, onNavigate }) => {
   const { styles, theme } = useThemeStyles();
   const { assets } = useAssets();
+  const { creditsRemaining, planName, loading: subscriptionLoading } = useSubscription();
   const recentAssets = assets.slice(0, 4);
   const isDark = theme === 'dark';
 
@@ -46,12 +48,15 @@ const Dashboard: React.FC<DashboardProps> = ({ business, tasks, onNavigate }) =>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Metric 1 */}
+        {/* Credits Card */}
         <NeuCard className="relative overflow-hidden">
           <div className="flex justify-between items-start mb-4">
             <div>
               <p className={`text-sm font-bold ${styles.textSub}`}>Credits Available</p>
-              <h3 className="text-3xl font-bold text-brand">{business.credits}</h3>
+              <h3 className="text-3xl font-bold text-brand">
+                {subscriptionLoading ? '...' : creditsRemaining}
+              </h3>
+              <p className={`text-xs mt-1 ${styles.textSub}`}>{planName} Plan</p>
             </div>
             <div className={`p-2 rounded-full ${styles.bg} ${styles.shadowOut} ${styles.textSub}`}>
               <Zap size={20} />

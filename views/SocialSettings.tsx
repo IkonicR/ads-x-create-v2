@@ -57,7 +57,7 @@ const SocialSettingsView: React.FC<SocialSettingsProps> = ({ business, updateBus
         const normalizedCurrent = { ...DEFAULT_SETTINGS, ...(business.socialSettings || {}) };
         const normalizedLocal = { ...DEFAULT_SETTINGS, ...settings };
         const isChanged = JSON.stringify(normalizedLocal) !== JSON.stringify(normalizedCurrent);
-        setDirty(isChanged);
+        setDirty(isChanged, 'Social Settings');
     }, [settings, business.socialSettings, setDirty]);
 
     // Save handler - memoized to prevent infinite loops
@@ -79,11 +79,11 @@ const SocialSettingsView: React.FC<SocialSettingsProps> = ({ business, updateBus
     // Register save handler with navigation context
     useEffect(() => {
         if (isDirty) {
-            registerSaveHandler(handleSave);
+            registerSaveHandler(handleSave, 'Social Settings');
         } else {
-            registerSaveHandler(null);
+            registerSaveHandler(null, 'Social Settings');
         }
-        return () => registerSaveHandler(null);
+        return () => registerSaveHandler(null, 'Social Settings');
     }, [isDirty, registerSaveHandler, handleSave]);
 
     // Add hashtag

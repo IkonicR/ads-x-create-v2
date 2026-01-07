@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Business, Offering, TeamMember, BusinessImage } from '../types';
 import { NeuCard, NeuInput, NeuButton, NeuTextArea, NeuDropdown, useThemeStyles, NeuBadge, NeuListBuilder } from '../components/NeuComponents';
 import { NeuImageUploader } from '../components/NeuImageUploader';
-import { ShoppingBag, Plus, Trash2, DollarSign, Tag, Edit2, Save, X, Sparkles, Target, List, Gift, Users, Briefcase, ImageIcon } from 'lucide-react';
+import { ShoppingBag, Plus, Trash2, DollarSign, Tag, Edit2, X, Sparkles, Target, List, Gift, Users, Briefcase, ImageIcon } from 'lucide-react';
 import { useNavigation } from '../context/NavigationContext';
 import { useNotification } from '../context/NotificationContext';
 import { GalaxyHeading } from '../components/GalaxyHeading';
@@ -18,9 +18,8 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
   const [localBusiness, setLocalBusiness] = useState<Business>(business);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const { isDirty, setDirty, registerSaveHandler } = useNavigation();
   const { toast } = useNotification();
-  const [isSaving, setIsSaving] = useState(false);
+  const { setDirty, registerSaveHandler, confirmAction } = useNavigation();
   const [isEnhancing, setIsEnhancing] = useState(false);
   const { styles } = useThemeStyles();
   const localBusinessRef = React.useRef(localBusiness);
@@ -68,23 +67,39 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
     setLocalBusiness(business);
   }, [business]);
 
-  const handleSave = React.useCallback(async () => {
-    setIsSaving(true);
-    try {
-      await updateBusiness(localBusinessRef.current);
-      toast({ title: 'Offerings Saved', type: 'success' });
-    } catch (e) {
-      toast({ title: 'Save Failed', type: 'error' });
-    } finally {
-      setIsSaving(false);
-    }
-  }, [updateBusiness, toast]);
+  // Dirty state tracking for unsaved changes prompt
+  // Checks if any form is open with unsaved input
+  const handleFormSave = React.useCallback(async () => {
+    if (isFormOpen && formState.name) await handleSubmit();
+    else if (isTeamFormOpen && teamFormState.name) await handleSaveTeam();
+    else if (isGalleryFormOpen && galleryFormState.name) await handleSaveGallery();
+  }, [isFormOpen, formState.name, isTeamFormOpen, teamFormState.name, isGalleryFormOpen, galleryFormState.name]);
 
   useEffect(() => {
-    const isChanged = JSON.stringify(business) !== JSON.stringify(localBusiness);
-    setDirty(isChanged);
-    registerSaveHandler(isChanged ? handleSave : null);
-  }, [business, localBusiness, setDirty, registerSaveHandler, handleSave]);
+    const hasUnsavedOffering = isFormOpen && !!formState.name;
+    const hasUnsavedTeam = isTeamFormOpen && !!teamFormState.name;
+    const hasUnsavedGallery = isGalleryFormOpen && !!galleryFormState.name;
+
+    const isChanged = hasUnsavedOffering || hasUnsavedTeam || hasUnsavedGallery;
+    setDirty(isChanged, 'Offerings');
+    registerSaveHandler(isChanged ? handleFormSave : null, 'Offerings');
+  }, [isFormOpen, formState.name, isTeamFormOpen, teamFormState.name, isGalleryFormOpen, galleryFormState.name, setDirty, registerSaveHandler, handleFormSave]);
+
+  // Reset all forms when switching tabs (clears abandoned changes after Discard)
+  useEffect(() => {
+    setFormState({
+      name: '', description: '', price: '', isFree: false, category: 'Product', imageUrl: '', additionalImages: [], preserveLikeness: false,
+      targetAudience: '', benefits: [], features: [], promotion: '', termsAndConditions: ''
+    });
+    setEditingId(null);
+    setIsFormOpen(false);
+    setTeamFormState({ name: '', role: '', imageUrl: '' });
+    setEditingTeamId(null);
+    setIsTeamFormOpen(false);
+    setGalleryFormState({ name: '', description: '', imageUrl: '', additionalImages: [] });
+    setEditingGalleryId(null);
+    setIsGalleryFormOpen(false);
+  }, [activeTab]);
 
   // Check for pending edit from Chat UI
   useEffect(() => {
@@ -144,7 +159,7 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!formState.name) return;
 
     // Sanitize Price: Strip currency symbols, letters, etc. Ensure clean number string.
@@ -168,28 +183,31 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
       termsAndConditions: formState.termsAndConditions || ''
     };
 
-    if (editingId) {
-      setLocalBusiness(prev => ({
-        ...prev,
-        offerings: prev.offerings.map(o => o.id === editingId ? baseOffering : o)
-      }));
-      toast({ title: 'Offering Updated', type: 'success' });
-    } else {
-      setLocalBusiness(prev => ({
-        ...prev,
-        offerings: [...prev.offerings, baseOffering]
-      }));
-      toast({ title: 'Offering Added', type: 'success' });
+    // Build updated business and persist immediately
+    const updatedBusiness = editingId
+      ? { ...localBusiness, offerings: localBusiness.offerings.map(o => o.id === editingId ? baseOffering : o) }
+      : { ...localBusiness, offerings: [...localBusiness.offerings, baseOffering] };
+
+    try {
+      await updateBusiness(updatedBusiness);
+      setLocalBusiness(updatedBusiness);
+      toast({ title: editingId ? 'Offering Updated' : 'Offering Saved', type: 'success' });
+      resetForm();
+    } catch (e) {
+      toast({ title: 'Save Failed', type: 'error' });
     }
-    resetForm();
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to remove this offering?')) {
-      setLocalBusiness(prev => ({
-        ...prev,
-        offerings: prev.offerings.filter(o => o.id !== id)
-      }));
+      const updatedBusiness = { ...localBusiness, offerings: localBusiness.offerings.filter(o => o.id !== id) };
+      try {
+        await updateBusiness(updatedBusiness);
+        setLocalBusiness(updatedBusiness);
+        toast({ title: 'Offering Removed', type: 'success' });
+      } catch (e) {
+        toast({ title: 'Delete Failed', type: 'error' });
+      }
     }
   };
 
@@ -222,7 +240,7 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
     setIsTeamFormOpen(true);
   };
 
-  const handleSaveTeam = () => {
+  const handleSaveTeam = async () => {
     if (!teamFormState.name) return;
 
     const baseMember: TeamMember = {
@@ -235,22 +253,31 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
     let newMembers = [...(localBusiness.teamMembers || [])];
     if (editingTeamId) {
       newMembers = newMembers.map(m => m.id === editingTeamId ? baseMember : m);
-      toast({ title: 'Team Member Updated', type: 'success' });
     } else {
       newMembers.push(baseMember);
-      toast({ title: 'Team Member Added', type: 'success' });
     }
 
-    setLocalBusiness(prev => ({ ...prev, teamMembers: newMembers }));
-    resetTeamForm();
+    const updatedBusiness = { ...localBusiness, teamMembers: newMembers };
+    try {
+      await updateBusiness(updatedBusiness);
+      setLocalBusiness(updatedBusiness);
+      toast({ title: editingTeamId ? 'Team Member Updated' : 'Team Member Saved', type: 'success' });
+      resetTeamForm();
+    } catch (e) {
+      toast({ title: 'Save Failed', type: 'error' });
+    }
   };
 
-  const handleDeleteTeam = (id: string) => {
+  const handleDeleteTeam = async (id: string) => {
     if (confirm('Remove this team member?')) {
-      setLocalBusiness(prev => ({
-        ...prev,
-        teamMembers: prev.teamMembers?.filter(m => m.id !== id) || []
-      }));
+      const updatedBusiness = { ...localBusiness, teamMembers: localBusiness.teamMembers?.filter(m => m.id !== id) || [] };
+      try {
+        await updateBusiness(updatedBusiness);
+        setLocalBusiness(updatedBusiness);
+        toast({ title: 'Team Member Removed', type: 'success' });
+      } catch (e) {
+        toast({ title: 'Delete Failed', type: 'error' });
+      }
     }
   };
 
@@ -267,7 +294,7 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
     setIsGalleryFormOpen(true);
   };
 
-  const handleSaveGallery = () => {
+  const handleSaveGallery = async () => {
     if (!galleryFormState.name) return;
 
     const baseImage: BusinessImage = {
@@ -281,22 +308,31 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
     let newImages = [...(localBusiness.businessImages || [])];
     if (editingGalleryId) {
       newImages = newImages.map(img => img.id === editingGalleryId ? baseImage : img);
-      toast({ title: 'Image Updated', type: 'success' });
     } else {
       newImages.push(baseImage);
-      toast({ title: 'Image Added', type: 'success' });
     }
 
-    setLocalBusiness(prev => ({ ...prev, businessImages: newImages }));
-    resetGalleryForm();
+    const updatedBusiness = { ...localBusiness, businessImages: newImages };
+    try {
+      await updateBusiness(updatedBusiness);
+      setLocalBusiness(updatedBusiness);
+      toast({ title: editingGalleryId ? 'Image Updated' : 'Image Saved', type: 'success' });
+      resetGalleryForm();
+    } catch (e) {
+      toast({ title: 'Save Failed', type: 'error' });
+    }
   };
 
-  const handleDeleteGallery = (id: string) => {
+  const handleDeleteGallery = async (id: string) => {
     if (confirm('Remove this image?')) {
-      setLocalBusiness(prev => ({
-        ...prev,
-        businessImages: prev.businessImages?.filter(img => img.id !== id) || []
-      }));
+      const updatedBusiness = { ...localBusiness, businessImages: localBusiness.businessImages?.filter(img => img.id !== id) || [] };
+      try {
+        await updateBusiness(updatedBusiness);
+        setLocalBusiness(updatedBusiness);
+        toast({ title: 'Image Removed', type: 'success' });
+      } catch (e) {
+        toast({ title: 'Delete Failed', type: 'error' });
+      }
     }
   };
 
@@ -347,15 +383,6 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
           </p>
         </div>
         <div className="flex gap-3">
-          <NeuButton
-            variant={isDirty ? 'primary' : 'secondary'}
-            onClick={handleSave}
-            disabled={!isDirty || isSaving}
-            className="flex items-center gap-2"
-          >
-            <Save size={18} />
-            {isSaving ? 'Saving...' : 'Save Changes'}
-          </NeuButton>
 
           {activeTab === 'offerings' && !isFormOpen && (
             <NeuButton variant="primary" onClick={() => setIsFormOpen(true)}>
@@ -386,7 +413,7 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
         ].map(tab => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
+            onClick={() => confirmAction(() => setActiveTab(tab.id as any))}
             className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 ${activeTab === tab.id
               ? `${styles.bg} ${styles.shadowOut} text-brand`
               : `${styles.textSub} hover:${styles.textMain}`
@@ -574,7 +601,10 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
                         value={formState.description}
                         onChange={e => setFormState(prev => ({ ...prev, description: e.target.value }))}
                         expandable
-                        className="min-h-[80px]"
+                        collapsedHeightMobile="80px"
+                        collapsedHeightDesktop="80px"
+                        expandedHeightMobile="160px"
+                        expandedHeightDesktop="200px"
                       />
                     </div>
 
@@ -602,7 +632,11 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
                           placeholder="Specific T&Cs for this offering (e.g. Subject to availability)"
                           value={formState.termsAndConditions}
                           onChange={e => setFormState(prev => ({ ...prev, termsAndConditions: e.target.value }))}
-                          className="min-h-[60px]"
+                          expandable
+                          collapsedHeightMobile="60px"
+                          collapsedHeightDesktop="60px"
+                          expandedHeightMobile="120px"
+                          expandedHeightDesktop="160px"
                         />
                         <p className={`text-xs ${styles.textSub} mt-1 opacity-70`}>
                           Will be combined with your global compliance text if active
@@ -639,7 +673,7 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {localBusiness.offerings.map(offering => (
-              <NeuCard key={offering.id} className="h-full flex flex-col justify-between group relative overflow-hidden hover:shadow-lg transition-all duration-300">
+              <NeuCard key={offering.id} className="h-full flex flex-col justify-between group relative overflow-hidden">
                 <div className="flex gap-5">
                   <div className="w-28 h-28 shrink-0 rounded-xl overflow-hidden bg-gray-100 flex items-center justify-center border border-gray-200/20 shadow-inner relative">
                     {offering.imageUrl ? (
@@ -659,18 +693,11 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
                         <h4 className={`font-bold ${styles.textMain} text-xl truncate pr-2`}>{offering.name}</h4>
                         <div className="flex items-center gap-2 mt-1">
                           <NeuBadge variant="neutral">{offering.category}</NeuBadge>
-                          <span className={`text-sm font-bold ${styles.textMain}`}>
-                            {/* Display Logic: Strip existing symbols/letters, then format with current currency */}
-                            {`${currencySymbol}${offering.price.replace(/[^0-9.]/g, '')}`}
+                          <span className={`text-sm font-bold ${offering.isFree ? 'text-green-600' : styles.textMain}`}>
+                            {offering.isFree ? 'Free' : `${currencySymbol}${offering.price?.replace(/[^0-9.]/g, '') || '0'}`}
                           </span>
                         </div>
                       </div>
-                      {offering.promotion && (
-                        <NeuBadge variant="primary" className="animate-pulse-slow max-w-[120px] truncate inline-flex items-center">
-                          <Gift size={10} className="mr-1 shrink-0" />
-                          <span className="truncate">{offering.promotion}</span>
-                        </NeuBadge>
-                      )}
                     </div>
 
                     <p className={`${styles.textSub} text-sm line-clamp-2 leading-relaxed`}>
@@ -685,6 +712,16 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
                     )}
                   </div>
                 </div>
+
+                {/* Promotion - Full Width Row */}
+                {offering.promotion && (
+                  <div className={`mt-4 px-3 py-2 rounded-lg ${styles.bgAccent} border ${styles.border}`}>
+                    <div className="flex items-center gap-2">
+                      <Gift size={14} className="text-brand shrink-0" />
+                      <span className={`text-sm font-medium ${styles.textMain}`}>{offering.promotion}</span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Actions */}
                 <div className={`mt-5 pt-4 border-t ${styles.border} flex justify-between items-center opacity-60 group-hover:opacity-100 transition-all duration-300`}>
@@ -800,7 +837,7 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {(localBusiness.teamMembers || []).map(member => (
-              <NeuCard key={member.id} className="group relative overflow-hidden hover:shadow-lg transition-all duration-300">
+              <NeuCard key={member.id} className="group relative overflow-hidden">
                 <div className="aspect-square rounded-xl overflow-hidden bg-gray-100 mb-4 relative">
                   {member.imageUrl ? (
                     <img src={member.imageUrl} alt={member.name} className="w-full h-full object-cover" />
@@ -946,7 +983,7 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {(localBusiness.businessImages || []).map(image => (
-              <NeuCard key={image.id} className="group relative overflow-hidden hover:shadow-lg transition-all duration-300">
+              <NeuCard key={image.id} className="group relative overflow-hidden">
                 <div className="aspect-video rounded-xl overflow-hidden bg-gray-100 mb-4 relative">
                   {image.imageUrl ? (
                     <img src={image.imageUrl} alt={image.name} className="w-full h-full object-cover" />

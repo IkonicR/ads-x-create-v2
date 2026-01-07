@@ -23,7 +23,7 @@ interface BusinessProfileProps {
 
 const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusiness }) => {
   const [localBusiness, setLocalBusiness] = useState<Business>(business);
-  const { isDirty, setDirty, registerSaveHandler } = useNavigation();
+  const { isDirty, setDirty, registerSaveHandler, confirmAction } = useNavigation();
   const { toast } = useNotification();
   const navigate = useNavigate();
   const [isSaving, setIsSaving] = useState(false);
@@ -111,8 +111,8 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
 
   useEffect(() => {
     const isChanged = JSON.stringify(business) !== JSON.stringify(localBusiness);
-    setDirty(isChanged);
-    registerSaveHandler(isChanged ? handleSave : null);
+    setDirty(isChanged, 'Business Profile');
+    registerSaveHandler(isChanged ? handleSave : null, 'Business Profile');
   }, [business, localBusiness, setDirty, registerSaveHandler, handleSave]);
 
   const updateProfile = (updates: Partial<typeof localBusiness.profile>) => {
@@ -1497,6 +1497,13 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
         <NeuTabs
           activeTab={activeTab}
           onChange={setActiveTab}
+          onBeforeChange={(newTab) => {
+            if (!isDirty) return true;
+
+            // Show modal with tab switch as pending action
+            confirmAction(() => setActiveTab(newTab));
+            return false; // Block immediate switch, modal will handle it
+          }}
           tabs={[
             { id: 'profile', label: 'Profile & Contact', icon: <Globe size={16} /> },
             { id: 'ads', label: 'Ad Preferences', icon: <Megaphone size={16} /> },

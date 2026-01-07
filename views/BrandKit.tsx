@@ -49,8 +49,18 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [isLogoUploading, setIsLogoUploading] = useState(false);
   const [isWordmarkUploading, setIsWordmarkUploading] = useState(false);
+  const [isConvertingSvg, setIsConvertingSvg] = useState(false);
+  const [convertingWordIndex, setConvertingWordIndex] = useState(0);
   const [activeTab, setActiveTab] = useState('core');
   const [activeColorTab, setActiveColorTab] = useState<string | null>(null);
+
+  // SVG conversion rotating words
+  const CONVERTING_WORDS = [
+    "Detecting format...",
+    "Converting to PNG...",
+    "Optimizing quality...",
+    "Almost there..."
+  ];
 
   // Local input states
   const [newUSP, setNewUSP] = useState('');
@@ -104,12 +114,12 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
 
   useEffect(() => {
     const isChanged = JSON.stringify(business) !== JSON.stringify(localBusiness);
-    setDirty(isChanged);
+    setDirty(isChanged, 'Brand Kit');
 
     if (isChanged) {
-      registerSaveHandler(handleSave);
+      registerSaveHandler(handleSave, 'Brand Kit');
     } else {
-      registerSaveHandler(null);
+      registerSaveHandler(null, 'Brand Kit');
     }
   }, [business, localBusiness, setDirty, registerSaveHandler, handleSave]);
 
@@ -156,7 +166,60 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
     else setIsWordmarkUploading(true);
 
     try {
-      const url = await StorageService.uploadBusinessAsset(file, localBusiness.id, type);
+      let fileToUpload = file;
+
+      // Check if file is SVG and needs conversion
+      const isSvg = file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg');
+
+      if (isSvg) {
+        setIsConvertingSvg(true);
+        setConvertingWordIndex(0);
+
+        // Start rotating words animation
+        const wordInterval = setInterval(() => {
+          setConvertingWordIndex(prev => (prev + 1) % CONVERTING_WORDS.length);
+        }, 800);
+
+        try {
+          // Read file as base64
+          const base64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const result = reader.result as string;
+              // Extract base64 data after the data URL prefix
+              const base64Data = result.split(',')[1];
+              resolve(base64Data);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+
+          // Call conversion API
+          const response = await fetch('/api/convert-svg', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ svgData: base64 })
+          });
+
+          if (!response.ok) {
+            throw new Error('SVG conversion failed');
+          }
+
+          const { pngData } = await response.json();
+
+          // Create PNG file from base64
+          const pngBytes = Uint8Array.from(atob(pngData), c => c.charCodeAt(0));
+          const pngBlob = new Blob([pngBytes], { type: 'image/png' });
+          fileToUpload = new File([pngBlob], file.name.replace(/\.svg$/i, '.png'), { type: 'image/png' });
+
+          toast({ title: 'SVG Converted', type: 'success', message: 'Logo converted to PNG for compatibility' });
+        } finally {
+          clearInterval(wordInterval);
+          setIsConvertingSvg(false);
+        }
+      }
+
+      const url = await StorageService.uploadBusinessAsset(fileToUpload, localBusiness.id, type);
       if (url) {
         if (type === 'logo') {
           updateLocal({ logoUrl: url });
@@ -171,6 +234,47 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
     } finally {
       if (type === 'logo') setIsLogoUploading(false);
       else setIsWordmarkUploading(false);
+    }
+  };
+
+  // --- SVG Conversion Callback for NeuImageUploader ---
+  const convertSvgIfNeeded = async (file: File): Promise<File> => {
+    const isSvg = file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg');
+    if (!isSvg) return file;
+
+    setIsConvertingSvg(true);
+    setConvertingWordIndex(0);
+
+    const wordInterval = setInterval(() => {
+      setConvertingWordIndex(prev => (prev + 1) % CONVERTING_WORDS.length);
+    }, 800);
+
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const response = await fetch('/api/convert-svg', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ svgData: base64 })
+      });
+
+      if (!response.ok) throw new Error('SVG conversion failed');
+
+      const { pngData } = await response.json();
+      const pngBytes = Uint8Array.from(atob(pngData), c => c.charCodeAt(0));
+      const pngFile = new File([new Blob([pngBytes], { type: 'image/png' })],
+        file.name.replace(/\.svg$/i, '.png'), { type: 'image/png' });
+
+      toast({ title: 'SVG Converted', type: 'success', message: 'Logo converted to PNG' });
+      return pngFile;
+    } finally {
+      clearInterval(wordInterval);
+      setIsConvertingSvg(false);
     }
   };
 
@@ -354,6 +458,9 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
                     updateLocal({ logoUrl: url });
                   }
                 }}
+                onBeforeUpload={convertSvgIfNeeded}
+                isConverting={isConvertingSvg}
+                convertingMessage={CONVERTING_WORDS[convertingWordIndex]}
                 className="flex-1"
               />
             </div>
@@ -371,6 +478,9 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
                     updateLocal({ logoVariants: { ...localBusiness.logoVariants, wordmark: url } });
                   }
                 }}
+                onBeforeUpload={convertSvgIfNeeded}
+                isConverting={isConvertingSvg}
+                convertingMessage={CONVERTING_WORDS[convertingWordIndex]}
                 className="flex-1"
               />
             </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useThemeStyles, NeuButton } from './NeuComponents';
+import { useThemeStyles, NeuButton, NeuTabs } from './NeuComponents';
 import { Download, Loader2, FileImage, FileType, Image, X, Save, ChevronDown, AlertTriangle, Trash2, Settings } from 'lucide-react';
 
 // ============================================================================
@@ -193,14 +193,8 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
     };
 
     return (
-        <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.3, ease: 'easeInOut' }}
-            className="overflow-hidden"
-        >
-            <div className={`p-4 border-t border-white/5 space-y-4`}>
+        <div className="h-full flex flex-col overflow-hidden">
+            <div className={`flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6`}>
                 {/* Header */}
                 <div className="flex items-center justify-between">
                     <h4 className={`text-sm font-bold uppercase tracking-wider ${styles.textMain}`}>
@@ -208,9 +202,9 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
                     </h4>
                     <button
                         onClick={onClose}
-                        className={`p-1 rounded-lg ${styles.textSub} hover:${styles.textMain} transition-colors`}
+                        className={`p-2 rounded-full transition-transform active:scale-95 group ${styles.bg} ${styles.shadowOut} ${styles.textSub} hover:text-red-500`}
                     >
-                        <X size={16} />
+                        <X size={20} className="transition-transform duration-300 group-hover:rotate-90" />
                     </button>
                 </div>
 
@@ -300,19 +294,17 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
                         Format
                     </label>
                     <div className="flex gap-2">
-                        {formatOptions.map((opt) => (
-                            <button
-                                key={opt.value}
-                                onClick={() => { setFormat(opt.value); setSelectedPresetId(null); }}
-                                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${format === opt.value
-                                    ? 'bg-brand text-white shadow-lg shadow-brand/30'
-                                    : `${styles.shadowOut} ${styles.textSub} hover:${styles.textMain}`
-                                    }`}
-                            >
-                                {opt.icon}
-                                {opt.label}
-                            </button>
-                        ))}
+                        <NeuTabs
+                            tabs={formatOptions.map(opt => ({
+                                id: opt.value,
+                                label: opt.label, // Remove icon to save space if needed, or keep
+                                icon: opt.icon
+                            }))}
+                            activeTab={format}
+                            onChange={(id) => { setFormat(id as ExportFormat); setSelectedPresetId(null); }}
+                            className="w-full"
+                            layoutId="exportFormat"
+                        />
                     </div>
                 </div>
 
@@ -353,16 +345,16 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
                                             <span>Image aspect ratio differs from paper size</span>
                                         </div>
                                         <div className="flex gap-2">
-                                            {(['fit', 'fill', 'stretch'] as FitMode[]).map((mode) => (
-                                                <button
-                                                    key={mode}
-                                                    onClick={() => setFitMode(mode)}
-                                                    className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all capitalize ${fitMode === mode ? 'bg-brand text-white' : `${styles.shadowOut} ${styles.textSub}`
-                                                        }`}
-                                                >
-                                                    {mode}
-                                                </button>
-                                            ))}
+                                            <NeuTabs
+                                                tabs={(['fit', 'fill', 'stretch'] as FitMode[]).map(mode => ({
+                                                    id: mode,
+                                                    label: mode.charAt(0).toUpperCase() + mode.slice(1)
+                                                }))}
+                                                activeTab={fitMode}
+                                                onChange={(id) => setFitMode(id as FitMode)}
+                                                className="w-full"
+                                                layoutId="fitMode"
+                                            />
                                         </div>
                                         <p className={`text-xs ${styles.textSub}`}>
                                             {fitMode === 'fit' && 'Image will be fully visible with background fill.'}
@@ -388,20 +380,16 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
                                 PDF Type
                             </label>
                             <div className="flex gap-2">
-                                <button
-                                    onClick={() => { setPdfType('digital'); setSelectedPresetId(null); }}
-                                    className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${pdfType === 'digital' ? 'bg-brand text-white' : `${styles.shadowOut} ${styles.textSub}`
-                                        }`}
-                                >
-                                    Digital (RGB)
-                                </button>
-                                <button
-                                    onClick={() => { setPdfType('print-ready'); setSelectedPresetId(null); }}
-                                    className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${pdfType === 'print-ready' ? 'bg-brand text-white' : `${styles.shadowOut} ${styles.textSub}`
-                                        }`}
-                                >
-                                    Print-Ready ✨
-                                </button>
+                                <NeuTabs
+                                    tabs={[
+                                        { id: 'digital', label: 'Digital' }, // Shortened label for better fit
+                                        { id: 'print-ready', label: 'Print' } // Shortened label
+                                    ]}
+                                    activeTab={pdfType}
+                                    onChange={(id) => { setPdfType(id as PDFType); setSelectedPresetId(null); }}
+                                    className="w-full"
+                                    layoutId="pdfType"
+                                />
                             </div>
                         </motion.div>
                     )}
@@ -424,14 +412,14 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
                                 <div className="flex gap-2">
                                     <button
                                         onClick={() => { setColorSpace('rgb'); setSelectedPresetId(null); }}
-                                        className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${colorSpace === 'rgb' ? 'bg-brand text-white' : `${styles.shadowOut} ${styles.textSub}`
+                                        className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${colorSpace === 'rgb' ? `bg-brand text-white ${styles.shadowIn}` : `${styles.shadowOut} ${styles.textSub}`
                                             }`}
                                     >
                                         RGB
                                     </button>
                                     <button
                                         onClick={() => { setColorSpace('cmyk'); setSelectedPresetId(null); }}
-                                        className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${colorSpace === 'cmyk' ? 'bg-brand text-white' : `${styles.shadowOut} ${styles.textSub}`
+                                        className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${colorSpace === 'cmyk' ? `bg-brand text-white ${styles.shadowIn}` : `${styles.shadowOut} ${styles.textSub}`
                                             }`}
                                     >
                                         CMYK
@@ -449,7 +437,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
                                         <button
                                             key={d}
                                             onClick={() => { setDpi(d); setSelectedPresetId(null); }}
-                                            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${dpi === d ? 'bg-brand text-white' : `${styles.shadowOut} ${styles.textSub}`
+                                            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${dpi === d ? `bg-brand text-white ${styles.shadowIn}` : `${styles.shadowOut} ${styles.textSub}`
                                                 }`}
                                         >
                                             {d} DPI
@@ -468,7 +456,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
                                         <button
                                             key={b}
                                             onClick={() => { setBleedMm(b); setCustomBleed(''); setSelectedPresetId(null); }}
-                                            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${bleedMm === b && !customBleed ? 'bg-brand text-white' : `${styles.shadowOut} ${styles.textSub}`
+                                            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${bleedMm === b && !customBleed ? `bg-brand text-white ${styles.shadowIn}` : `${styles.shadowOut} ${styles.textSub}`
                                                 }`}
                                         >
                                             {b === 0 ? 'None' : `${b}mm`}
@@ -525,6 +513,6 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
                     )}
                 </NeuButton>
             </div>
-        </motion.div>
+        </div>
     );
 };

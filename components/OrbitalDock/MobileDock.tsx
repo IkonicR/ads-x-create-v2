@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../../context/ThemeContext';
 import { useNavigation } from '../../context/NavigationContext';
 import { useAuth } from '../../context/AuthContext';
+import { useSubscription } from '../../context/SubscriptionContext';
 import {
     LayoutDashboard,
     Zap,
@@ -97,6 +98,7 @@ export const MobileDock: React.FC<MobileDockProps> = ({
     const { theme, toggleTheme } = useTheme();
     const { navigate, currentView } = useNavigation();
     const { profile } = useAuth();
+    const { creditsRemaining, planName } = useSubscription();
     const isDark = theme === 'dark';
     const [isVaultOpen, setIsVaultOpen] = useState(false);
     const [vaultMode, setVaultMode] = useState<'menu' | 'switcher'>('menu');
@@ -254,10 +256,7 @@ export const MobileDock: React.FC<MobileDockProps> = ({
                                                         <div className="flex flex-col items-start">
                                                             <span className={`font-bold ${isDark ? 'text-gray-200' : 'text-gray-800'}`}>{b.name}</span>
                                                             <div className="flex items-center gap-2">
-                                                                <span className="text-xs opacity-50">Pro Plan</span>
-                                                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-brand/10 text-brand font-bold border border-brand/20">
-                                                                    {b.credits || 0} Credits
-                                                                </span>
+                                                                <span className="text-xs opacity-50">{b.industry || 'Business'}</span>
                                                             </div>
                                                         </div>
                                                     </div>

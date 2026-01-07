@@ -1,8 +1,8 @@
-import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Asset, Business } from '../types';
-import { useThemeStyles, NeuButton, NeuInput } from './NeuComponents';
+import { useThemeStyles, NeuButton, NeuIconButton, NeuInput, NeuTooltip, NeuExpandableText } from './NeuComponents';
 import { GalaxyCanvas } from './GalaxyCanvas';
 import { X, Download, Trash2, Copy, Share2, Maximize2, ZoomIn, Search, MessageCircle, History, Send, Calendar, Instagram, Facebook, Linkedin, Sparkles, Clock, Check, AlertCircle, FileOutput, RotateCcw, Info, CheckSquare, Square, Plus } from 'lucide-react';
 import { ExportPanel, ExportPreset } from './ExportPanel';
@@ -83,11 +83,12 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
   const [activeTab, setActiveTab] = useState<'details' | 'refine' | 'social'>('details');
 
   // Use SocialContext for accounts (centralized caching)
-  const { accounts: connectedAccounts, accountsLoading: isLoadingAccounts, loadAccounts } = useSocial();
+  const { accounts: connectedAccounts, accountsLoading: isLoadingAccounts, loadAccounts, posts, addPost } = useSocial();
 
   // Social Tab State
   const [captions, setCaptions] = useState<{ [platform: string]: string }>({});  // Per-platform captions
-  const [activeCaptionPlatform, setActiveCaptionPlatform] = useState<string>('general');  // Which platform caption is being edited
+  const [activeCaptionPlatform, setActiveCaptionPlatform] = useState<string>('all');  // 'all' or specific platform
+  const [captionMode, setCaptionMode] = useState<'same' | 'unique'>('same');  // Same for all or unique per platform
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
@@ -128,6 +129,12 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
   // Share Modal State
   const [showShareModal, setShowShareModal] = useState(false);
 
+  // Filter posts that contain this asset (for "Already Scheduled" indicator)
+  const postsWithThisAsset = useMemo(() =>
+    posts.filter(p => p.mediaUrls?.includes(asset?.content || '')),
+    [posts, asset?.content]
+  );
+
   // Auto-resize caption textarea (matches SmartPromptInput pattern)
   // Also depends on asset.id and activeTab to trigger resize after loading/tab switch
   useLayoutEffect(() => {
@@ -138,9 +145,16 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
   }, [captions, activeCaptionPlatform, asset?.id, activeTab]);
 
   // Helper to get current caption for active platform
-  const currentCaption = captions[activeCaptionPlatform] || captions['general'] || '';
+  // When 'all' is selected and mode is 'same', use 'general' caption
+  const currentCaption = activeCaptionPlatform === 'all'
+    ? (captions['general'] || '')
+    : (captions[activeCaptionPlatform] || captions['general'] || '');
   const setCurrentCaption = (value: string) => {
-    setCaptions(prev => ({ ...prev, [activeCaptionPlatform]: value }));
+    if (activeCaptionPlatform === 'all') {
+      setCaptions(prev => ({ ...prev, general: value }));
+    } else {
+      setCaptions(prev => ({ ...prev, [activeCaptionPlatform]: value }));
+    }
   };
 
   // Caption persistence - load from localStorage
@@ -380,6 +394,28 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
         const result = await response.json();
         if (result.success) {
           successCount++;
+
+          // Save locally with correct platforms (before sync)
+          const ghlPostId = result.result?.id || result.result?.postId;
+          if (ghlPostId && business) {
+            const platformsRaw = selectedAccounts
+              .map(id => connectedAccounts.find(a => a.id === id)?.platform)
+              .filter((p): p is string => !!p);
+            const platforms = Array.from(new Set<string>(platformsRaw));
+
+            addPost({
+              id: crypto.randomUUID(),
+              ghlPostId,
+              businessId: business.id,
+              locationId: business.socialConfig?.ghlLocationId,
+              summary: currentCaption,
+              mediaUrls: allMediaUrls,
+              platforms,
+              status: isPostingNow ? 'published' : 'scheduled',
+              scheduledAt: payload.scheduledAt,
+              createdAt: new Date().toISOString(),
+            });
+          }
         } else {
           lastError = result.error || 'Failed';
         }
@@ -451,7 +487,7 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
             </button>
 
             {/* Left: The Asset (The "View") */}
-            <div className={`flex-1 relative flex items-center justify-center p-6 md:p-10 ${isDark ? 'bg-black/20' : 'bg-gray-100/50'} overflow-hidden`}>
+            <div className={`flex-1 relative flex items-center justify-center p-6 md:p-10 ${styles.bg} overflow-hidden`}>
 
               {/* Zoom Tooltip/Icon */}
               <div className="absolute top-6 left-6 z-20 pointer-events-none opacity-50">
@@ -465,7 +501,7 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
                 ref={imageContainerRef}
                 onClick={toggleZoom}
                 onMouseMove={handleMouseMove}
-                className={`relative w-full h-full max-h-[70vh] flex items-center justify-center rounded-2xl overflow-hidden shadow-lg cursor-zoom-in transition-transform duration-200`}
+                className={`relative w-full h-full max-h-[70vh] flex items-center justify-center rounded-3xl overflow-hidden ${styles.bg} ${styles.shadowOut} border border-white/5 cursor-zoom-in transition-transform duration-200`}
               >
                 <img
                   src={asset.content}
@@ -480,7 +516,7 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
             </div>
 
             {/* Right: Control Deck / Info */}
-            <div className={`w-full md:w-[400px] flex-shrink-0 flex flex-col border-l border-white/5 ${styles.bg}`}>
+            <div className={`w-full md:w-[440px] flex-shrink-0 flex flex-col border-l border-white/5 ${styles.bg} relative overflow-hidden`}>
 
               {/* Tab Navigation */}
               <div className="px-6 pt-6 pb-2 flex gap-4 border-b border-white/5">
@@ -531,28 +567,7 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
                       exit={{ opacity: 0, x: -20 }}
                       className="space-y-6"
                     >
-                      <div className="flex items-center gap-3">
-                        <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${styles.shadowIn} ${styles.textSub}`}>
-                          {asset.type}
-                        </span>
-                        {asset.aspectRatio && (
-                          <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${styles.shadowIn} ${styles.textSub}`}>
-                            {asset.aspectRatio}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Prompt Section */}
-                      <div>
-                        <label className={`text-xs font-bold uppercase tracking-wider mb-2 block ${styles.textSub}`}>
-                          Prompt
-                        </label>
-                        <div className={`p-4 rounded-2xl text-sm leading-relaxed ${styles.shadowIn} ${styles.textMain} italic opacity-90`}>
-                          "{asset.prompt}"
-                        </div>
-                      </div>
-
-                      {/* Style Section */}
+                      {/* Style Section (Hero) */}
                       {asset.stylePreset && (
                         <div>
                           <label className={`text-xs font-bold uppercase tracking-wider mb-2 block ${styles.textSub}`}>
@@ -560,14 +575,35 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
                           </label>
                           <div className="flex items-center gap-2">
                             <div className={`w-3 h-3 rounded-full bg-brand shadow-[0_0_10px_rgba(109,93,252,0.5)]`} />
-                            <span className={`font-bold ${styles.textMain}`}>{asset.stylePreset}</span>
+                            <span className={`font-bold ${styles.textMain} text-lg`}>{asset.stylePreset}</span>
                           </div>
                         </div>
                       )}
 
-                      {/* Metadata */}
-                      {/* Metadata */}
-                      <div className="grid grid-cols-2 gap-4">
+                      {/* Prompt Section */}
+                      <div>
+                        <label className={`text-xs font-bold uppercase tracking-wider mb-2 block ${styles.textSub}`}>
+                          Prompt
+                        </label>
+                        <NeuExpandableText
+                          text={asset.prompt}
+                          expandThreshold={150}
+                          collapsedLines={3}
+                        />
+                      </div>
+
+                      {/* Technical Details Grid */}
+                      <div className="grid grid-cols-2 gap-4 pt-2">
+                        <div>
+                          <label className={`text-xs font-bold uppercase tracking-wider mb-1 block ${styles.textSub}`}>Type</label>
+                          <span className={`text-sm font-medium ${styles.textMain}`}>{asset.type}</span>
+                        </div>
+                        {asset.aspectRatio && (
+                          <div>
+                            <label className={`text-xs font-bold uppercase tracking-wider mb-1 block ${styles.textSub}`}>Ratio</label>
+                            <span className={`text-sm font-medium ${styles.textMain}`}>{asset.aspectRatio}</span>
+                          </div>
+                        )}
                         <div>
                           <label className={`text-xs font-bold uppercase tracking-wider mb-1 block ${styles.textSub}`}>Created</label>
                           <span className={`text-sm font-medium ${styles.textMain}`}>{new Date(asset.createdAt).toLocaleDateString()}</span>
@@ -631,8 +667,34 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
                       initial={{ opacity: 0, x: 20 }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -20 }}
-                      className="h-full flex flex-col space-y-4 overflow-y-auto custom-scrollbar pr-1"
+                      className="h-full flex flex-col space-y-4 overflow-y-auto custom-scrollbar pl-2.5 pr-1 pb-2"
                     >
+                      {/* Already Scheduled Indicator */}
+                      {postsWithThisAsset.length > 0 && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className={`p-3 rounded-xl ${styles.shadowIn} border border-green-500/20`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Check size={16} className="text-green-500" />
+                            <span className={`text-xs font-bold ${styles.textMain}`}>
+                              Already Scheduled ({postsWithThisAsset.length})
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {Array.from(new Set(postsWithThisAsset.flatMap(p => p.platforms || []))).map(platform => (
+                              <span
+                                key={platform}
+                                className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/20 text-green-500 font-medium capitalize"
+                              >
+                                {platform}
+                              </span>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+
                       {/* 1. Platform Selector (Animated Pills) */}
                       <div>
                         <div className="flex items-center justify-between mb-2">
@@ -707,18 +769,16 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
 
                         {/* Platform Tabs (only if 2+ platforms selected) */}
                         {selectedAccounts.length > 1 && (
-                          <div className={`relative flex gap-1 mb-3 p-1 rounded-xl ${styles.shadowIn}`}>
-                            {Array.from(new Set(selectedAccounts.map(id =>
-                              connectedAccounts.find(a => a.id === id)?.platform || 'general'
-                            ))).map((platform: string) => (
+                          <>
+                            <div className={`relative flex gap-1 mb-2 p-1 rounded-xl ${styles.shadowIn}`}>
+                              {/* All tab first */}
                               <button
-                                key={platform}
-                                onClick={() => setActiveCaptionPlatform(platform)}
-                                className={`relative flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-colors z-10 ${activeCaptionPlatform === platform ? 'text-brand' : styles.textSub
+                                onClick={() => setActiveCaptionPlatform('all')}
+                                className={`relative flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-colors z-10 ${activeCaptionPlatform === 'all' ? 'text-brand' : styles.textSub
                                   }`}
                               >
-                                {platform.charAt(0).toUpperCase() + platform.slice(1)}
-                                {activeCaptionPlatform === platform && (
+                                All
+                                {activeCaptionPlatform === 'all' && (
                                   <motion.div
                                     layoutId="activeTabIndicator"
                                     className={`absolute inset-0 rounded-lg -z-10 ${styles.bg} ${styles.shadowOut}`}
@@ -726,28 +786,124 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
                                   />
                                 )}
                               </button>
-                            ))}
-                          </div>
+                              {/* Individual platform tabs */}
+                              {Array.from(new Set(selectedAccounts.map(id =>
+                                connectedAccounts.find(a => a.id === id)?.platform || 'general'
+                              ))).map((platform: string) => (
+                                <button
+                                  key={platform}
+                                  onClick={() => setActiveCaptionPlatform(platform)}
+                                  className={`relative flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-colors z-10 ${activeCaptionPlatform === platform ? 'text-brand' : styles.textSub
+                                    }`}
+                                >
+                                  {platform.charAt(0).toUpperCase() + platform.slice(1)}
+                                  {activeCaptionPlatform === platform && (
+                                    <motion.div
+                                      layoutId="activeTabIndicator"
+                                      className={`absolute inset-0 rounded-lg -z-10 ${styles.bg} ${styles.shadowOut}`}
+                                      transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                                    />
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+
+                            {/* Same/Unique Toggle (only when All tab is active) */}
+                            <AnimatePresence>
+                              {activeCaptionPlatform === 'all' && (
+                                <motion.div
+                                  initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+                                  animate={{ opacity: 1, height: 'auto', marginBottom: 12 }}
+                                  exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+                                  transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                                  className="overflow-hidden"
+                                >
+                                  {/* Shadow clearance wrapper (10px = pl-2.5) per design system */}
+                                  <div className="pt-2.5 px-2.5">
+                                    <div className={`flex gap-2 p-1 rounded-xl ${styles.shadowIn}`}>
+                                      <button
+                                        onClick={() => setCaptionMode('same')}
+                                        className={`relative flex-1 py-1.5 px-3 rounded-lg text-xs font-medium transition-colors z-10 ${captionMode === 'same' ? 'text-brand' : styles.textSub
+                                          }`}
+                                      >
+                                        Same for All
+                                        {captionMode === 'same' && (
+                                          <motion.div
+                                            layoutId="captionModeIndicator"
+                                            className={`absolute inset-0 rounded-lg -z-10 ${styles.bg} ${styles.shadowOut}`}
+                                            transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                                          />
+                                        )}
+                                      </button>
+                                      <button
+                                        onClick={() => setCaptionMode('unique')}
+                                        className={`relative flex-1 py-1.5 px-3 rounded-lg text-xs font-medium transition-colors z-10 ${captionMode === 'unique' ? 'text-brand' : styles.textSub
+                                          }`}
+                                      >
+                                        Unique per Platform
+                                        {captionMode === 'unique' && (
+                                          <motion.div
+                                            layoutId="captionModeIndicator"
+                                            className={`absolute inset-0 rounded-lg -z-10 ${styles.bg} ${styles.shadowOut}`}
+                                            transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                                          />
+                                        )}
+                                      </button>
+                                    </div>
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </>
                         )}
 
                         {/* Caption Textarea */}
                         <AnimatePresence mode="wait">
                           <motion.div
-                            key={activeCaptionPlatform}
+                            key={activeCaptionPlatform + captionMode}
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -10 }}
                             transition={{ duration: 0.15 }}
                           >
                             <div className={`relative rounded-2xl ${styles.shadowIn} overflow-hidden`}>
-                              <textarea
-                                value={currentCaption}
-                                onChange={(e) => setCurrentCaption(e.target.value)}
-                                placeholder={`Write your ${activeCaptionPlatform === 'general' ? '' : activeCaptionPlatform + ' '}caption...`}
-                                className={`w-full p-4 bg-transparent outline-none text-sm ${styles.textMain} placeholder-gray-400 resize-none custom-scrollbar`}
-                                rows={4}
-                                style={{ minHeight: '100px' }}
-                              />
+                              {/* Show textarea for same mode or individual platforms */}
+                              {(activeCaptionPlatform !== 'all' || captionMode === 'same') ? (
+                                <textarea
+                                  value={currentCaption}
+                                  onChange={(e) => setCurrentCaption(e.target.value)}
+                                  placeholder={
+                                    activeCaptionPlatform === 'all'
+                                      ? 'Write a caption for all platforms...'
+                                      : `Write your ${activeCaptionPlatform} caption...`
+                                  }
+                                  className={`w-full p-4 bg-transparent outline-none text-sm ${styles.textMain} placeholder-gray-400 resize-none custom-scrollbar`}
+                                  rows={4}
+                                  style={{ minHeight: '100px' }}
+                                />
+                              ) : (
+                                // Unique mode preview - show generated status
+                                <div className="p-4 min-h-[100px] flex flex-col justify-center items-center text-center">
+                                  {Object.keys(captions).filter(k => k !== 'general').length > 0 ? (
+                                    <div className="space-y-2">
+                                      <Check size={24} className="text-green-500 mx-auto" />
+                                      <p className={`text-sm font-medium ${styles.textMain}`}>
+                                        {Object.keys(captions).filter(k => k !== 'general').length} unique captions generated
+                                      </p>
+                                      <p className={`text-xs ${styles.textSub}`}>
+                                        Click individual platform tabs to review/edit
+                                      </p>
+                                    </div>
+                                  ) : (
+                                    <div className="space-y-2">
+                                      <Sparkles size={24} className={`${styles.textSub} mx-auto`} />
+                                      <p className={`text-sm ${styles.textSub}`}>
+                                        Click "AI Suggest" to generate unique captions for each platform
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </motion.div>
                         </AnimatePresence>
@@ -775,26 +931,69 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
                             onClick={async () => {
                               if (!business) return;
                               setIsGeneratingCaption(true);
+
                               try {
-                                const response = await fetch('/api/social/generate-caption', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({
-                                    assetPrompt: asset?.prompt,
-                                    business: {
-                                      name: business.name,
-                                      industry: business.industry,
-                                      voice: business.voice,
-                                      targetAudience: business.adPreferences?.targetAudience,
-                                    },
-                                    platform: activeCaptionPlatform,
-                                    hashtagMode: business.socialSettings?.hashtagMode || 'ai_plus_brand',
-                                    brandHashtags: business.socialSettings?.brandHashtags || [],
-                                  }),
-                                });
-                                const data = await response.json();
-                                if (data.caption) {
-                                  setCurrentCaption(data.caption);
+                                // Get unique platforms from selected accounts
+                                const platforms = Array.from(new Set(selectedAccounts.map(id =>
+                                  connectedAccounts.find(a => a.id === id)?.platform || 'general'
+                                )));
+
+                                // If All + Unique mode: generate for each platform
+                                if (activeCaptionPlatform === 'all' && captionMode === 'unique' && platforms.length > 0) {
+                                  // Parallel generate for all platforms
+                                  const results = await Promise.all(
+                                    platforms.map(async (platform) => {
+                                      const response = await fetch('/api/social/generate-caption', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                          assetPrompt: asset?.prompt,
+                                          business: {
+                                            name: business.name,
+                                            industry: business.industry,
+                                            voice: business.voice,
+                                            targetAudience: business.adPreferences?.targetAudience,
+                                          },
+                                          platform,
+                                          hashtagMode: business.socialSettings?.hashtagMode || 'ai_plus_brand',
+                                          brandHashtags: business.socialSettings?.brandHashtags || [],
+                                        }),
+                                      });
+                                      const data = await response.json();
+                                      return { platform, caption: data.caption };
+                                    })
+                                  );
+
+                                  // Store all captions
+                                  const newCaptions: { [key: string]: string } = {};
+                                  results.forEach((result: { platform: string; caption: string }) => {
+                                    if (result.caption) newCaptions[result.platform] = result.caption;
+                                  });
+                                  setCaptions(prev => ({ ...prev, ...newCaptions }));
+
+                                } else {
+                                  // Single platform or Same For All mode
+                                  const targetPlatform = activeCaptionPlatform === 'all' ? 'general' : activeCaptionPlatform;
+                                  const response = await fetch('/api/social/generate-caption', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                      assetPrompt: asset?.prompt,
+                                      business: {
+                                        name: business.name,
+                                        industry: business.industry,
+                                        voice: business.voice,
+                                        targetAudience: business.adPreferences?.targetAudience,
+                                      },
+                                      platform: targetPlatform,
+                                      hashtagMode: business.socialSettings?.hashtagMode || 'ai_plus_brand',
+                                      brandHashtags: business.socialSettings?.brandHashtags || [],
+                                    }),
+                                  });
+                                  const data = await response.json();
+                                  if (data.caption) {
+                                    setCurrentCaption(data.caption);
+                                  }
                                 }
                               } catch (e) {
                                 console.error('Caption generation failed:', e);
@@ -810,7 +1009,12 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
                               }`}
                           >
                             <Sparkles size={12} className={isGeneratingCaption ? 'animate-spin' : ''} />
-                            {isGeneratingCaption ? 'Generating...' : 'AI Suggest'}
+                            {isGeneratingCaption
+                              ? 'Generating...'
+                              : (activeCaptionPlatform === 'all' && captionMode === 'unique'
+                                ? 'Generate All'
+                                : 'AI Suggest')
+                            }
                           </motion.button>
                         </div>
                       </div>
@@ -1068,14 +1272,14 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
                         <div className="flex gap-2 mb-3">
                           <button
                             onClick={() => setIsPostingNow(true)}
-                            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${isPostingNow ? 'bg-brand text-white' : `${styles.shadowOut} ${styles.textSub}`
+                            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${isPostingNow ? `bg-brand text-white ${styles.shadowIn}` : `${styles.shadowOut} ${styles.textSub}`
                               }`}
                           >
                             Post Now
                           </button>
                           <button
                             onClick={() => setIsPostingNow(false)}
-                            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 ${!isPostingNow ? 'bg-brand text-white' : `${styles.shadowOut} ${styles.textSub}`
+                            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 ${!isPostingNow ? `bg-brand text-white ${styles.shadowIn}` : `${styles.shadowOut} ${styles.textSub}`
                               }`}
                           >
                             <Clock size={12} /> Schedule
@@ -1109,7 +1313,7 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
                                     key={mode}
                                     onClick={() => setRepeatMode(mode)}
                                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all capitalize ${repeatMode === mode
-                                      ? 'bg-brand text-white'
+                                      ? `bg-brand text-white ${styles.shadowIn}`
                                       : `${styles.shadowOut} ${styles.textSub} hover:text-brand`
                                       }`}
                                   >
@@ -1177,112 +1381,96 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
                   ) : null}
                 </AnimatePresence>
 
-                {/* Footer Actions (Only visible on Details tab) - Inside Scrollable Area */}
-                {activeTab === 'details' && (
-                  <div className={`border-t border-white/5 mt-6`}>
-                    {/* Primary Actions Row */}
-                    <div className="p-4 flex gap-3">
-                      <NeuButton className="flex-1 py-3" onClick={handleDownload}>
-                        <Download size={16} /> Quick Download
-                      </NeuButton>
-                      <NeuButton
-                        className="flex-1 py-3"
-                        variant={showExportPanel ? 'primary' : undefined}
-                        onClick={() => setShowExportPanel(!showExportPanel)}
-                      >
-                        <FileOutput size={16} /> Export...
-                      </NeuButton>
-                      <NeuButton
-                        className="py-3 px-4"
-                        variant={showShareModal ? 'primary' : undefined}
-                        onClick={() => setShowShareModal(true)}
-                        title="Share to Printer"
-                      >
-                        <Share2 size={16} />
-                      </NeuButton>
-                    </div>
-
-                    {/* Export Panel (Slides Down) */}
-                    <AnimatePresence>
-                      {showExportPanel && (
-                        <ExportPanel
-                          imageUrl={asset.content}
-                          onClose={() => setShowExportPanel(false)}
-                          businessName={business?.name}
-                          savedPresets={business?.exportPresets || []}
-                          onSavePreset={handleSaveExportPreset}
-                          onDeletePreset={handleDeleteExportPreset}
-                        />
-                      )}
-                    </AnimatePresence>
-
-                    {/* Reuse Everything - Primary CTA (Hidden when Export Panel open) */}
-                    <AnimatePresence>
-                      {!showExportPanel && onReuse && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.2 }}
-                          className="px-4 pb-3 overflow-hidden"
-                        >
-                          <button
-                            onClick={() => onReuse(asset, 'all')}
-                            className={`w-full py-3 rounded-xl text-sm font-bold transition-all bg-gradient-to-r from-brand to-purple-500 text-white shadow-lg shadow-brand/30 hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2`}
-                          >
-                            <Sparkles size={16} /> Reuse Everything
-                          </button>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-
-                    {/* Secondary Actions (Hidden when Export Panel open) */}
-                    <AnimatePresence>
-                      {!showExportPanel && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.2 }}
-                          className="px-4 pb-4 flex justify-center gap-2 overflow-hidden"
-                        >
-                          <button
-                            onClick={() => navigator.clipboard.writeText(asset.prompt)}
-                            title="Copy Prompt"
-                            className={`p-2.5 rounded-xl transition-all ${styles.shadowOut} ${styles.textSub} hover:${styles.textMain} hover:scale-105 active:scale-95`}
-                          >
-                            <Copy size={16} />
-                          </button>
-                          {onReuse && (
-                            <button
-                              onClick={() => onReuse(asset, 'prompt_only')}
-                              title="Reuse Prompt Only"
-                              className={`p-2.5 rounded-xl transition-all ${styles.shadowOut} ${styles.textSub} hover:${styles.textMain} hover:scale-105 active:scale-95`}
-                            >
-                              <RotateCcw size={16} />
-                            </button>
-                          )}
-                          {onDelete && (
-                            <button
-                              onClick={() => {
-                                if (confirm('Delete this asset permanently?')) {
-                                  onDelete(asset.id);
-                                  onClose();
-                                }
-                              }}
-                              title="Delete Asset"
-                              className={`p-2.5 rounded-xl transition-all ${styles.shadowOut} ${styles.textSub} hover:text-red-500 hover:scale-105 active:scale-95`}
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          )}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                )}
 
               </div> {/* End Scrollable Info Body */}
+
+              {/* Sticky Footer Actions (Only visible on Details tab) */}
+              {activeTab === 'details' && (
+                <div className={`flex-shrink-0 border-t border-white/5 p-4 z-20 ${styles.bg}`}>
+                  {/* Primary Actions Row */}
+                  <div className="flex gap-3 mb-3">
+                    <NeuButton className="flex-1 py-3" onClick={handleDownload}>
+                      <Download size={16} /> Quick Download
+                    </NeuButton>
+                    <NeuButton
+                      className="flex-1 py-3"
+                      variant={showExportPanel ? 'primary' : undefined}
+                      onClick={() => setShowExportPanel(true)}
+                    >
+                      <FileOutput size={16} /> Export...
+                    </NeuButton>
+                  </div>
+
+                  {/* Secondary Actions Row */}
+                  <div className="flex justify-center gap-2">
+                    <NeuTooltip content="Share to Printer">
+                      <NeuIconButton
+                        onClick={() => setShowShareModal(true)}
+                        active={showShareModal}
+                      >
+                        <Share2 size={16} />
+                      </NeuIconButton>
+                    </NeuTooltip>
+                    <NeuTooltip content="Copy Prompt">
+                      <NeuIconButton onClick={() => navigator.clipboard.writeText(asset.prompt)}>
+                        <Copy size={16} />
+                      </NeuIconButton>
+                    </NeuTooltip>
+                    {onReuse && (
+                      <NeuTooltip content="Reuse Prompt Only">
+                        <NeuIconButton onClick={() => onReuse(asset, 'prompt_only')}>
+                          <RotateCcw size={16} />
+                        </NeuIconButton>
+                      </NeuTooltip>
+                    )}
+                    {onReuse && (
+                      <NeuTooltip content="Reuse Everything">
+                        <NeuIconButton onClick={() => onReuse(asset, 'all')} variant="brand">
+                          <Sparkles size={16} />
+                        </NeuIconButton>
+                      </NeuTooltip>
+                    )}
+                    {onDelete && (
+                      <NeuTooltip content="Delete Asset">
+                        <NeuIconButton
+                          onClick={() => {
+                            if (confirm('Delete this asset permanently?')) {
+                              onDelete(asset.id);
+                              onClose();
+                            }
+                          }}
+                          variant="danger"
+                        >
+                          <Trash2 size={16} />
+                        </NeuIconButton>
+                      </NeuTooltip>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Export Panel Overlay */}
+              <AnimatePresence>
+                {showExportPanel && (
+                  <motion.div
+                    initial={{ y: '100%' }}
+                    animate={{ y: 0 }}
+                    exit={{ y: '100%' }}
+                    transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                    className={`absolute inset-0 z-50 ${styles.bg} border-l border-white/5 flex flex-col`}
+                  >
+                    <ExportPanel
+                      imageUrl={asset.content}
+                      onClose={() => setShowExportPanel(false)}
+                      businessName={business?.name}
+                      savedPresets={business?.exportPresets || []}
+                      onSavePreset={handleSaveExportPreset}
+                      onDeletePreset={handleDeleteExportPreset}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
             </div>
           </motion.div>
         </motion.div>

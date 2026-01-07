@@ -1,8 +1,17 @@
 @import "tailwindcss";
 
+/* Google Sans Flex Variable Font */
+@font-face {
+  font-family: 'Google Sans Flex';
+  src: url('/fonts/GoogleSansFlex.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 @theme {
   /* Fonts */
-  --font-sans: "Nunito Sans", sans-serif;
+  --font-sans: "Google Sans Flex", sans-serif;
 
   /* Brand Colors */
   --color-brand: #6D5DFC;
@@ -28,10 +37,13 @@
     inset 1px 1px 2px rgba(255, 255, 255, 1),
     inset -1px -1px 2px rgba(136, 158, 177, 0.3);
 
-  /* Light Mode Inset: 'The Abyss' - Deep Inset (0.9 Opacity) */
+  /* Light Mode Inset: 'Rotated Plateau' - Flipped Outset */
   --shadow-neu-in-light:
-    inset 4px 4px 8px rgba(136, 158, 177, 0.9),
-    inset -4px -4px 8px rgba(255, 255, 255, 1);
+    -3px -3px 4px rgba(136, 158, 177, 0.4),
+    2px 2px 4px rgba(255, 255, 255, 1),
+    -6px -6px 12px rgba(136, 158, 177, 0.2),
+    inset -1px -1px 2px rgba(255, 255, 255, 1),
+    inset 1px 1px 2px rgba(136, 158, 177, 0.3);
 
   /* Dark Mode: 'The Plateau' - Deep & Sharp */
   --shadow-neu-out-dark:
@@ -40,10 +52,12 @@
     inset 1px 1px 1px rgba(255, 255, 255, 0.1),
     inset -1px -1px 2px rgba(0, 0, 0, 0.5);
 
-  /* Dark Mode Inset: 'The Abyss' - Deep Inset (0.9 Opacity) */
+  /* Dark Mode Inset: 'Rotated Plateau' - Flipped Outset */
   --shadow-neu-in-dark:
-    inset 4px 4px 8px rgba(0, 0, 0, 0.9),
-    inset -4px -4px 8px rgba(255, 255, 255, 0.05);
+    -4px -4px 8px #060709,
+    3px 3px 6px #181b21,
+    inset -1px -1px 1px rgba(255, 255, 255, 0.1),
+    inset 1px 1px 2px rgba(0, 0, 0, 0.5);
 
   /* Galaxy System Colors */
   --galaxy-bg-light: #000000;
@@ -150,7 +164,7 @@ body {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  box-shadow: 
+  box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.04),
     0 4px 24px rgba(0, 0, 0, 0.2);
 }
@@ -158,25 +172,31 @@ body {
 .glass-card-hover {
   transition: all 0.3s ease;
 }
+
 .glass-card-hover:hover {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(255, 255, 255, 0.12);
-  box-shadow: 
+  box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
     0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
 /* Neumorphic accents for key elements */
 .neu-glow {
-  box-shadow: 
+  box-shadow:
     0 0 20px rgba(109, 93, 252, 0.15),
     0 0 40px rgba(109, 93, 252, 0.08);
 }
 
 /* Animation: Scan line for holographic effects */
 @keyframes scanline {
-  0% { transform: translateY(-100%); }
-  100% { transform: translateY(100vh); }
+  0% {
+    transform: translateY(-100%);
+  }
+
+  100% {
+    transform: translateY(100vh);
+  }
 }
 
 .animate-scan {

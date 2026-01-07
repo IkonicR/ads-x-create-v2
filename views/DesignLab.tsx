@@ -352,11 +352,11 @@ const DesignLab = () => {
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
 
-                        {/* Option 1: The Abyss (Max Darkness) */}
+                        {/* Option 1: The Soft Well (Pillow) */}
                         <div className="space-y-4">
-                            <h3 className="font-bold">Option 1: "The Abyss"</h3>
+                            <h3 className="font-bold">Option 1: "The Soft Well"</h3>
                             <div className="text-xs opacity-70 font-mono bg-black/5 dark:bg-white/5 p-2 rounded overflow-x-auto">
-                                {isDark ? 'inset 4px 4px 8px rgba(0,0,0,0.9)' : 'inset 4px 4px 8px rgba(136,158,177,0.9)'}
+                                Soft blur, medium depth
                             </div>
                             <div className="w-full h-32 rounded-2xl flex items-center justify-center text-sm font-bold transition-all duration-300"
                                 style={{
@@ -364,15 +364,15 @@ const DesignLab = () => {
                                     color: isDark ? '#E5E7EB' : '#4B5563',
                                     boxShadow: isDark
                                         ? `
-                                            inset 4px 4px 8px rgba(0, 0, 0, 0.9),
-                                            inset -4px -4px 8px rgba(255, 255, 255, 0.05)
+                                            inset 3px 3px 8px rgba(0, 0, 0, 0.6),
+                                            inset -3px -3px 8px rgba(255, 255, 255, 0.05)
                                           `
                                         : `
-                                            inset 4px 4px 8px rgba(136, 158, 177, 0.9),
-                                            inset -4px -4px 8px rgba(255, 255, 255, 1)
+                                            inset 3px 3px 8px rgba(136, 158, 177, 0.3),
+                                            inset -3px -3px 8px rgba(255, 255, 255, 0.8)
                                           `
                                 }}>
-                                Abyss
+                                Soft Well
                             </div>
                         </div>
 
@@ -400,11 +400,11 @@ const DesignLab = () => {
                             </div>
                         </div>
 
-                        {/* Option 3: The Layer Cake (Multi-Step) */}
+                        {/* Option 3: The Trench (Deep Top-Down) */}
                         <div className="space-y-4">
-                            <h3 className="font-bold">Option 3: "The Layer Cake"</h3>
+                            <h3 className="font-bold">Option 3: "The Trench"</h3>
                             <div className="text-xs opacity-70 font-mono bg-black/5 dark:bg-white/5 p-2 rounded overflow-x-auto">
-                                3 Nested Insets (Gradient)
+                                Deep top-heavy shadow
                             </div>
                             <div className="w-full h-32 rounded-2xl flex items-center justify-center text-sm font-bold transition-all duration-300"
                                 style={{
@@ -412,95 +412,91 @@ const DesignLab = () => {
                                     color: isDark ? '#E5E7EB' : '#4B5563',
                                     boxShadow: isDark
                                         ? `
-                                            inset 2px 2px 3px rgba(0, 0, 0, 0.6),
-                                            inset 4px 4px 6px rgba(0, 0, 0, 0.6),
-                                            inset 6px 6px 12px rgba(0, 0, 0, 0.6),
-                                            inset -2px -2px 3px rgba(255, 255, 255, 0.05)
+                                            inset 4px 8px 12px rgba(0, 0, 0, 0.9),
+                                            inset 0px -2px 4px rgba(255, 255, 255, 0.05)
+                                          `
+                                        : `
+                                            inset 4px 8px 12px rgba(136, 158, 177, 0.4),
+                                            inset 0px -2px 4px rgba(255, 255, 255, 1)
+                                          `
+                                }}>
+                                Trench
+                            </div>
+                        </div>
+
+                        {/* Option 4: The Soft Scoop (Super diffuse) */}
+                        <div className="space-y-4">
+                            <h3 className="font-bold">Option 4: "The Soft Scoop"</h3>
+                            <div className="text-xs opacity-70 font-mono bg-black/5 dark:bg-white/5 p-2 rounded overflow-x-auto">
+                                Wide, diffuse ambient well
+                            </div>
+                            <div className="w-full h-32 rounded-2xl flex items-center justify-center text-sm font-bold transition-all duration-300"
+                                style={{
+                                    backgroundColor: isDark ? '#0F1115' : '#F9FAFB',
+                                    color: isDark ? '#E5E7EB' : '#4B5563',
+                                    boxShadow: isDark
+                                        ? `
+                                            inset 10px 10px 30px rgba(0, 0, 0, 0.7),
+                                            inset -10px -10px 30px rgba(255, 255, 255, 0.02)
+                                          `
+                                        : `
+                                            inset 10px 10px 30px rgba(136, 158, 177, 0.25),
+                                            inset -10px -10px 30px rgba(255, 255, 255, 1)
+                                          `
+                                }}>
+                                Scoop
+                            </div>
+                        </div>
+
+                        {/* Option 5: The Glass (Reflective) */}
+                        <div className="space-y-4">
+                            <h3 className="font-bold">Option 5: "The Glass"</h3>
+                            <div className="text-xs opacity-70 font-mono bg-black/5 dark:bg-white/5 p-2 rounded overflow-x-auto">
+                                High contrast rim
+                            </div>
+                            <div className="w-full h-32 rounded-2xl flex items-center justify-center text-sm font-bold transition-all duration-300"
+                                style={{
+                                    backgroundColor: isDark ? '#0F1115' : '#F9FAFB',
+                                    color: isDark ? '#E5E7EB' : '#4B5563',
+                                    boxShadow: isDark
+                                        ? `
+                                            inset 2px 2px 4px rgba(0, 0, 0, 0.8),
+                                            inset -2px -2px 4px rgba(255, 255, 255, 0.1),
+                                            inset 0 0 40px rgba(0,0,0,0.5)
+                                          `
+                                        : `
+                                            inset 2px 2px 4px rgba(136, 158, 177, 0.3),
+                                            inset -2px -2px 4px rgba(255, 255, 255, 1),
+                                            inset 0 0 20px rgba(255,255,255,0.5)
+                                          `
+                                }}>
+                                Glass
+                            </div>
+                        </div>
+
+                        {/* Option 6: The Stamped (Crisp mechanical) */}
+                        <div className="space-y-4">
+                            <h3 className="font-bold">Option 6: "The Stamped"</h3>
+                            <div className="text-xs opacity-70 font-mono bg-black/5 dark:bg-white/5 p-2 rounded overflow-x-auto">
+                                Technical, machined interaction
+                            </div>
+                            <div className="w-full h-32 rounded-2xl flex items-center justify-center text-sm font-bold transition-all duration-300"
+                                style={{
+                                    backgroundColor: isDark ? '#0F1115' : '#F9FAFB',
+                                    color: isDark ? '#E5E7EB' : '#4B5563',
+                                    boxShadow: isDark
+                                        ? `
+                                            inset 2px 2px 3px rgba(0, 0, 0, 0.8),
+                                            inset 4px 4px 10px rgba(0, 0, 0, 0.5),
+                                            inset -1px -1px 2px rgba(255, 255, 255, 0.05)
                                           `
                                         : `
                                             inset 2px 2px 3px rgba(136, 158, 177, 0.4),
-                                            inset 4px 4px 6px rgba(136, 158, 177, 0.4),
-                                            inset 6px 6px 12px rgba(136, 158, 177, 0.4),
-                                            inset -2px -2px 3px rgba(255, 255, 255, 0.8)
+                                            inset 4px 4px 10px rgba(136, 158, 177, 0.1),
+                                            inset -1px -1px 2px rgba(255, 255, 255, 1)
                                           `
                                 }}>
-                                Layers
-                            </div>
-                        </div>
-
-                        {/* Option 4: The Void (Pure Black) */}
-                        <div className="space-y-4">
-                            <h3 className="font-bold">Option 4: "The Void"</h3>
-                            <div className="text-xs opacity-70 font-mono bg-black/5 dark:bg-white/5 p-2 rounded overflow-x-auto">
-                                {isDark ? 'inset 4px 4px 8px rgba(0,0,0,1)' : 'inset 4px 4px 8px rgba(136,158,177,1)'}
-                            </div>
-                            <div className="w-full h-32 rounded-2xl flex items-center justify-center text-sm font-bold transition-all duration-300"
-                                style={{
-                                    backgroundColor: isDark ? '#0F1115' : '#F9FAFB',
-                                    color: isDark ? '#E5E7EB' : '#4B5563',
-                                    boxShadow: isDark
-                                        ? `
-                                            inset 4px 4px 8px rgba(0, 0, 0, 1),
-                                            inset -4px -4px 8px rgba(255, 255, 255, 0.05)
-                                          `
-                                        : `
-                                            inset 4px 4px 8px rgba(136, 158, 177, 1),
-                                            inset -4px -4px 8px rgba(255, 255, 255, 1)
-                                          `
-                                }}>
-                                Void
-                            </div>
-                        </div>
-
-                        {/* Option 5: The Mariana (Extreme Offset) */}
-                        <div className="space-y-4">
-                            <h3 className="font-bold">Option 5: "The Mariana"</h3>
-                            <div className="text-xs opacity-70 font-mono bg-black/5 dark:bg-white/5 p-2 rounded overflow-x-auto">
-                                {isDark ? 'inset 10px 10px 20px rgba(0,0,0,1)' : 'inset 10px 10px 20px rgba(136,158,177,1)'}
-                            </div>
-                            <div className="w-full h-32 rounded-2xl flex items-center justify-center text-sm font-bold transition-all duration-300"
-                                style={{
-                                    backgroundColor: isDark ? '#0F1115' : '#F9FAFB',
-                                    color: isDark ? '#E5E7EB' : '#4B5563',
-                                    boxShadow: isDark
-                                        ? `
-                                            inset 10px 10px 20px rgba(0, 0, 0, 1),
-                                            inset -10px -10px 20px rgba(255, 255, 255, 0.05)
-                                          `
-                                        : `
-                                            inset 10px 10px 20px rgba(136, 158, 177, 1),
-                                            inset -10px -10px 20px rgba(255, 255, 255, 1)
-                                          `
-                                }}>
-                                Mariana
-                            </div>
-                        </div>
-
-                        {/* Option 6: The Singularity (Multi-Layer Void) */}
-                        <div className="space-y-4">
-                            <h3 className="font-bold">Option 6: "The Singularity"</h3>
-                            <div className="text-xs opacity-70 font-mono bg-black/5 dark:bg-white/5 p-2 rounded overflow-x-auto">
-                                3 Layers of Pure Black
-                            </div>
-                            <div className="w-full h-32 rounded-2xl flex items-center justify-center text-sm font-bold transition-all duration-300"
-                                style={{
-                                    backgroundColor: isDark ? '#0F1115' : '#F9FAFB',
-                                    color: isDark ? '#E5E7EB' : '#4B5563',
-                                    boxShadow: isDark
-                                        ? `
-                                            inset 0px 0px 30px rgba(0, 0, 0, 1),
-                                            inset 10px 10px 10px rgba(0, 0, 0, 1),
-                                            inset 2px 2px 2px rgba(0, 0, 0, 1),
-                                            inset -2px -2px 2px rgba(255, 255, 255, 0.05)
-                                          `
-                                        : `
-                                            inset 0px 0px 30px rgba(136, 158, 177, 1),
-                                            inset 10px 10px 10px rgba(136, 158, 177, 1),
-                                            inset 2px 2px 2px rgba(136, 158, 177, 1),
-                                            inset -2px -2px 2px rgba(255, 255, 255, 1)
-                                          `
-                                }}>
-                                Singularity
+                                Stamped
                             </div>
                         </div>
 

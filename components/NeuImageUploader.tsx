@@ -11,6 +11,11 @@ interface NeuImageUploaderProps {
   multiple?: boolean;
   uploadMode?: 'business' | 'system';
   businessId?: string;
+  // NEW: Optional callback to transform file before upload (e.g., SVG → PNG)
+  onBeforeUpload?: (file: File) => Promise<File>;
+  // NEW: External converting state for custom UI
+  isConverting?: boolean;
+  convertingMessage?: string;
 }
 
 export const NeuImageUploader: React.FC<NeuImageUploaderProps> = ({
@@ -20,7 +25,10 @@ export const NeuImageUploader: React.FC<NeuImageUploaderProps> = ({
   className,
   multiple = false,
   uploadMode = 'business',
-  businessId
+  businessId,
+  onBeforeUpload,
+  isConverting = false,
+  convertingMessage = 'Processing...'
 }) => {
   const { styles } = useThemeStyles();
   const [isDragging, setIsDragging] = useState(false);
@@ -70,11 +78,17 @@ export const NeuImageUploader: React.FC<NeuImageUploaderProps> = ({
         }
 
         try {
+          // Apply transformation if provided (e.g., SVG → PNG)
+          let fileToUpload = file;
+          if (onBeforeUpload) {
+            fileToUpload = await onBeforeUpload(file);
+          }
+
           let url: string | null = null;
           if (uploadMode === 'system') {
-            url = await StorageService.uploadSystemAsset(file, folder);
+            url = await StorageService.uploadSystemAsset(fileToUpload, folder);
           } else {
-            url = await StorageService.uploadBusinessAsset(file, businessId!, folder);
+            url = await StorageService.uploadBusinessAsset(fileToUpload, businessId!, folder);
           }
 
           if (url) validUrls.push(url);
@@ -156,8 +170,15 @@ export const NeuImageUploader: React.FC<NeuImageUploaderProps> = ({
             }
           `}
         >
-          {loading ? (
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand"></div>
+          {loading || isConverting ? (
+            <div className="flex flex-col items-center gap-2">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand"></div>
+              {isConverting && (
+                <p className={`text-xs font-medium ${styles.textMain} animate-pulse`}>
+                  {convertingMessage}
+                </p>
+              )}
+            </div>
           ) : (
             <>
               <div className={`p-3 rounded-full ${styles.bg} ${styles.shadowOut} text-gray-400`}>

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { useOnClickOutside } from '../hooks/useOnClickOutside';
-import { useThemeStyles, useNeuAnimations, NeuButton, NeuInput, NeuDropdown } from './NeuComponents';
+import { useThemeStyles, useNeuButtonProps, NeuButton, NeuInput, NeuDropdown } from './NeuComponents';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Send, LayoutTemplate, Palette, X, Crop, User, Smartphone, Monitor, Square, Box, RectangleVertical, RectangleHorizontal, Zap, Diamond, Plus, Camera, Sun, Edit2, Target, DollarSign, Tag, RotateCcw } from 'lucide-react';
 import { StylePreset, ViewState, GenerationStrategy, VisualMotif, CampaignMode, SubjectType, Offering, TeamMember } from '../types';
@@ -48,8 +48,8 @@ const RATIOS = [
 ];
 
 const MODELS = [
-  { id: 'pro', name: 'Gemini Pro', credits: '40 Cr', description: 'High Fidelity. Best for social assets.', icon: Diamond },
-  { id: 'ultra', name: 'Ultra 4K', credits: '80 Cr', description: 'Max Resolution. Print ready.', icon: Sparkles },
+  { id: 'pro', name: 'Gemini Pro', credits: '1 Cr', description: 'High Fidelity. Best for social assets.', icon: Diamond },
+  { id: 'ultra', name: 'Ultra 4K', credits: '2 Cr', description: 'Max Resolution. Print ready.', icon: Sparkles },
 ];
 
 export const ControlDeck: React.FC<ControlDeckProps> = ({
@@ -167,7 +167,12 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
   };
 
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
-  const variants = useNeuAnimations();
+  // Motion props for each button
+  const subjectMotion = useNeuButtonProps(activeMenu === 'subject' || !!selectedSubject);
+  const styleMotion = useNeuButtonProps(activeMenu === 'style');
+  const ratioMotion = useNeuButtonProps(activeMenu === 'ratio');
+  const modelMotion = useNeuButtonProps(activeMenu === 'model');
+  const strategyMotion = useNeuButtonProps(activeMenu === 'strategy' || strategy.mode !== 'custom');
 
   const menuRef = useRef<HTMLDivElement>(null);
   useOnClickOutside(menuRef, () => setActiveMenu(null));
@@ -326,7 +331,7 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
                               <div className="flex justify-between items-center">
                                 <span className={`text-sm font-bold ${themeStyles.textMain}`}>{model.name}</span>
                                 <span className={`text-xs font-bold px-2 py-1 rounded ${themeStyles.bg} ${themeStyles.shadowIn} opacity-70 flex items-center gap-1`}>
-                                  {model.id === 'pro' ? '40' : '80'} <Sparkles size={10} fill="currentColor" className="text-brand" />
+                                  {model.id === 'pro' ? '1' : '2'} <Sparkles size={10} fill="currentColor" className="text-brand" />
                                 </span>
                               </div>
                               <span className={`text-xs ${themeStyles.textSub} block mt-1`}>{model.description}</span>
@@ -723,12 +728,7 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
           {/* Subject */}
           <motion.button
             onClick={() => setActiveMenu(activeMenu === 'subject' ? null : 'subject')}
-            initial="initial"
-            whileHover="hover"
-            whileTap="pressed"
-            animate={(activeMenu === 'subject' || selectedSubject) ? "pressed" : "initial"}
-            variants={variants}
-            transition={{ type: "tween", ease: "easeInOut", duration: 0.15 }}
+            {...subjectMotion}
             className={`flex-1 flex items-center justify-center gap-2 px-2 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-colors duration-200 truncate ${activeMenu === 'subject' || selectedSubject
               ? `text-brand`
               : `${themeStyles.textMain}`
@@ -755,12 +755,7 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
           {/* Style */}
           <motion.button
             onClick={() => setActiveMenu(activeMenu === 'style' ? null : 'style')}
-            initial="initial"
-            whileHover="hover"
-            whileTap="pressed"
-            animate={(activeMenu === 'style') ? "pressed" : "initial"}
-            variants={variants}
-            transition={{ type: "tween", ease: "easeInOut", duration: 0.15 }}
+            {...styleMotion}
             className={`flex-1 flex items-center justify-center gap-2 px-2 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-colors duration-200 truncate ${activeMenu === 'style'
               ? `text-brand`
               : `${themeStyles.textMain}`
@@ -773,12 +768,7 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
           {/* Ratio */}
           <motion.button
             onClick={() => setActiveMenu(activeMenu === 'ratio' ? null : 'ratio')}
-            initial="initial"
-            whileHover="hover"
-            whileTap="pressed"
-            animate={(activeMenu === 'ratio') ? "pressed" : "initial"}
-            variants={variants}
-            transition={{ type: "tween", ease: "easeInOut", duration: 0.15 }}
+            {...ratioMotion}
             className={`flex-1 flex items-center justify-center gap-2 px-2 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-colors duration-200 truncate ${activeMenu === 'ratio'
               ? `text-brand`
               : `${themeStyles.textMain}`
@@ -791,12 +781,7 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
           {/* NEW: Model Tier Selector */}
           <motion.button
             onClick={() => setActiveMenu(activeMenu === 'model' ? null : 'model')}
-            initial="initial"
-            whileHover="hover"
-            whileTap="pressed"
-            animate={(activeMenu === 'model') ? "pressed" : "initial"}
-            variants={variants}
-            transition={{ type: "tween", ease: "easeInOut", duration: 0.15 }}
+            {...modelMotion}
             className={`flex-1 flex items-center justify-center gap-2 px-2 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-colors duration-200 truncate ${activeMenu === 'model'
               ? `text-brand`
               : `${themeStyles.textMain}`
@@ -809,12 +794,7 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
           {/* Strategy */}
           <motion.button
             onClick={() => setActiveMenu(activeMenu === 'strategy' ? null : 'strategy')}
-            initial="initial"
-            whileHover="hover"
-            whileTap="pressed"
-            animate={(activeMenu === 'strategy' || strategy.mode !== 'custom') ? "pressed" : "initial"}
-            variants={variants}
-            transition={{ type: "tween", ease: "easeInOut", duration: 0.15 }}
+            {...strategyMotion}
             className={`flex-1 flex items-center justify-center gap-2 px-2 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-colors duration-200 truncate ${activeMenu === 'strategy' || strategy.mode !== 'custom'
               ? `text-brand`
               : `${themeStyles.textMain}`

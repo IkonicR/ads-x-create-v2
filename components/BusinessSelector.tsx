@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useOnClickOutside } from '../hooks/useOnClickOutside';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../context/ThemeContext';
+import { useSubscription } from '../context/SubscriptionContext';
 import { Business } from '../types';
 import { ChevronDown, Zap, Plus, Check, Moon, Sun, Settings } from 'lucide-react';
 import { NotificationBell } from './Notifications/NotificationBell';
@@ -21,6 +22,7 @@ export const BusinessSelector: React.FC<BusinessSelectorProps> = ({
     onAdd
 }) => {
     const { theme, toggleTheme } = useTheme();
+    const { creditsRemaining, planName } = useSubscription();
     const isDark = theme === 'dark';
     const [isOpen, setIsOpen] = useState(false);
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
@@ -111,17 +113,17 @@ export const BusinessSelector: React.FC<BusinessSelectorProps> = ({
                                 {business?.name || 'Select Business'}
                             </span>
                             <span className={`text-[10px] font-medium opacity-70`}>
-                                Pro Plan
+                                {planName} Plan
                             </span>
                         </div>
 
                         {/* Divider */}
                         <div className={`w-px h-6 mx-1 ${isDark ? 'bg-white/10' : 'bg-black/5'}`}></div>
 
-                        {/* Credits */}
+                        {/* Credits (from subscription) */}
                         <div className="flex items-center gap-1.5 text-brand font-bold text-xs">
                             <Zap size={14} fill="currentColor" />
-                            <span>{business?.credits || 0}</span>
+                            <span>{creditsRemaining}</span>
                         </div>
 
                         <motion.div

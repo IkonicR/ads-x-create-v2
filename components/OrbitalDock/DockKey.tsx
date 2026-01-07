@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../../context/ThemeContext';
-import { useNeuAnimations } from '../NeuComponents';
+import { useNeuButtonProps } from '../NeuComponents';
 
 interface DockKeyProps {
     icon: any;
@@ -14,7 +14,7 @@ interface DockKeyProps {
 export const DockKey: React.FC<DockKeyProps> = ({ icon: Icon, label, active, expanded = false, onClick }) => {
     const { theme } = useTheme();
     const isDark = theme === 'dark';
-    const variants = useNeuAnimations();
+
 
     // Styles
     // We remove fixed width 'w-12' and use 'w-full' or flexible width when expanded
@@ -24,17 +24,13 @@ export const DockKey: React.FC<DockKeyProps> = ({ icon: Icon, label, active, exp
     const bgStyles = isDark ? 'bg-neu-dark' : 'bg-neu-light';
     const textStyles = active ? 'text-brand' : (isDark ? 'text-gray-500' : 'text-gray-400');
 
+    const motionProps = useNeuButtonProps(active);
+
     return (
         <motion.button
             // Removed 'layout' prop to prevent fighting with parent container resize
             onClick={onClick}
-
-            initial="initial"
-            whileHover="hover"
-            whileTap="pressed"
-            animate={active ? "pressed" : "initial"}
-            variants={variants}
-            transition={{ type: "tween", ease: "easeInOut", duration: 0.15 }}
+            {...motionProps}
 
             className={`
                 ${baseStyles} ${bgStyles} ${textStyles}

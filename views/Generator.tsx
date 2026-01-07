@@ -13,6 +13,7 @@ import { DEFAULT_STRATEGY } from '../constants/campaignPresets';
 import { generateImage, pollJobStatus, getPendingJobs } from '../services/geminiService';
 import { StorageService } from '../services/storage';
 import { useAssets } from '../context/AssetContext';
+import { useSubscription } from '../context/SubscriptionContext';
 import { CREDITS } from '../config/pricing';
 
 interface GeneratorProps {
@@ -40,6 +41,7 @@ const Generator: React.FC<GeneratorProps> = ({
   // Strategy State (managed here, passed to ControlDeck)
   const [strategy, setStrategy] = useState<GenerationStrategy>(DEFAULT_STRATEGY);
   const { assets, addAsset, deleteAsset, loadAssets, hasMore, loading } = useAssets();
+  const { creditsRemaining, deductCredits: deductSubscriptionCredits, refundCredits } = useSubscription();
 
   // Load more assets via context pagination
   const handleLoadMore = useCallback(async () => {
@@ -179,12 +181,14 @@ const Generator: React.FC<GeneratorProps> = ({
       type: 'product' | 'service' | 'person' | 'location';
       imageUrl?: string;
       price?: string;
+      isFree?: boolean;
       description?: string;
       preserveLikeness?: boolean;
       // Marketing Fields
       promotion?: string;
       benefits?: string[];
       targetAudience?: string;
+      termsAndConditions?: string;
     }[] = [];
 
     // Products (check category for service vs product)
@@ -197,11 +201,13 @@ const Generator: React.FC<GeneratorProps> = ({
           type: isService ? 'service' : 'product',
           imageUrl: offering.imageUrl,
           price: offering.price,
+          isFree: offering.isFree,
           description: offering.description,
           preserveLikeness: offering.preserveLikeness,
           promotion: offering.promotion,
           benefits: offering.benefits,
-          targetAudience: offering.targetAudience
+          targetAudience: offering.targetAudience,
+          termsAndConditions: offering.termsAndConditions
         });
       });
     }
@@ -213,15 +219,15 @@ const Generator: React.FC<GeneratorProps> = ({
       });
     }
 
-    // Locations
-    if (business.locations) {
-      business.locations.forEach(location => {
+    // Business Images (was Locations)
+    if (business.businessImages) {
+      business.businessImages.forEach(image => {
         items.push({
-          id: location.id,
-          name: location.name,
+          id: image.id,
+          name: image.name,
           type: 'location',
-          imageUrl: location.imageUrl,
-          description: location.description
+          imageUrl: image.imageUrl,
+          description: image.description
         });
       });
     }
@@ -263,13 +269,19 @@ const Generator: React.FC<GeneratorProps> = ({
     const cost = modelTier === 'ultra' ? CREDITS.perImage4K : CREDITS.perImage2K;
     const isDebug = prompt.toLowerCase().startsWith('debug:');
 
-    if (!isDebug && business.credits < cost) {
-      alert(`Not enough credits! You need ${cost} credits for ${modelTier === 'ultra' ? 'Ultra 4K' : modelTier === 'pro' ? 'Pro' : 'Flash'} generation.`);
+    // Use subscription credits (shared pool) instead of business credits
+    if (!isDebug && creditsRemaining < cost) {
+      alert(`Not enough credits! You need ${cost} credits. You have ${creditsRemaining}.`);
       return;
     }
 
-    if (deductCredit && !isDebug) {
-      deductCredit(cost);
+    // Deduct from subscription (atomic operation)
+    if (!isDebug) {
+      const success = await deductSubscriptionCredits(cost);
+      if (!success) {
+        alert('Failed to deduct credits. Please try again.');
+        return;
+      }
     }
 
     // Look up from state
@@ -335,10 +347,8 @@ const Generator: React.FC<GeneratorProps> = ({
 
             // Remove pending and refund
             setPendingAssets(prev => prev.filter(a => a.id !== stableId));
-            if (deductCredit) {
-              deductCredit(-cost); // REFUND
-              alert(status.errorMessage || 'Generation failed. Credits have been refunded.');
-            }
+            refundCredits(cost);
+            alert(status.errorMessage || 'Generation failed. Credits have been refunded.');
           }
           // If still 'processing' or 'pending', keep polling
         } catch (pollError) {
@@ -355,12 +365,10 @@ const Generator: React.FC<GeneratorProps> = ({
     } catch (error) {
       console.error("Generation Error", error);
       setPendingAssets(prev => prev.filter(a => a.id !== stableId));
-      if (deductCredit) {
-        deductCredit(-cost); // REFUND
-        alert("An unexpected error occurred. Credits have been refunded.");
-      }
+      refundCredits(cost);
+      alert("An unexpected error occurred. Credits have been refunded.");
     }
-  }, [business, deductCredit, updateCredits, addAsset, setPendingAssets, subjects, aestheticStyles, strategy]);
+  }, [business, creditsRemaining, deductSubscriptionCredits, refundCredits, addAsset, setPendingAssets, subjects, aestheticStyles, strategy]);
 
   const handleGenerate = useCallback(async (
     prompt: string,

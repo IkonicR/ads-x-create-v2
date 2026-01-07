@@ -9,6 +9,7 @@ import { NavigationProvider, useNavigation } from './context/NavigationContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AssetProvider, useAssets } from './context/AssetContext';
 import { SocialProvider, useSocial } from './context/SocialContext';
+import { SubscriptionProvider, useSubscription } from './context/SubscriptionContext';
 import Layout from './components/Layout';
 import Onboarding from './views/Onboarding';
 import UserOnboarding from './views/UserOnboarding';
@@ -91,6 +92,7 @@ const AppContent: React.FC = () => {
   const location = useLocation();
   const { addAsset, setBusinessId } = useAssets();
   const { loadPosts: loadSocialPosts, setBusinessId: setSocialBusinessId } = useSocial();
+  const { setBusinessId: setSubscriptionBusinessId } = useSubscription();
   const { notify } = useNotification();
   const [pendingInviteChecked, setPendingInviteChecked] = useState(false);
 
@@ -133,9 +135,9 @@ const AppContent: React.FC = () => {
           const loadedTasks = await StorageService.getTasks(targetBusinessId);
           setTasks(loadedTasks);
 
-          // Sync Asset Context
-          // Sync Asset Context
+          // Sync Contexts
           setBusinessId(targetBusinessId);
+          setSubscriptionBusinessId(targetBusinessId);
 
           // Redirect logic: If we are at root '/', go to Dashboard or Onboarding
           if (location.pathname === '/') {
@@ -319,6 +321,7 @@ const AppContent: React.FC = () => {
     const updatedList = await StorageService.getBusinesses(user.id);
     setBusinesses(updatedList);
     setActiveBusinessId(newBusiness.id);
+    setSubscriptionBusinessId(newBusiness.id);
     localStorage.setItem('lastBusinessId', newBusiness.id);
     navigate('/dashboard');
   };
@@ -331,8 +334,9 @@ const AppContent: React.FC = () => {
       // Clear data immediately to prevent ghosting
       setTasks([]);
 
-      // Update Asset Context
+      // Update Contexts (Asset + Subscription)
       setBusinessId(id);
+      setSubscriptionBusinessId(id);
 
       // Preload social posts for instant calendar (find locationId from new business)
       const targetBusiness = businesses.find(b => b.id === id);
@@ -469,7 +473,9 @@ const AppContent: React.FC = () => {
           } />
           <Route path="/user-profile" element={<UserProfile />} />
           <Route path="/business-manager" element={<BusinessManager />} />
-          <Route path="/design-lab" element={<DesignLab />} />
+          <Route path="/design-lab" element={
+            profile?.is_admin ? <DesignLab /> : <Navigate to="/dashboard" replace />
+          } />
           <Route path="/invite/:token" element={<AcceptInvite />} />
 
           {/* Public Routes (No Auth Required) */}
@@ -502,15 +508,17 @@ const App: React.FC = () => {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <NotificationProvider>
-          <AssetProvider>
-            <SocialProvider>
-              <Router>
-                <AppContent />
-              </Router>
-            </SocialProvider>
-          </AssetProvider>
-        </NotificationProvider>
+        <SubscriptionProvider>
+          <NotificationProvider>
+            <AssetProvider>
+              <SocialProvider>
+                <Router>
+                  <AppContent />
+                </Router>
+              </SocialProvider>
+            </AssetProvider>
+          </NotificationProvider>
+        </SubscriptionProvider>
       </AuthProvider>
     </ThemeProvider>
   );

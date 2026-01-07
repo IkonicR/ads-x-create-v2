@@ -97,32 +97,55 @@ export const useNeuAnimations = (forceTheme?: 'light' | 'dark') => {
   const isDark = theme === 'dark';
 
   // --- THE PREMIUM ENGINE ---
-  // Exact System Match + Dual-Shadow Interpolation + Premium Anticipation
+  // Option 2: Faster Response (0.08s tween) — Snappier feel with deep press
   const variants = {
     initial: {
       y: 0,
       scale: 1,
       boxShadow: isDark
-        ? "4px 4px 8px #060709, -3px -3px 6px #181b21, inset 1px 1px 1px rgba(255, 255, 255, 0.1), inset -1px -1px 2px rgba(0, 0, 0, 0.5), inset 4px 4px 8px rgba(0, 0, 0, 0), inset -4px -4px 8px rgba(255, 255, 255, 0)"
-        : "3px 3px 4px rgba(136, 158, 177, 0.4), -2px -2px 4px rgba(255, 255, 255, 1), 6px 6px 12px rgba(136, 158, 177, 0.2), inset 1px 1px 2px rgba(255, 255, 255, 1), inset -1px -1px 2px rgba(136, 158, 177, 0.3), inset 4px 4px 8px rgba(136, 158, 177, 0), inset -4px -4px 8px rgba(255, 255, 255, 0)"
+        ? "4px 4px 8px #060709, -3px -3px 6px #181b21, inset 1px 1px 1px rgba(255, 255, 255, 0.1), inset -1px -1px 2px rgba(0, 0, 0, 0.5)"
+        : "3px 3px 4px rgba(136, 158, 177, 0.4), -2px -2px 4px rgba(255, 255, 255, 1), 6px 6px 12px rgba(136, 158, 177, 0.2), inset 1px 1px 2px rgba(255, 255, 255, 1), inset -1px -1px 2px rgba(136, 158, 177, 0.3)"
     },
     hover: {
       y: 0,
-      scale: 0.975, // HEAVY: Deep Anticipation
+      scale: 0.98, // Snappy anticipation
       boxShadow: isDark
-        ? "2px 2px 4px #060709, -1px -1px 3px #181b21, inset 1px 1px 1px rgba(255, 255, 255, 0.1), inset -1px -1px 2px rgba(0, 0, 0, 0.5), inset 4px 4px 8px rgba(0, 0, 0, 0), inset -4px -4px 8px rgba(255, 255, 255, 0)" // Very Tight
-        : "1px 1px 2px rgba(136, 158, 177, 0.4), -1px -1px 2px rgba(255, 255, 255, 1), 2px 2px 4px rgba(136, 158, 177, 0.2), inset 1px 1px 2px rgba(255, 255, 255, 1), inset -1px -1px 2px rgba(136, 158, 177, 0.3), inset 4px 4px 8px rgba(136, 158, 177, 0), inset -4px -4px 8px rgba(255, 255, 255, 0)" // Very Tight
+        ? "2px 2px 4px #060709, -1px -1px 3px #181b21, inset 1px 1px 1px rgba(255, 255, 255, 0.1), inset -1px -1px 2px rgba(0, 0, 0, 0.5)"
+        : "1px 1px 2px rgba(136, 158, 177, 0.4), -1px -1px 2px rgba(255, 255, 255, 1), 2px 2px 4px rgba(136, 158, 177, 0.2), inset 1px 1px 2px rgba(255, 255, 255, 1), inset -1px -1px 2px rgba(136, 158, 177, 0.3)"
     },
     pressed: {
       y: 1,
-      scale: 0.95, // Deepest Press
+      scale: 0.96, // Pressed state
+      // Rotated Plateau Inset (flipped outset shadow)
       boxShadow: isDark
-        ? "4px 4px 8px rgba(6, 7, 9, 0), -3px -3px 6px rgba(24, 27, 33, 0), inset 1px 1px 1px rgba(255, 255, 255, 0), inset -1px -1px 2px rgba(0, 0, 0, 0), inset 4px 4px 8px rgba(0, 0, 0, 0.9), inset -4px -4px 8px rgba(255, 255, 255, 0.05)"
-        : "3px 3px 4px rgba(136, 158, 177, 0), -2px -2px 4px rgba(255, 255, 255, 0), 6px 6px 12px rgba(136, 158, 177, 0), inset 1px 1px 2px rgba(255, 255, 255, 0), inset -1px -1px 2px rgba(136, 158, 177, 0), inset 4px 4px 8px rgba(136, 158, 177, 0.9), inset -4px -4px 8px rgba(255, 255, 255, 1)"
+        ? "-4px -4px 8px #060709, 3px 3px 6px #181b21, inset -1px -1px 1px rgba(255, 255, 255, 0.1), inset 1px 1px 2px rgba(0, 0, 0, 0.5)"
+        : "-3px -3px 4px rgba(136, 158, 177, 0.4), 2px 2px 4px rgba(255, 255, 255, 1), -6px -6px 12px rgba(136, 158, 177, 0.2), inset -1px -1px 2px rgba(255, 255, 255, 1), inset 1px 1px 2px rgba(136, 158, 177, 0.3)"
+    },
+    deepPressed: {
+      y: 2,
+      scale: 0.92, // Deep press while holding
+      boxShadow: isDark
+        ? "-6px -6px 12px #060709, 4px 4px 8px #181b21, inset -1px -1px 1px rgba(255, 255, 255, 0.05), inset 1px 1px 2px rgba(0, 0, 0, 0.6)"
+        : "-5px -5px 8px rgba(136, 158, 177, 0.5), 3px 3px 6px rgba(255, 255, 255, 1), -8px -8px 16px rgba(136, 158, 177, 0.3), inset -2px -2px 3px rgba(255, 255, 255, 1), inset 2px 2px 3px rgba(136, 158, 177, 0.4)"
     }
   };
 
   return variants;
+};
+
+// --- GLOBAL BUTTON PROPS HOOK ---
+// Returns ALL motion props for consistent button behavior across the app
+export const useNeuButtonProps = (active: boolean = false, forceTheme?: 'light' | 'dark') => {
+  const variants = useNeuAnimations(forceTheme);
+
+  return {
+    initial: "initial" as const,
+    animate: active ? "pressed" : "initial",
+    whileHover: !active ? "hover" : undefined,
+    whileTap: "deepPressed",  // Always use deepPressed for extra squish while holding
+    variants,
+    transition: { type: "tween" as const, ease: "easeOut" as const, duration: 0.08 }
+  };
 };
 
 export const NeuButton: React.FC<NeuButtonProps> = ({ children, className, active, variant = 'default', forceTheme, ...props }) => {
@@ -141,11 +164,11 @@ export const NeuButton: React.FC<NeuButtonProps> = ({ children, className, activ
   return (
     <motion.button
       initial="initial"
-      whileHover="hover"
-      whileTap="pressed"
+      whileHover={!active ? "hover" : undefined}
+      whileTap={!active ? "pressed" : undefined}
       animate={active ? "pressed" : "initial"}
       variants={variants}
-      transition={{ type: "tween", ease: "easeInOut", duration: 0.15 }}
+      transition={{ type: "tween", ease: "easeOut", duration: 0.08 }}
       className={cn(
         baseStyles,
         styles.bg,
@@ -154,6 +177,64 @@ export const NeuButton: React.FC<NeuButtonProps> = ({ children, className, activ
         className
       )}
       {...props as any} // Cast to any to avoid motion/HTML prop conflicts
+    >
+      {children}
+    </motion.button>
+  );
+};
+
+// --- NeuIconButton (Compact Icon-Only Button) ---
+
+interface NeuIconButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  /** Whether button is in active/pressed state */
+  active?: boolean;
+  /** Color variant on hover: default (neutral), brand (purple), danger (red) */
+  variant?: 'default' | 'brand' | 'danger';
+  /** Size: sm (p-2) or md (p-2.5) */
+  size?: 'sm' | 'md';
+  /** Force a specific theme */
+  forceTheme?: 'light' | 'dark';
+}
+
+export const NeuIconButton: React.FC<NeuIconButtonProps> = ({
+  children,
+  className,
+  active,
+  variant = 'default',
+  size = 'md',
+  forceTheme,
+  ...props
+}) => {
+  const { theme: contextTheme } = useTheme();
+  const theme = forceTheme || contextTheme;
+  const styles = THEMES[theme];
+  const variants = useNeuAnimations(forceTheme);
+
+  const sizeClasses = size === 'sm' ? 'p-2' : 'p-2.5';
+
+  // Variant determines hover and active color
+  let colorClasses = styles.textSub;
+  if (variant === 'brand') colorClasses = `${styles.textSub} hover:text-brand`;
+  if (variant === 'danger') colorClasses = `${styles.textSub} hover:text-red-500`;
+
+  return (
+    <motion.button
+      initial="initial"
+      whileHover={!active && !props.disabled ? "hover" : undefined}
+      whileTap={!props.disabled ? "deepPressed" : undefined}
+      animate={active ? "pressed" : "initial"}
+      variants={variants}
+      transition={{ type: "tween", ease: "easeOut", duration: 0.08 }}
+      className={cn(
+        "rounded-xl flex items-center justify-center select-none outline-none transition-colors",
+        sizeClasses,
+        styles.bg,
+        colorClasses,
+        active && "text-brand",
+        props.disabled && "opacity-50 cursor-not-allowed",
+        className
+      )}
+      {...props as any}
     >
       {children}
     </motion.button>
@@ -257,17 +338,19 @@ export const NeuTextArea: React.FC<NeuTextAreaProps> = ({
     <div className="relative">
       <motion.div
         animate={{ height: currentHeight }}
-        transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        className="overflow-hidden"
+        transition={{ type: "tween", ease: "easeOut", duration: 0.25 }}
+        className={cn(
+          "overflow-hidden rounded-xl",
+          styles.bg,
+          styles.shadowIn,
+          "focus-within:ring-2 focus-within:ring-brand/20"
+        )}
       >
         <textarea
           className={cn(
-            "w-full h-full rounded-xl px-4 py-3 outline-none transition-all resize-none",
-            styles.bg,
-            styles.shadowIn,
+            "w-full h-full px-4 py-3 outline-none resize-none bg-transparent",
             styles.textMain,
             styles.inputPlaceholder,
-            "focus:ring-2 focus:ring-brand/20",
             // Extra padding at bottom-right for the expand button
             showExpandButton && "pb-10",
             className
@@ -288,7 +371,130 @@ export const NeuTextArea: React.FC<NeuTextAreaProps> = ({
             transition={{ duration: 0.15 }}
             onClick={() => setIsExpanded(!isExpanded)}
             className={cn(
-              "absolute bottom-2 right-2 p-1.5 rounded-lg transition-colors",
+              "absolute bottom-2 right-2 p-2 rounded-xl",
+              styles.bg,
+              styles.shadowOut,
+              styles.textSub
+            )}
+            aria-label={isExpanded ? "Collapse" : "Expand"}
+          >
+            <motion.div
+              animate={{ rotate: isExpanded ? 180 : 0 }}
+              transition={{ type: "tween", ease: "easeOut", duration: 0.25 }}
+            >
+              <ChevronDown size={18} />
+            </motion.div>
+          </motion.button>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+// --- NeuExpandableText (Read-Only Expandable Display) ---
+
+interface NeuExpandableTextProps {
+  /** The text content to display */
+  text: string;
+  /** Character count to trigger show of expand icon (default: 150) */
+  expandThreshold?: number;
+  /** Number of visible lines when collapsed (default: 3) */
+  collapsedLines?: number;
+  /** Additional className for the text container */
+  className?: string;
+  /** Render text in italic style (default: true) */
+  italic?: boolean;
+}
+
+export const NeuExpandableText: React.FC<NeuExpandableTextProps> = ({
+  text,
+  expandThreshold = 150,
+  collapsedLines = 3,
+  className,
+  italic = true,
+}) => {
+  const { theme } = useTheme();
+  const styles = THEMES[theme];
+  const [isExpanded, setIsExpanded] = useState(false);
+  const contentRef = useRef<HTMLParagraphElement>(null);
+  const [contentHeight, setContentHeight] = useState(0);
+
+  // Measure the full content height on mount and text change
+  useEffect(() => {
+    if (contentRef.current) {
+      setContentHeight(contentRef.current.scrollHeight);
+    }
+  }, [text]);
+
+  // Calculate if we should show the expand button
+  const charCount = text?.length ?? 0;
+  const showExpandButton = charCount > expandThreshold;
+
+  // Fixed collapsed height based on line count (line-height ~1.5, font ~14px, padding 16px*2)
+  const collapsedHeight = collapsedLines * 21 + 32; // ~3 lines + padding
+  const expandedHeight = contentHeight + 32; // Full content + padding
+
+  return (
+    <div className="relative">
+      <motion.div
+        initial={false}
+        animate={{
+          height: isExpanded ? expandedHeight : (showExpandButton ? collapsedHeight : 'auto')
+        }}
+        transition={{
+          type: "spring",
+          stiffness: 200,
+          damping: 25,
+          mass: 0.8
+        }}
+        className={cn(
+          "overflow-hidden rounded-2xl p-4",
+          styles.shadowIn,
+          showExpandButton && !isExpanded && "pb-10"
+        )}
+      >
+        <p
+          ref={contentRef}
+          className={cn(
+            "text-sm leading-relaxed",
+            styles.textMain,
+            italic && "italic opacity-90",
+            className
+          )}
+        >
+          "{text}"
+        </p>
+      </motion.div>
+
+      {/* Gradient Fade when collapsed */}
+      <AnimatePresence>
+        {showExpandButton && !isExpanded && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className={cn(
+              "absolute bottom-0 left-0 right-0 h-16 rounded-b-2xl pointer-events-none",
+              theme === 'dark'
+                ? "bg-gradient-to-t from-neu-dark via-neu-dark/80 to-transparent"
+                : "bg-gradient-to-t from-neu-light via-neu-light/80 to-transparent"
+            )}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Expand/Collapse Button */}
+      <AnimatePresence>
+        {showExpandButton && (
+          <motion.button
+            type="button"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            transition={{ duration: 0.15 }}
+            onClick={() => setIsExpanded(!isExpanded)}
+            className={cn(
+              "absolute bottom-2 right-2 p-1.5 rounded-lg transition-colors z-10",
               "hover:bg-black/5 dark:hover:bg-white/10",
               styles.textSub
             )}
@@ -296,7 +502,7 @@ export const NeuTextArea: React.FC<NeuTextAreaProps> = ({
           >
             <motion.div
               animate={{ rotate: isExpanded ? 180 : 0 }}
-              transition={{ duration: 0.2 }}
+              transition={{ type: "spring", stiffness: 300, damping: 20 }}
             >
               <ChevronDown size={18} />
             </motion.div>
@@ -918,12 +1124,46 @@ interface NeuTabsProps {
   tabs: NeuTabItem[];
   activeTab: string;
   onChange: (id: string) => void;
+  /** Optional callback before tab change. Return false to block the change. */
+  onBeforeChange?: (newTabId: string) => boolean | Promise<boolean>;
   className?: string;
+  layoutId?: string;
 }
 
-export const NeuTabs: React.FC<NeuTabsProps> = ({ tabs, activeTab, onChange, className }) => {
+export const NeuTabs: React.FC<NeuTabsProps> = ({
+  tabs,
+  activeTab,
+  onChange,
+  onBeforeChange,
+  className,
+  layoutId = 'activeTab'
+}) => {
   const { theme } = useTheme();
   const styles = THEMES[theme];
+  const [isPending, setIsPending] = useState(false);
+
+  const handleTabClick = async (tabId: string) => {
+    if (tabId === activeTab) return;
+
+    // If onBeforeChange is provided, check if we can proceed
+    if (onBeforeChange) {
+      setIsPending(true);
+      try {
+        const canProceed = await Promise.resolve(onBeforeChange(tabId));
+        if (!canProceed) {
+          setIsPending(false);
+          return; // Block the tab change
+        }
+      } catch (error) {
+        console.error('[NeuTabs] onBeforeChange error:', error);
+        setIsPending(false);
+        return;
+      }
+      setIsPending(false);
+    }
+
+    onChange(tabId);
+  };
 
   return (
     <div
@@ -939,15 +1179,17 @@ export const NeuTabs: React.FC<NeuTabsProps> = ({ tabs, activeTab, onChange, cla
         return (
           <button
             key={tab.id}
-            onClick={() => onChange(tab.id)}
+            onClick={() => handleTabClick(tab.id)}
+            disabled={isPending}
             className={cn(
               "relative flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold rounded-xl transition-colors z-10 outline-none focus-visible:ring-2 focus-visible:ring-brand/50",
-              isActive ? "text-brand" : cn(styles.textSub, styles.textHover)
+              isActive ? "text-brand" : cn(styles.textSub, styles.textHover),
+              isPending && "opacity-50 cursor-wait"
             )}
           >
             {isActive && (
               <motion.div
-                layoutId="activeTab"
+                layoutId={layoutId}
                 className={cn(
                   "absolute inset-0 rounded-xl",
                   styles.bg,
@@ -1155,6 +1397,72 @@ export const NeuCombobox: React.FC<NeuComboboxProps> = ({
           )}
         </AnimatePresence>
       </motion.div>
+    </div>
+  );
+};
+
+// --- NeuTooltip (Hover Tip) ---
+
+interface NeuTooltipProps {
+  content: React.ReactNode;
+  children: React.ReactNode;
+  side?: 'top' | 'bottom' | 'left' | 'right';
+  className?: string;
+}
+
+export const NeuTooltip: React.FC<NeuTooltipProps> = ({
+  content,
+  children,
+  side = 'top',
+  className
+}) => {
+  const { theme } = useTheme();
+  const styles = THEMES[theme];
+  const [isVisible, setIsVisible] = useState(false);
+
+  // Position variants
+  const variants = {
+    initial: { opacity: 0, scale: 0.9, y: side === 'top' ? 10 : side === 'bottom' ? -10 : 0, x: side === 'left' ? 10 : side === 'right' ? -10 : 0 },
+    animate: { opacity: 1, scale: 1, y: 0, x: 0 },
+    exit: { opacity: 0, scale: 0.9 }
+  };
+
+  const positionClasses = {
+    top: "bottom-full left-1/2 -translate-x-1/2 mb-2",
+    bottom: "top-full left-1/2 -translate-x-1/2 mt-2",
+    left: "right-full top-1/2 -translate-y-1/2 mr-2",
+    right: "left-full top-1/2 -translate-y-1/2 ml-2"
+  };
+
+  return (
+    <div
+      className="relative flex items-center justify-center"
+      onMouseEnter={() => setIsVisible(true)}
+      onMouseLeave={() => setIsVisible(false)}
+    >
+      {children}
+      <AnimatePresence>
+        {isVisible && (
+          <motion.div
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            variants={variants}
+            transition={{ duration: 0.15, ease: "easeOut" }}
+            className={cn(
+              "absolute z-50 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap pointer-events-none",
+              styles.bg,
+              styles.shadowOut,
+              styles.textMain,
+              "border border-black/5 dark:border-white/5",
+              positionClasses[side],
+              className
+            )}
+          >
+            {content}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

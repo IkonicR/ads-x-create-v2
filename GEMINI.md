@@ -5,10 +5,19 @@
 **Legacy Context:** This is a **V2 / Reboot** of a previously built application. We are simplifying the architecture (moving from multi-step chains to single-step multimodal injection) while aiming to retain the sophisticated prompt engineering logic of the original.
 
 ## DESIGN SYSTEM
-* **Components:** Use `NeuCard`, `NeuButton`, `NeuInput` (from `components/NeuComponents.tsx`).
+* **Components:** Use `NeuCard`, `NeuButton`, `NeuInput`, `NeuIconButton` (from `components/NeuComponents.tsx`).
 * **Theme:** Light (`#F9FAFB`) / Dark (`#0F1115`).
 * **Shadows:** High-contrast standard (White Highlight + Dark Shadow).
 * **Special:** `GalaxyCanvas` for "Magic/Waiting" states.
+
+> [!CAUTION]
+> ## ⛔ NEVER HARDCODE ANIMATIONS OR INTERACTIONS
+> **ALL buttons, hover states, and press interactions MUST use design system components.**
+> - Use `NeuButton` for standard buttons
+> - Use `NeuIconButton` for icon-only buttons
+> - **NEVER** use inline `hover:scale-*` or `active:scale-*` classes
+> - The neumorphic "pressed-in" effect comes from `useNeuAnimations()` — this is the source of truth
+
 
 ## INFRASTRUCTURE
 * **Supabase Project:** `afzrfcqidscibmgptkcl`
@@ -140,12 +149,65 @@ npx supabase db push
 | `businesses` | Core profile, brand colors, voice. Contains JSONB columns for nested data. |
 | `assets` | Generated content (`content` = URL). |
 | `profiles` | User authentication data (links to Supabase Auth). |
+| `subscriptions` | User subscriptions (credits, plan, status). **Only business OWNERS have subscriptions.** |
+| `business_members` | Links users to businesses with roles (owner/editor/viewer). |
 | `presets` | Campaign preset configurations (flash_sale, awareness, etc.). |
 | `styles` | Visual style presets with V2 God-Tier configs. |
 | `generation_logs` | Auditing table for all AI prompts and responses (debugging). |
 | `tasks` | Workflow management. |
 | `admin_notes` | Internal roadmap and notes. |
 | `system_prompts` | AI persona overrides (Chat, Image Gen, Tasks). |
+
+## SUBSCRIPTION ARCHITECTURE (Owner-Based Model)
+
+### Core Principle
+**Only business OWNERS have subscriptions. Team members inherit access from the owner.**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  SUBSCRIPTION OWNER (e.g., You)                                 │
+│  subscription: { plan: 'agency', credits: 750 }                 │
+│                                                                 │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐          │
+│  │ Business A  │    │ Business B  │    │ Business C  │          │
+│  │ (owner)     │    │ (owner)     │    │ (owner)     │          │
+│  │ Team: Jane  │    │ Team: Bob   │    │ (no team)   │          │
+│  └─────────────┘    └─────────────┘    └─────────────┘          │
+│                                                                 │
+│  Jane generates → Deducts from YOUR 750 credits                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### RPC Functions
+| Function | Purpose |
+|----------|---------|
+| `deduct_credits_for_business(business_id, amount)` | Finds owner → deducts from their credits |
+| `refund_credits_for_business(business_id, amount)` | Refunds credits to owner |
+| `get_business_owner_subscription(business_id)` | Returns owner's subscription data |
+
+### Key Services
+| Service | Purpose |
+|---------|---------|
+| `subscriptionService.ts` | `getBusinessSubscription(businessId)` — Primary lookup via owner |
+| `adminService.ts` | `getAllSubscriptionOwners()`, `updateUserPlan()`, `addCredits()`, `toggleCompedStatus()` |
+
+### Context Flow
+```
+App.tsx: setSubscriptionBusinessId(activeBusinessId)
+    ↓
+SubscriptionContext: getBusinessSubscription(businessId)
+    ↓
+RPC: Find owner → Get their subscription → Return to UI
+```
+
+### Credit Deduction Flow
+```
+User generates ad → Generator calls deductCredits(cost)
+    ↓
+SubscriptionContext.deductCredits() → RPC: deduct_credits_for_business
+    ↓
+DB: Find business owner → Deduct from THEIR subscription
+```
 
 ### JSONB Columns in `businesses`
 *These are NOT separate tables — they live inside `businesses`:*

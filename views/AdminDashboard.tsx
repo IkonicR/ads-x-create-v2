@@ -4,20 +4,24 @@ import { StorageService } from '../services/storage';
 import { DEFAULT_IMAGE_PROMPT, DEFAULT_CHAT_PROMPT, DEFAULT_TASK_PROMPT } from '../services/prompts';
 import { NeuTabs, useThemeStyles } from '../components/NeuComponents';
 import { LinkPicker } from '../components/LinkPicker';
-import { Map, Wallet, FileText, Settings, Brain } from 'lucide-react';
+import { Map, FileText, Settings, Brain, Palette, CreditCard, Ticket, Mail } from 'lucide-react';
 
 // Sub-components
 import { RoadmapTab } from './admin/RoadmapTab';
 import { BrainTab } from './admin/BrainTab';
 import { ConfigTab } from './admin/ConfigTab';
 import { AccountsTab } from './admin/AccountsTab';
+import SubscriptionsTab from './admin/SubscriptionsTab';
 import { LogsTab } from './admin/LogsTab';
+import { DesignLabTab } from './admin/DesignLabTab';
+import { InvitesTab } from './admin/InvitesTab';
+import { EmailsTab } from './admin/EmailsTab';
 
 import { useAuth } from '../context/AuthContext';
 
 const AdminDashboard: React.FC<{ onBusinessUpdated?: (business: Business) => void }> = ({ onBusinessUpdated }) => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'roadmap' | 'brain' | 'credits' | 'config' | 'logs'>('roadmap');
+  const [activeTab, setActiveTab] = useState<'roadmap' | 'brain' | 'subscriptions' | 'config' | 'logs' | 'design' | 'invites' | 'emails'>('roadmap');
 
   // Roadmap State
   const [notes, setNotes] = useState<AdminNote[]>([]);
@@ -210,8 +214,11 @@ const AdminDashboard: React.FC<{ onBusinessUpdated?: (business: Business) => voi
             { id: 'roadmap', label: 'Roadmap', icon: <Map size={14} /> },
             { id: 'brain', label: 'Brain Logic', icon: <Brain size={14} /> },
             { id: 'config', label: 'Config', icon: <Settings size={14} /> },
-            { id: 'credits', label: 'Accounts', icon: <Wallet size={14} /> },
+            { id: 'subscriptions', label: 'Subscriptions', icon: <CreditCard size={14} /> },
             { id: 'logs', label: 'Logs', icon: <FileText size={14} /> },
+            { id: 'design', label: 'Design Lab', icon: <Palette size={14} /> },
+            { id: 'invites', label: 'Invites', icon: <Ticket size={14} /> },
+            { id: 'emails', label: 'Emails', icon: <Mail size={14} /> },
           ]}
         />
       </header>
@@ -264,18 +271,10 @@ const AdminDashboard: React.FC<{ onBusinessUpdated?: (business: Business) => voi
         />
       )}
 
-      {activeTab === 'credits' && (
-        <AccountsTab
-          businesses={businesses}
-          handleUpdateCredits={handleUpdateCredits}
-          handleUpdateSocialConfig={handleUpdateSocialConfig}
-          handleRefresh={handleRefresh}
+      {activeTab === 'subscriptions' && (
+        <SubscriptionsTab
           styles={styles}
-          searchTerm={searchTerm}
-          setSearchTerm={setSearchTerm}
-          currentPage={currentPage}
-          setCurrentPage={setCurrentPage}
-          itemsPerPage={itemsPerPage}
+          handleRefresh={handleRefresh}
         />
       )}
 
@@ -285,6 +284,18 @@ const AdminDashboard: React.FC<{ onBusinessUpdated?: (business: Business) => voi
           styles={styles}
           handleRefresh={handleRefresh}
         />
+      )}
+
+      {activeTab === 'design' && (
+        <DesignLabTab styles={styles} />
+      )}
+
+      {activeTab === 'invites' && (
+        <InvitesTab styles={styles} />
+      )}
+
+      {activeTab === 'emails' && (
+        <EmailsTab styles={styles} />
       )}
 
       <LinkPicker

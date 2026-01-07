@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NeuModal } from './NeuModal';
-import { useThemeStyles, NeuButton, NeuInput, NeuSelect } from './NeuComponents';
+import { useThemeStyles, NeuButton, NeuInput, NeuDropdown } from './NeuComponents';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
 import { Mail, Link, Copy, Check, Send, UserPlus, Loader2 } from 'lucide-react';
@@ -158,17 +158,16 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
 
                 {/* Role Selector */}
                 <div>
-                    <label className={`block text-xs font-bold uppercase tracking-wider mb-2 ${styles.textSub}`}>
-                        Role
-                    </label>
-                    <NeuSelect
+                    <NeuDropdown
+                        label="Role"
                         value={role}
-                        onChange={(e) => setRole(e.target.value as any)}
-                    >
-                        <option value="admin">Admin — Can manage team & settings</option>
-                        <option value="editor">Editor — Can create & edit content</option>
-                        <option value="viewer">Viewer — Read-only access</option>
-                    </NeuSelect>
+                        onChange={(val) => setRole(val as any)}
+                        options={[
+                            { label: 'Admin — Can manage team & settings', value: 'admin' },
+                            { label: 'Editor — Can create & edit content', value: 'editor' },
+                            { label: 'Viewer — Read-only access', value: 'viewer' },
+                        ]}
+                    />
                 </div>
 
                 {/* Email Invite Section */}

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { useNavigation } from '../context/NavigationContext';
 import { TeamService, TeamMember, Invitation } from '../services/teamService';
-import { useThemeStyles, NeuButton, NeuCard, NeuSelect } from '../components/NeuComponents';
+import { useThemeStyles, NeuButton, NeuCard, NeuDropdown } from '../components/NeuComponents';
 import { InviteMemberModal } from '../components/InviteMemberModal';
 import { Business } from '../types';
 import {
@@ -18,8 +19,9 @@ import {
     Clock,
     Mail,
     Link,
-    MoreVertical,
-    Check
+    Check,
+    Save,
+    Loader2
 } from 'lucide-react';
 
 interface TeamSettingsProps {
@@ -34,6 +36,7 @@ const TeamSettings: React.FC<TeamSettingsProps> = ({
     const { theme } = useTheme();
     const { user } = useAuth();
     const { styles } = useThemeStyles();
+    const { setDirty, registerSaveHandler } = useNavigation();
     const isDark = theme === 'dark';
 
     const [members, setMembers] = useState<TeamMember[]>([]);
@@ -41,8 +44,11 @@ const TeamSettings: React.FC<TeamSettingsProps> = ({
     const [loading, setLoading] = useState(true);
     const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
     const [showInviteModal, setShowInviteModal] = useState(false);
-    const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
     const [copiedToken, setCopiedToken] = useState<string | null>(null);
+
+    // Track pending role changes per member: { memberId: newRole }
+    const [pendingChanges, setPendingChanges] = useState<Record<string, string>>({});
+    const [savingMemberId, setSavingMemberId] = useState<string | null>(null);
 
     const canManageTeam = currentUserRole === 'owner' || currentUserRole === 'admin';
     const isOwner = currentUserRole === 'owner';
@@ -72,13 +78,59 @@ const TeamSettings: React.FC<TeamSettingsProps> = ({
         }
     };
 
-    const handleRoleChange = async (memberId: string, newRole: string) => {
-        const success = await TeamService.updateMemberRole(memberId, newRole);
-        if (success) {
-            setMembers(prev => prev.map(m =>
-                m.id === memberId ? { ...m, role: newRole as any } : m
-            ));
-            setEditingMemberId(null);
+    // Track dirty state for navigation blocking
+    const hasPendingChanges = Object.keys(pendingChanges).length > 0;
+
+    useEffect(() => {
+        setDirty(hasPendingChanges, 'Team Member Roles');
+    }, [hasPendingChanges, setDirty]);
+
+    // Register save handler for "Save & Exit" modal
+    const handleSaveAll = React.useCallback(async () => {
+        for (const [memberId, newRole] of Object.entries(pendingChanges) as [string, string][]) {
+            await TeamService.updateMemberRole(memberId, newRole);
+        }
+        setPendingChanges({});
+    }, [pendingChanges]);
+
+    useEffect(() => {
+        if (hasPendingChanges) {
+            registerSaveHandler(handleSaveAll, 'Team Member Roles');
+        } else {
+            registerSaveHandler(null, 'Team Member Roles');
+        }
+    }, [hasPendingChanges, registerSaveHandler, handleSaveAll]);
+
+    // Track pending change (don't save yet)
+    const handleRoleChange = (memberId: string, newRole: string) => {
+        const originalMember = members.find(m => m.id === memberId);
+        if (originalMember?.role === newRole) {
+            // User reverted to original, remove from pending
+            const { [memberId]: _, ...rest } = pendingChanges;
+            setPendingChanges(rest);
+        } else {
+            setPendingChanges(prev => ({ ...prev, [memberId]: newRole }));
+        }
+    };
+
+    // Save a single member's role change
+    const handleSaveRole = async (memberId: string) => {
+        const newRole = pendingChanges[memberId];
+        if (!newRole) return;
+
+        setSavingMemberId(memberId);
+        try {
+            const success = await TeamService.updateMemberRole(memberId, newRole);
+            if (success) {
+                // Update local state and clear pending
+                setMembers(prev => prev.map(m =>
+                    m.id === memberId ? { ...m, role: newRole as any } : m
+                ));
+                const { [memberId]: _, ...rest } = pendingChanges;
+                setPendingChanges(rest);
+            }
+        } finally {
+            setSavingMemberId(null);
         }
     };
 
@@ -188,6 +240,7 @@ const TeamSettings: React.FC<TeamSettingsProps> = ({
                                     </span>
                                 </div>
                                 <div className="flex items-center gap-2 mt-1">
+                                    {/* Static role badge for everyone */}
                                     <span className={`text-xs px-2 py-0.5 rounded-full border flex items-center gap-1 ${getRoleBadgeClass(member.role)}`}>
                                         {getRoleIcon(member.role)}
                                         {member.role}
@@ -198,26 +251,33 @@ const TeamSettings: React.FC<TeamSettingsProps> = ({
 
                         {/* Actions */}
                         <div className="flex items-center gap-2">
-                            {/* Role Editor (for admins editing non-owners) */}
+                            {/* Role dropdown + Save + Remove button (for admins editing non-owners) */}
                             {canManageTeam && member.role !== 'owner' && member.userId !== user?.id && (
                                 <>
-                                    {editingMemberId === member.id ? (
-                                        <NeuSelect
-                                            value={member.role}
-                                            onChange={(e) => handleRoleChange(member.id, e.target.value)}
-                                            className="text-sm"
+                                    <NeuDropdown
+                                        value={pendingChanges[member.id] ?? member.role}
+                                        onChange={(val) => handleRoleChange(member.id, val)}
+                                        options={[
+                                            { label: 'Admin', value: 'admin' },
+                                            { label: 'Editor', value: 'editor' },
+                                            { label: 'Viewer', value: 'viewer' },
+                                        ]}
+                                        className="min-w-[110px]"
+                                    />
+                                    {/* Inline Save button - only shows when this member has pending change */}
+                                    {pendingChanges[member.id] && (
+                                        <NeuButton
+                                            variant="primary"
+                                            onClick={() => handleSaveRole(member.id)}
+                                            disabled={savingMemberId === member.id}
+                                            className="!px-3 !py-2"
                                         >
-                                            <option value="admin">Admin</option>
-                                            <option value="editor">Editor</option>
-                                            <option value="viewer">Viewer</option>
-                                        </NeuSelect>
-                                    ) : (
-                                        <button
-                                            onClick={() => setEditingMemberId(member.id)}
-                                            className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}
-                                        >
-                                            <MoreVertical size={16} className={styles.textSub} />
-                                        </button>
+                                            {savingMemberId === member.id ? (
+                                                <Loader2 size={16} className="animate-spin" />
+                                            ) : (
+                                                <Save size={16} />
+                                            )}
+                                        </NeuButton>
                                     )}
                                     <button
                                         onClick={() => handleRemoveMember(member.id)}
@@ -280,8 +340,8 @@ const TeamSettings: React.FC<TeamSettingsProps> = ({
                                 <button
                                     onClick={() => handleCopyLink(invite.token)}
                                     className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors ${copiedToken === invite.token
-                                            ? 'bg-green-500/10 text-green-500'
-                                            : `${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'} ${styles.textSub}`
+                                        ? 'bg-green-500/10 text-green-500'
+                                        : `${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'} ${styles.textSub}`
                                         }`}
                                 >
                                     {copiedToken === invite.token ? <Check size={14} /> : <Copy size={14} />}

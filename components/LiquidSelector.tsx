@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, Zap, Plus } from 'lucide-react';
 import { useThemeStyles } from './NeuComponents';
 import { NumberTicker } from './NumberTicker';
+import { useSubscription } from '../context/SubscriptionContext';
 
 import { Business } from '../types';
 
@@ -24,6 +25,7 @@ export const LiquidSelector: React.FC<LiquidSelectorProps> = ({
     onToggle
 }) => {
     const { theme, styles } = useThemeStyles();
+    const { creditsRemaining, planName } = useSubscription();
     const isDark = theme === 'dark';
 
     if (!business) return null;
@@ -54,16 +56,16 @@ export const LiquidSelector: React.FC<LiquidSelectorProps> = ({
                     {/* Text */}
                     <div className="flex flex-col">
                         <span className="text-sm font-bold leading-tight">{business.name}</span>
-                        <span className="text-[10px] opacity-60 leading-tight">Pro Plan</span>
+                        <span className="text-[10px] opacity-60 leading-tight">{planName} Plan</span>
                     </div>
 
                     {/* Separator */}
                     <div className="w-px h-6 bg-current opacity-20 mx-1" />
 
-                    {/* Credits */}
+                    {/* Credits (from subscription) */}
                     <div className="flex items-center gap-1.5">
                         <Zap size={14} className="fill-brand text-brand" />
-                        <NumberTicker value={business.credits} className="text-sm font-bold text-brand" />
+                        <NumberTicker value={creditsRemaining} className="text-sm font-bold text-brand" />
                     </div>
 
                     {/* Chevron */}
@@ -103,7 +105,7 @@ export const LiquidSelector: React.FC<LiquidSelectorProps> = ({
                                         </div>
                                         <div className="flex flex-col items-start">
                                             <span className="text-sm font-medium">{b.name}</span>
-                                            <span className="text-[10px] opacity-60">{b.credits} credits</span>
+                                            <span className="text-[10px] opacity-60">{b.industry || 'Business'}</span>
                                         </div>
                                         {business.id === b.id && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-brand" />}
                                     </button>

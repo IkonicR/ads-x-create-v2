@@ -7,6 +7,12 @@ export interface UserProfile {
   avatar_url: string | null;
   website: string | null;
   onboarding_completed: boolean;
+  // Onboarding data
+  role?: string;           // 'marketer' | 'founder' | 'agency' | 'creative' | 'developer'
+  company_size?: string;   // 'solo' | '2-10' | '11-50' | '50+'
+  primary_goal?: string;   // 'generate_ads' | 'schedule_posts' | 'build_brand' | 'other'
+  referral_source?: string; // 'google' | 'social' | 'friend' | 'other'
+  invite_code_used?: string;
 }
 
 export type BusinessType = 'Retail' | 'E-Commerce' | 'Service' | 'Other';
