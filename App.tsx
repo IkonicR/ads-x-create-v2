@@ -486,6 +486,7 @@ const AppContent: React.FC = () => {
             <Route path="/team" element={
               <TeamSettings
                 business={activeBusiness}
+                allBusinesses={businesses.map(b => ({ id: b.id, name: b.name }))}
                 onMembershipChange={() => {
                   // Reload businesses when membership changes
                   if (user) StorageService.getBusinesses(user.id).then(setBusinesses);

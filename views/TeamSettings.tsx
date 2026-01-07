@@ -6,6 +6,7 @@ import { TeamService, TeamMember, Invitation } from '../services/teamService';
 import { useThemeStyles, NeuButton, NeuCard, NeuDropdown } from '../components/NeuComponents';
 import { InviteMemberModal } from '../components/InviteMemberModal';
 import { Business } from '../types';
+import { StorageService } from '../services/storage';
 import {
     Users,
     UserPlus,
@@ -26,11 +27,13 @@ import {
 
 interface TeamSettingsProps {
     business: Business;
+    allBusinesses?: { id: string; name: string }[];
     onMembershipChange?: () => void;
 }
 
 const TeamSettings: React.FC<TeamSettingsProps> = ({
     business,
+    allBusinesses: allBusinessesProp = [],
     onMembershipChange
 }) => {
     const { theme } = useTheme();
@@ -50,12 +53,31 @@ const TeamSettings: React.FC<TeamSettingsProps> = ({
     const [pendingChanges, setPendingChanges] = useState<Record<string, string>>({});
     const [savingMemberId, setSavingMemberId] = useState<string | null>(null);
 
+    // Fetched businesses for multi-select modal (if not provided)
+    const [fetchedBusinesses, setFetchedBusinesses] = useState<{ id: string; name: string }[]>([]);
+    const allBusinesses = allBusinessesProp.length > 0 ? allBusinessesProp : fetchedBusinesses;
+
     const canManageTeam = currentUserRole === 'owner' || currentUserRole === 'admin';
     const isOwner = currentUserRole === 'owner';
 
     useEffect(() => {
         loadTeamData();
     }, [business.id, user?.id]);
+
+    // Fetch all businesses if not provided
+    useEffect(() => {
+        const fetchBusinesses = async () => {
+            if (allBusinessesProp.length === 0 && user?.id) {
+                try {
+                    const businesses = await StorageService.getBusinesses(user.id);
+                    setFetchedBusinesses(businesses.map(b => ({ id: b.id, name: b.name })));
+                } catch (error) {
+                    console.error('Error fetching businesses:', error);
+                }
+            }
+        };
+        fetchBusinesses();
+    }, [user?.id, allBusinessesProp.length]);
 
     const loadTeamData = async () => {
         if (!user?.id) return;
@@ -369,6 +391,7 @@ const TeamSettings: React.FC<TeamSettingsProps> = ({
                 onClose={() => setShowInviteModal(false)}
                 businessId={business.id}
                 businessName={business.name}
+                allBusinesses={allBusinesses.length > 1 ? allBusinesses : undefined}
                 onInviteSent={loadTeamData}
             />
         </div>
