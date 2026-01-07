@@ -15,7 +15,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
-import { randomBytes } from 'crypto';
 import React from 'react';
 import { render } from '@react-email/render';
 import { InviteEmail } from '../../emails/InviteEmail';
@@ -81,17 +80,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const businessNames = businesses?.map(b => b.name).join(', ') || 'your businesses';
         const primaryBusiness = businesses?.[0];
 
-        // Generate token
-        const inviteToken = randomBytes(32).toString('hex');
         const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
-        // Determine access_scope for database
-        const dbAccessScope = accessScope === 'all' ? 'all' : 'single';
-
-        // Create invitation(s)
-        // For 'all' scope: create ONE invitation for first business with access_scope='all'
-        // For 'single'/'selected' scope: create ONE invitation per business with access_scope='single'
-
+        // Create invitation(s) - let DB generate token UUIDs
         let insertData: any[] = [];
 
         if (accessScope === 'all') {
@@ -100,17 +91,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 business_id: businessIds[0],
                 email: email?.toLowerCase() || null,
                 role,
-                token: inviteToken,
                 invited_by: user.id,
                 expires_at: expiresAt.toISOString()
             }];
         } else {
-            // Separate invitation for each business (but same token so they all get accepted together)
-            insertData = businessIds.map((bizId: string, index: number) => ({
+            // Separate invitation for each business
+            insertData = businessIds.map((bizId: string) => ({
                 business_id: bizId,
                 email: email?.toLowerCase() || null,
                 role,
-                token: index === 0 ? inviteToken : randomBytes(32).toString('hex'), // Different tokens for each
                 invited_by: user.id,
                 expires_at: expiresAt.toISOString()
             }));
@@ -126,8 +115,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             return res.status(500).json({ error: 'Failed to create invitation' });
         }
 
-        // Store the access_scope for when the invite is accepted
-        // We'll attach it to the primary invitation via a metadata column or handle in accept logic
+        // Get the primary invite token (DB generated UUID)
+        const inviteToken = invitations?.[0]?.token;
+        if (!inviteToken) {
+            return res.status(500).json({ error: 'Failed to get invite token' });
+        }
 
         const baseUrl = 'https://app.xcreate.io';
         const inviteLink = `${baseUrl}/invite/${inviteToken}`;

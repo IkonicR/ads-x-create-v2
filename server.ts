@@ -2450,11 +2450,9 @@ app.post('/api/team/invite', async (req, res) => {
         const businessNames = businesses?.map(b => b.name).join(', ') || 'your businesses';
         const primaryBusiness = businesses?.[0];
 
-        // Generate token
-        const inviteToken = crypto.randomBytes(32).toString('hex');
         const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
-        // Create invitation(s)
+        // Create invitation(s) - let DB generate token UUIDs
         let insertData: any[] = [];
 
         if (accessScope === 'all') {
@@ -2463,17 +2461,15 @@ app.post('/api/team/invite', async (req, res) => {
                 business_id: businessIds[0],
                 email: email?.toLowerCase() || null,
                 role,
-                token: inviteToken,
                 invited_by: user.id,
                 expires_at: expiresAt.toISOString()
             }];
         } else {
             // Separate invitation for each business
-            insertData = businessIds.map((bizId: string, index: number) => ({
+            insertData = businessIds.map((bizId: string) => ({
                 business_id: bizId,
                 email: email?.toLowerCase() || null,
                 role,
-                token: index === 0 ? inviteToken : crypto.randomBytes(32).toString('hex'),
                 invited_by: user.id,
                 expires_at: expiresAt.toISOString()
             }));
@@ -2487,6 +2483,13 @@ app.post('/api/team/invite', async (req, res) => {
         if (inviteError) {
             console.error('[Team] Invite error:', inviteError);
             res.status(500).json({ error: 'Failed to create invitation' });
+            return;
+        }
+
+        // Get the primary invite token (DB generated UUID)
+        const inviteToken = invitations?.[0]?.token;
+        if (!inviteToken) {
+            res.status(500).json({ error: 'Failed to get invite token' });
             return;
         }
 
