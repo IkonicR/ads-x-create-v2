@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { NeuModal } from './NeuModal';
 import { useThemeStyles, NeuButton, NeuInput, NeuDropdown } from './NeuComponents';
 import { useAuth } from '../context/AuthContext';
@@ -103,7 +104,7 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
                 title: 'Invite Link Created',
                 message: `Link generated for ${role}. Expires in 7 days.`
             });
-            setTimeout(() => handleClose(), 2000);
+            // Don't auto-close here - user can copy link and then close
         } catch (err: any) {
             setError(err.message);
         } finally {
@@ -150,13 +151,16 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
 
             setEmailSent(true);
             setInviteLink(data.inviteLink);
-            onInviteSent?.();
             toast({
                 type: 'success',
                 title: 'Invite Sent!',
                 message: `Email sent to ${email.trim()}. Expires in 7 days.`
             });
-            setTimeout(() => handleClose(), 2000);
+            // Close modal after a brief moment to show success state
+            setTimeout(() => {
+                onInviteSent?.();
+                handleClose();
+            }, 800);
         } catch (err: any) {
             setError(err.message);
         } finally {
@@ -217,8 +221,8 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
                                 <button
                                     onClick={() => setAccessScope('all')}
                                     className={`flex-1 py-2 px-3 rounded-lg text-sm font-bold transition-all ${accessScope === 'all'
-                                            ? 'bg-brand text-white ' + styles.shadowIn
-                                            : styles.bg + ' ' + styles.shadowOut + ' ' + styles.textMain
+                                        ? 'bg-brand text-white ' + styles.shadowIn
+                                        : styles.bg + ' ' + styles.shadowOut + ' ' + styles.textMain
                                         }`}
                                 >
                                     All ({allBusinesses.length})
@@ -226,8 +230,8 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
                                 <button
                                     onClick={() => setAccessScope('selected')}
                                     className={`flex-1 py-2 px-3 rounded-lg text-sm font-bold transition-all ${accessScope === 'selected'
-                                            ? 'bg-brand text-white ' + styles.shadowIn
-                                            : styles.bg + ' ' + styles.shadowOut + ' ' + styles.textMain
+                                        ? 'bg-brand text-white ' + styles.shadowIn
+                                        : styles.bg + ' ' + styles.shadowOut + ' ' + styles.textMain
                                         }`}
                                 >
                                     Select Specific
@@ -236,41 +240,49 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
                         </div>
 
                         {/* Business Checklist (only when selecting specific) */}
-                        {accessScope === 'selected' && (
-                            <div className={`p-3 rounded-xl ${styles.bg} ${styles.shadowIn} max-h-48 overflow-y-auto`}>
-                                <div className="flex justify-between items-center mb-2">
-                                    <p className={`text-[10px] uppercase font-bold ${styles.textSub}`}>
-                                        Select Businesses
-                                    </p>
-                                    <div className="flex gap-2">
-                                        <button onClick={selectAll} className={`text-[10px] ${styles.textSub} hover:text-brand`}>
-                                            All
-                                        </button>
-                                        <button onClick={selectNone} className={`text-[10px] ${styles.textSub} hover:text-brand`}>
-                                            None
-                                        </button>
+                        <AnimatePresence mode="wait">
+                            {accessScope === 'selected' && (
+                                <motion.div
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: 'auto' }}
+                                    exit={{ opacity: 0, height: 0 }}
+                                    transition={{ duration: 0.2 }}
+                                    className={`p-3 rounded-xl ${styles.bg} ${styles.shadowIn} max-h-48 overflow-y-auto`}
+                                >
+                                    <div className="flex justify-between items-center mb-2">
+                                        <p className={`text-[10px] uppercase font-bold ${styles.textSub}`}>
+                                            Select Businesses
+                                        </p>
+                                        <div className="flex gap-2">
+                                            <button onClick={selectAll} className={`text-[10px] ${styles.textSub} hover:text-brand`}>
+                                                All
+                                            </button>
+                                            <button onClick={selectNone} className={`text-[10px] ${styles.textSub} hover:text-brand`}>
+                                                None
+                                            </button>
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="space-y-1">
-                                    {allBusinesses.map(biz => (
-                                        <button
-                                            key={biz.id}
-                                            onClick={() => toggleBusiness(biz.id)}
-                                            className={`w-full flex items-center gap-2 p-2 rounded-lg text-left text-sm transition-colors ${selectedBusinessIds.includes(biz.id)
+                                    <div className="space-y-1">
+                                        {allBusinesses.map(biz => (
+                                            <button
+                                                key={biz.id}
+                                                onClick={() => toggleBusiness(biz.id)}
+                                                className={`w-full flex items-center gap-2 p-2 rounded-lg text-left text-sm transition-colors ${selectedBusinessIds.includes(biz.id)
                                                     ? 'bg-brand/10 text-brand'
                                                     : styles.textMain + ' hover:bg-white/5'
-                                                }`}
-                                        >
-                                            {selectedBusinessIds.includes(biz.id)
-                                                ? <CheckSquare size={16} />
-                                                : <Square size={16} className={styles.textSub} />
-                                            }
-                                            {biz.name}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
+                                                    }`}
+                                            >
+                                                {selectedBusinessIds.includes(biz.id)
+                                                    ? <CheckSquare size={16} />
+                                                    : <Square size={16} className={styles.textSub} />
+                                                }
+                                                {biz.name}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
 
                         {/* Summary Badge */}
                         <div className={`p-3 rounded-xl ${styles.bg} ${styles.shadowOut} flex items-center gap-3`}>

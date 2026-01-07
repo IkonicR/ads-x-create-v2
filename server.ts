@@ -2509,10 +2509,22 @@ app.post('/api/team/invite', async (req, res) => {
                     })
                 );
 
+                // Smart Subject Line
+                let subject = 'You\'ve been invited to join the team';
+                if (businesses && businesses.length > 0) {
+                    if (businesses.length === 1) {
+                        subject = `You've been invited to join ${businesses[0].name}`;
+                    } else if (businesses.length === 2) {
+                        subject = `You've been invited to join ${businesses[0].name} and ${businesses[1].name}`;
+                    } else {
+                        subject = `You've been invited to join ${businesses[0].name} and ${businesses.length - 1} others`;
+                    }
+                }
+
                 await resend.emails.send({
                     from: 'Ads x Create <team@xcreate.io>',
                     to: email,
-                    subject: `You've been invited to ${primaryBusiness?.name || 'join a team'}`,
+                    subject,
                     html: emailHtml
                 });
                 console.log('[Team] Invite email sent to:', email);
