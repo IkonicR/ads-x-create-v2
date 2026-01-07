@@ -26,6 +26,20 @@ export interface Invitation {
     // Joined data
     inviterName?: string;
     businessName?: string;
+    accessScope?: 'all' | 'single';
+}
+
+// For unified team view (account-level)
+export interface UnifiedMember {
+    id: string;           // Primary membership ID
+    userId: string;
+    userName: string;
+    userEmail: string;
+    avatarUrl?: string;
+    role: string;         // Role (same across all their businesses)
+    accessScope: 'all' | 'single';
+    businesses: { id: string; name: string }[];
+    createdAt: string;
 }
 
 export const TeamService = {
@@ -135,50 +149,55 @@ export const TeamService = {
 
     /**
      * Get invitation details by token (for accept page)
+     * Returns all invitations with the same token (for multi-business invites)
      */
     async getInvitationByToken(token: string): Promise<Invitation | null> {
-        // First fetch invitation without FK joins
-        const { data: inv, error } = await supabase
+        // Fetch ALL invitations with this token (multi-business share same token)
+        const { data: invitations, error } = await supabase
             .from('invitations')
             .select('id, business_id, email, role, token, invited_by, expires_at, accepted_at, created_at')
-            .eq('token', token)
-            .maybeSingle();
+            .eq('token', token);
 
-        if (error || !inv) return null;
+        if (error || !invitations || invitations.length === 0) return null;
 
-        // Fetch business name separately
-        let businessName: string | undefined;
-        if (inv.business_id) {
-            const { data: business } = await supabase
-                .from('businesses')
-                .select('name')
-                .eq('id', inv.business_id)
-                .maybeSingle();
-            businessName = business?.name;
-        }
+        const primaryInv = invitations[0];
 
-        // Fetch inviter name separately
+        // Fetch all business names
+        const businessIds = invitations.map(inv => inv.business_id);
+        const { data: businesses } = await supabase
+            .from('businesses')
+            .select('id, name')
+            .in('id', businessIds);
+
+        const businessMap = new Map(businesses?.map(b => [b.id, b.name]) || []);
+        const businessNames = invitations.map(inv => businessMap.get(inv.business_id) || 'Unknown');
+        const primaryBusinessName = businessMap.get(primaryInv.business_id);
+
+        // Fetch inviter name
         let inviterName: string | undefined;
-        if (inv.invited_by) {
+        if (primaryInv.invited_by) {
             const { data: profile } = await supabase
                 .from('profiles')
                 .select('full_name')
-                .eq('id', inv.invited_by)
+                .eq('id', primaryInv.invited_by)
                 .maybeSingle();
             inviterName = profile?.full_name;
         }
 
+        // Return primary invitation with all business names joined
         return {
-            id: inv.id,
-            businessId: inv.business_id,
-            email: inv.email,
-            role: inv.role,
-            token: inv.token,
-            invitedBy: inv.invited_by,
-            expiresAt: inv.expires_at,
-            acceptedAt: inv.accepted_at,
-            createdAt: inv.created_at,
-            businessName,
+            id: primaryInv.id,
+            businessId: primaryInv.business_id,
+            email: primaryInv.email,
+            role: primaryInv.role,
+            token: primaryInv.token,
+            invitedBy: primaryInv.invited_by,
+            expiresAt: primaryInv.expires_at,
+            acceptedAt: primaryInv.accepted_at,
+            createdAt: primaryInv.created_at,
+            businessName: invitations.length > 1
+                ? businessNames.join(', ')
+                : primaryBusinessName,
             inviterName
         };
     },
@@ -273,6 +292,115 @@ export const TeamService = {
             acceptedAt: row.accepted_at,
             createdAt: row.created_at,
             businessName: businessMap.get(row.business_id)
+        }));
+    },
+
+    /**
+     * Get ALL team members across ALL businesses (for unified team view)
+     * Groups members by user, showing which businesses each user has access to
+     */
+    async getAllTeamMembers(businessIds: string[], businessNames: Map<string, string>): Promise<UnifiedMember[]> {
+        if (businessIds.length === 0) return [];
+
+        // 1. Fetch all memberships (exclude owners)
+        const { data: memberships, error } = await supabase
+            .from('business_members')
+            .select('id, user_id, business_id, role, access_scope, created_at')
+            .in('business_id', businessIds)
+            .neq('role', 'owner');
+
+        if (error) {
+            console.error('[TeamService] Error fetching memberships:', error);
+            return [];
+        }
+
+        if (!memberships || memberships.length === 0) return [];
+
+        // 2. Get unique user IDs
+        const userIds = [...new Set(memberships.map(m => m.user_id))];
+
+        // 3. Fetch profiles separately (no FK join available)
+        const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, full_name, email, avatar_url')
+            .in('id', userIds);
+
+        const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
+
+        // 4. Group memberships by user
+        const userMap = new Map<string, UnifiedMember>();
+
+        for (const m of memberships) {
+            const profile = profileMap.get(m.user_id);
+            const bizName = businessNames.get(m.business_id) || 'Unknown';
+
+            const existing = userMap.get(m.user_id);
+            if (existing) {
+                // Add this business to their list
+                if (!existing.businesses.find(b => b.id === m.business_id)) {
+                    existing.businesses.push({ id: m.business_id, name: bizName });
+                }
+                // If any membership has 'all' scope, use that
+                if (m.access_scope === 'all') {
+                    existing.accessScope = 'all';
+                }
+            } else {
+                userMap.set(m.user_id, {
+                    id: m.id,
+                    userId: m.user_id,
+                    userName: profile?.full_name || profile?.email || 'Unknown',
+                    userEmail: profile?.email || '',
+                    avatarUrl: profile?.avatar_url,
+                    role: m.role,
+                    accessScope: m.access_scope === 'all' ? 'all' : 'single',
+                    businesses: [{ id: m.business_id, name: bizName }],
+                    createdAt: m.created_at
+                });
+            }
+        }
+
+        return Array.from(userMap.values());
+    },
+
+    /**
+     * Get ALL pending invitations across ALL businesses
+     */
+    async getAllPendingInvitations(businessIds: string[]): Promise<Invitation[]> {
+        if (businessIds.length === 0) return [];
+
+        const { data, error } = await supabase
+            .from('invitations')
+            .select('*')
+            .in('business_id', businessIds)
+            .is('accepted_at', null)
+            .gt('expires_at', new Date().toISOString())
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error('[TeamService] Error fetching invitations:', error);
+            return [];
+        }
+
+        // Get business names
+        const { data: businesses } = await supabase
+            .from('businesses')
+            .select('id, name')
+            .in('id', businessIds);
+
+        const businessMap = new Map(businesses?.map(b => [b.id, b.name]) || []);
+
+        return (data || []).map((row: any) => ({
+            id: row.id,
+            businessId: row.business_id,
+            email: row.email,
+            role: row.role,
+            token: row.token,
+            invitedBy: row.invited_by,
+            expiresAt: row.expires_at,
+            acceptedAt: row.accepted_at,
+            createdAt: row.created_at,
+            businessName: businessMap.get(row.business_id),
+            accessScope: row.access_scope === 'all' ? 'all' : 'single'
         }));
     }
 };

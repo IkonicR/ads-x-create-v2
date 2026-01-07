@@ -30,6 +30,7 @@ import DesignLab from './views/DesignLab';
 import BusinessManager from './views/BusinessManager';
 import AcceptInvite from './views/AcceptInvite';
 import TeamSettings from './views/TeamSettings';
+
 import SocialSettings from './views/SocialSettings';
 import { PrinterDownload } from './views/PrinterDownload';
 import GlobalLoader from './components/GlobalLoader';
@@ -481,19 +482,19 @@ const AppContent: React.FC = () => {
           {/* Public Routes (No Auth Required) */}
           <Route path="/print/:token" element={<PrinterDownload />} />
 
-          {/* Team Settings - requires active business */}
-          {activeBusiness && (
+          {/* Team Settings - account-level view */}
+          {businesses.length > 0 && (
             <Route path="/team" element={
               <TeamSettings
-                business={activeBusiness}
                 allBusinesses={businesses.map(b => ({ id: b.id, name: b.name }))}
                 onMembershipChange={() => {
-                  // Reload businesses when membership changes
                   if (user) StorageService.getBusinesses(user.id).then(setBusinesses);
                 }}
               />
             } />
           )}
+
+
 
           {/* Fallback: If still loading data, show nothing. Otherwise redirect based on business state */}
           <Route path="*" element={

@@ -16,6 +16,7 @@ import { ConnectedAccountsCard } from '../components/ConnectedAccountsCard';
 import { Share2 } from 'lucide-react';
 import TeamSettings from './TeamSettings';
 
+
 interface BusinessProfileProps {
   business: Business;
   updateBusiness: (b: Business) => Promise<void>;

@@ -283,7 +283,8 @@ app.post('/api/share/send-email', async (req, res) => {
         );
 
         const response = await resend.emails.send({
-            from: 'Ads x Create <team@xcreate.io>',
+            from: 'Ads x Create <team@mail.xcreate.io>',
+            replyTo: 'team@xcreate.io',
             to: recipientEmail,
             subject: `Print-Ready Asset from ${businessName}`,
             html: emailHtml
@@ -2452,7 +2453,10 @@ app.post('/api/team/invite', async (req, res) => {
 
         const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
-        // Create invitation(s) - let DB generate token UUIDs
+        // Generate a shared token for all invitations in this batch
+        const sharedToken = crypto.randomUUID();
+
+        // Create invitation(s) - all share the same token
         let insertData: any[] = [];
 
         if (accessScope === 'all') {
@@ -2461,15 +2465,17 @@ app.post('/api/team/invite', async (req, res) => {
                 business_id: businessIds[0],
                 email: email?.toLowerCase() || null,
                 role,
+                token: sharedToken,
                 invited_by: user.id,
                 expires_at: expiresAt.toISOString()
             }];
         } else {
-            // Separate invitation for each business
+            // Separate invitation for each business, same token so they're accepted together
             insertData = businessIds.map((bizId: string) => ({
                 business_id: bizId,
                 email: email?.toLowerCase() || null,
                 role,
+                token: sharedToken,
                 invited_by: user.id,
                 expires_at: expiresAt.toISOString()
             }));
@@ -2486,17 +2492,10 @@ app.post('/api/team/invite', async (req, res) => {
             return;
         }
 
-        // Get the primary invite token (DB generated UUID)
-        const inviteToken = invitations?.[0]?.token;
-        if (!inviteToken) {
-            res.status(500).json({ error: 'Failed to get invite token' });
-            return;
-        }
-
         const baseUrl = process.env.NODE_ENV === 'production'
             ? 'https://app.xcreate.io'
             : 'http://localhost:5173';
-        const inviteLink = `${baseUrl}/invite/${inviteToken}`;
+        const inviteLink = `${baseUrl}/invite/${sharedToken}`;
 
         // Send email if requested
         if (sendEmail && email && process.env.RESEND_API_KEY) {
@@ -2522,7 +2521,8 @@ app.post('/api/team/invite', async (req, res) => {
                 }
 
                 await resend.emails.send({
-                    from: 'Ads x Create <team@xcreate.io>',
+                    from: 'Ads x Create <team@mail.xcreate.io>',
+                    replyTo: 'team@xcreate.io',
                     to: email,
                     subject,
                     html: emailHtml
@@ -2537,7 +2537,7 @@ app.post('/api/team/invite', async (req, res) => {
             success: true,
             invitation: {
                 id: invitations?.[0]?.id,
-                token: inviteToken,
+                token: sharedToken,
                 expiresAt: expiresAt.toISOString(),
                 businessCount: businessIds.length,
                 accessScope
@@ -2570,88 +2570,126 @@ app.post('/api/team/accept', async (req, res) => {
         return;
     }
 
-    const { inviteToken } = req.body;
+    const { inviteToken, accessScope: requestedScope } = req.body;
     if (!inviteToken) {
         res.status(400).json({ error: 'inviteToken is required' });
         return;
     }
 
     try {
-        // Get invitation
-        const { data: invitation, error: inviteError } = await supabase
+        // Get all invitations with this token (for multi-business)
+        const { data: invitations, error: inviteError } = await supabase
             .from('invitations')
             .select('*, businesses(name)')
-            .eq('token', inviteToken)
-            .single();
+            .eq('token', inviteToken);
 
-        if (inviteError || !invitation) {
+        if (inviteError || !invitations || invitations.length === 0) {
             res.status(404).json({ error: 'Invitation not found' });
             return;
         }
 
-        if (invitation.accepted_at) {
+        const primaryInvite = invitations[0];
+
+        if (primaryInvite.accepted_at) {
             res.status(400).json({ error: 'Invitation already accepted' });
             return;
         }
 
-        if (new Date(invitation.expires_at) < new Date()) {
+        if (new Date(primaryInvite.expires_at) < new Date()) {
             res.status(400).json({ error: 'Invitation expired' });
             return;
         }
 
-        // Check if already member
-        const { data: existing } = await supabase
-            .from('business_members')
-            .select('id')
-            .eq('business_id', invitation.business_id)
-            .eq('user_id', user.id)
-            .single();
+        // Determine access scope
+        const accessScope = requestedScope || 'single';
+        const addedBusinesses: string[] = [];
 
-        if (existing) {
-            res.status(400).json({ error: 'Already a member' });
-            return;
+        if (accessScope === 'all') {
+            // Check if already member of the primary business
+            const { data: existing } = await supabase
+                .from('business_members')
+                .select('id')
+                .eq('business_id', primaryInvite.business_id)
+                .eq('user_id', user.id)
+                .single();
+
+            if (existing) {
+                res.status(400).json({ error: 'Already a member' });
+                return;
+            }
+
+            // Add ONE membership with access_scope = 'all'
+            const { error: memberError } = await supabase
+                .from('business_members')
+                .insert({
+                    business_id: primaryInvite.business_id,
+                    user_id: user.id,
+                    role: primaryInvite.role,
+                    invited_by: primaryInvite.invited_by,
+                    access_scope: 'all'
+                });
+
+            if (memberError) {
+                console.error('[Team] Member add error:', memberError);
+                res.status(500).json({ error: 'Failed to add member' });
+                return;
+            }
+            addedBusinesses.push(primaryInvite.business_id);
+        } else {
+            // Add membership for each business
+            for (const inv of invitations) {
+                // Check if already member
+                const { data: existing } = await supabase
+                    .from('business_members')
+                    .select('id')
+                    .eq('business_id', inv.business_id)
+                    .eq('user_id', user.id)
+                    .single();
+
+                if (!existing) {
+                    const { error: memberError } = await supabase
+                        .from('business_members')
+                        .insert({
+                            business_id: inv.business_id,
+                            user_id: user.id,
+                            role: inv.role,
+                            invited_by: inv.invited_by,
+                            access_scope: 'single'
+                        });
+
+                    if (!memberError) {
+                        addedBusinesses.push(inv.business_id);
+                    }
+                }
+            }
         }
 
-        // Add to members
-        const { error: memberError } = await supabase
-            .from('business_members')
-            .insert({
-                business_id: invitation.business_id,
-                user_id: user.id,
-                role: invitation.role,
-                invited_by: invitation.invited_by
-            });
-
-        if (memberError) {
-            console.error('[Team] Member add error:', memberError);
-            res.status(500).json({ error: 'Failed to add member' });
-            return;
-        }
-
-        // Mark accepted
+        // Mark all invitations as accepted
         await supabase
             .from('invitations')
             .update({ accepted_at: new Date().toISOString() })
-            .eq('id', invitation.id);
+            .in('id', invitations.map(inv => inv.id));
 
         // Notify the inviter
-        if (invitation.invited_by) {
+        if (primaryInvite.invited_by) {
             await supabase.from('notifications').insert({
-                user_id: invitation.invited_by,
+                user_id: primaryInvite.invited_by,
                 type: 'success',
                 title: 'Invite Accepted!',
-                message: `${user.email} has joined ${invitation.businesses?.name || 'your business'} as ${invitation.role}`,
+                message: `${user.email} has joined ${primaryInvite.businesses?.name || 'your business'} as ${primaryInvite.role}`,
                 link: `/profile?tab=team`
             });
         }
 
-        console.log('[Team] Invite accepted, user added to:', invitation.business_id);
+        console.log('[Team] Invite accepted, user added to businesses:', addedBusinesses);
 
         res.json({
             success: true,
-            businessId: invitation.business_id,
-            businessName: invitation.businesses?.name,
-            role: invitation.role
+            businessId: primaryInvite.business_id,
+            businessName: primaryInvite.businesses?.name,
+            role: primaryInvite.role,
+            accessScope,
+            businessCount: addedBusinesses.length
         });
 
     } catch (error) {
@@ -2782,7 +2820,8 @@ app.post('/api/admin/test-email', async (req, res) => {
         }
 
         await resend.emails.send({
-            from: 'Ads x Create <team@xcreate.io>',
+            from: 'Ads x Create <team@mail.xcreate.io>',
+            replyTo: 'team@xcreate.io',
             to: user.email!,
             subject,
             html: emailHtml

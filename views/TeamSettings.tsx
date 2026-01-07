@@ -2,11 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
-import { TeamService, TeamMember, Invitation } from '../services/teamService';
+import { TeamService, UnifiedMember, Invitation } from '../services/teamService';
 import { useThemeStyles, NeuButton, NeuCard, NeuDropdown } from '../components/NeuComponents';
 import { InviteMemberModal } from '../components/InviteMemberModal';
 import { Business } from '../types';
-import { StorageService } from '../services/storage';
 import {
     Users,
     UserPlus,
@@ -15,25 +14,28 @@ import {
     Pencil,
     Eye,
     Trash2,
-    LogOut,
     Copy,
     Clock,
     Mail,
     Link,
     Check,
     Save,
-    Loader2
+    Loader2,
+    ChevronDown,
+    ChevronRight,
+    Globe
 } from 'lucide-react';
 
 interface TeamSettingsProps {
-    business: Business;
+    // For backward compatibility: pass either business OR allBusinesses
+    business?: Business;
     allBusinesses?: { id: string; name: string }[];
     onMembershipChange?: () => void;
 }
 
 const TeamSettings: React.FC<TeamSettingsProps> = ({
     business,
-    allBusinesses: allBusinessesProp = [],
+    allBusinesses: allBusinessesProp,
     onMembershipChange
 }) => {
     const { theme } = useTheme();
@@ -42,57 +44,42 @@ const TeamSettings: React.FC<TeamSettingsProps> = ({
     const { setDirty, registerSaveHandler } = useNavigation();
     const isDark = theme === 'dark';
 
-    const [members, setMembers] = useState<TeamMember[]>([]);
+    // If allBusinesses not provided, use the single business
+    const allBusinesses = allBusinessesProp || (business ? [{ id: business.id, name: business.name }] : []);
+
+    const [members, setMembers] = useState<UnifiedMember[]>([]);
     const [invitations, setInvitations] = useState<Invitation[]>([]);
     const [loading, setLoading] = useState(true);
-    const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
     const [showInviteModal, setShowInviteModal] = useState(false);
     const [copiedToken, setCopiedToken] = useState<string | null>(null);
+    const [expandedMembers, setExpandedMembers] = useState<Set<string>>(new Set());
 
     // Track pending role changes per member: { memberId: newRole }
     const [pendingChanges, setPendingChanges] = useState<Record<string, string>>({});
     const [savingMemberId, setSavingMemberId] = useState<string | null>(null);
 
-    // Fetched businesses for multi-select modal (if not provided)
-    const [fetchedBusinesses, setFetchedBusinesses] = useState<{ id: string; name: string }[]>([]);
-    const allBusinesses = allBusinessesProp.length > 0 ? allBusinessesProp : fetchedBusinesses;
-
-    const canManageTeam = currentUserRole === 'owner' || currentUserRole === 'admin';
-    const isOwner = currentUserRole === 'owner';
+    // As owner, you can always manage team
+    const canManageTeam = true;
 
     useEffect(() => {
         loadTeamData();
-    }, [business.id, user?.id]);
-
-    // Fetch all businesses if not provided
-    useEffect(() => {
-        const fetchBusinesses = async () => {
-            if (allBusinessesProp.length === 0 && user?.id) {
-                try {
-                    const businesses = await StorageService.getBusinesses(user.id);
-                    setFetchedBusinesses(businesses.map(b => ({ id: b.id, name: b.name })));
-                } catch (error) {
-                    console.error('Error fetching businesses:', error);
-                }
-            }
-        };
-        fetchBusinesses();
-    }, [user?.id, allBusinessesProp.length]);
+    }, [allBusinesses.length, user?.id]);
 
     const loadTeamData = async () => {
-        if (!user?.id) return;
+        if (!user?.id || allBusinesses.length === 0) return;
 
         setLoading(true);
         try {
-            const [membersList, invitesList, role] = await Promise.all([
-                TeamService.getBusinessMembers(business.id),
-                canManageTeam ? TeamService.getBusinessInvitations(business.id) : Promise.resolve([]),
-                TeamService.getMemberRole(business.id, user.id)
+            const businessIds = allBusinesses.map(b => b.id);
+            const businessNames = new Map<string, string>(allBusinesses.map(b => [b.id, b.name]));
+
+            const [membersList, invitesList] = await Promise.all([
+                TeamService.getAllTeamMembers(businessIds, businessNames),
+                TeamService.getAllPendingInvitations(businessIds)
             ]);
 
             setMembers(membersList);
             setInvitations(invitesList);
-            setCurrentUserRole(role);
         } catch (error) {
             console.error('Error loading team data:', error);
         } finally {
@@ -127,7 +114,6 @@ const TeamSettings: React.FC<TeamSettingsProps> = ({
     const handleRoleChange = (memberId: string, newRole: string) => {
         const originalMember = members.find(m => m.id === memberId);
         if (originalMember?.role === newRole) {
-            // User reverted to original, remove from pending
             const { [memberId]: _, ...rest } = pendingChanges;
             setPendingChanges(rest);
         } else {
@@ -144,9 +130,8 @@ const TeamSettings: React.FC<TeamSettingsProps> = ({
         try {
             const success = await TeamService.updateMemberRole(memberId, newRole);
             if (success) {
-                // Update local state and clear pending
                 setMembers(prev => prev.map(m =>
-                    m.id === memberId ? { ...m, role: newRole as any } : m
+                    m.id === memberId ? { ...m, role: newRole } : m
                 ));
                 const { [memberId]: _, ...rest } = pendingChanges;
                 setPendingChanges(rest);
@@ -157,21 +142,11 @@ const TeamSettings: React.FC<TeamSettingsProps> = ({
     };
 
     const handleRemoveMember = async (memberId: string) => {
-        if (!confirm('Are you sure you want to remove this team member?')) return;
+        if (!confirm('Are you sure you want to remove this team member from all businesses?')) return;
 
         const success = await TeamService.removeMember(memberId);
         if (success) {
             setMembers(prev => prev.filter(m => m.id !== memberId));
-            onMembershipChange?.();
-        }
-    };
-
-    const handleLeaveTeam = async () => {
-        if (!user?.id) return;
-        if (!confirm('Are you sure you want to leave this team? You will lose access to this business.')) return;
-
-        const success = await TeamService.leaveBusiness(business.id, user.id);
-        if (success) {
             onMembershipChange?.();
         }
     };
@@ -181,6 +156,18 @@ const TeamSettings: React.FC<TeamSettingsProps> = ({
         await navigator.clipboard.writeText(link);
         setCopiedToken(token);
         setTimeout(() => setCopiedToken(null), 2000);
+    };
+
+    const toggleMemberExpanded = (userId: string) => {
+        setExpandedMembers(prev => {
+            const next = new Set(prev);
+            if (next.has(userId)) {
+                next.delete(userId);
+            } else {
+                next.add(userId);
+            }
+            return next;
+        });
     };
 
     const getRoleIcon = (role: string) => {
@@ -223,8 +210,10 @@ const TeamSettings: React.FC<TeamSettingsProps> = ({
                         <Users className="text-brand" size={20} />
                     </div>
                     <div>
-                        <h2 className={`text-xl font-bold ${styles.textMain}`}>Team Members</h2>
-                        <p className={`text-sm ${styles.textSub}`}>{members.length} member{members.length !== 1 ? 's' : ''}</p>
+                        <h2 className={`text-xl font-bold ${styles.textMain}`}>Your Team</h2>
+                        <p className={`text-sm ${styles.textSub}`}>
+                            {members.length} member{members.length !== 1 ? 's' : ''} across {allBusinesses.length} business{allBusinesses.length !== 1 ? 'es' : ''}
+                        </p>
                     </div>
                 </div>
 
@@ -237,103 +226,128 @@ const TeamSettings: React.FC<TeamSettingsProps> = ({
             </div>
 
             {/* Members List */}
-            <NeuCard className="p-0 overflow-hidden">
-                {members.map((member, index) => (
-                    <div
-                        key={member.id}
-                        className={`flex items-center justify-between p-4 ${index !== members.length - 1 ? 'border-b border-gray-200/10' : ''
-                            }`}
-                    >
-                        <div className="flex items-center gap-4">
-                            {/* Avatar */}
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${member.userId === user?.id ? 'bg-brand' : 'bg-gray-500'
-                                }`}>
-                                {member.userName?.charAt(0).toUpperCase() || '?'}
-                            </div>
+            {members.length === 0 ? (
+                <NeuCard className="p-8 text-center">
+                    <Users className={`w-12 h-12 mx-auto mb-3 ${styles.textSub}`} />
+                    <p className={`font-medium ${styles.textMain}`}>No team members yet</p>
+                    <p className={`text-sm ${styles.textSub} mt-1`}>
+                        Invite people to collaborate on your businesses
+                    </p>
+                </NeuCard>
+            ) : (
+                <NeuCard className="p-0 overflow-hidden">
+                    {members.map((member, index) => {
+                        const isExpanded = expandedMembers.has(member.userId);
+                        const hasMultipleBusinesses = member.businesses.length > 1 || member.accessScope === 'all';
 
-                            {/* Info */}
-                            <div>
-                                <div className="flex items-center gap-2">
-                                    <span className={`font-bold ${styles.textMain}`}>
-                                        {member.userName}
-                                        {member.userId === user?.id && (
-                                            <span className={`ml-2 text-xs ${styles.textSub}`}>(You)</span>
-                                        )}
-                                    </span>
-                                </div>
-                                {/* Email - show if available */}
-                                {member.userEmail && (
-                                    <p className={`text-xs ${styles.textSub} mt-0.5`}>
-                                        {member.userEmail}
-                                    </p>
-                                )}
-                                <div className="flex items-center gap-2 mt-1">
-                                    {/* Static role badge for everyone */}
-                                    <span className={`text-xs px-2 py-0.5 rounded-full border flex items-center gap-1 ${getRoleBadgeClass(member.role)}`}>
-                                        {getRoleIcon(member.role)}
-                                        {member.role}
-                                    </span>
-                                    {/* Join date */}
-                                    <span className={`text-xs ${styles.textSub}`}>
-                                        Joined {new Date(member.createdAt).toLocaleDateString()}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
+                        return (
+                            <div
+                                key={member.id}
+                                className={`${index !== members.length - 1 ? 'border-b border-gray-200/10' : ''}`}
+                            >
+                                <div className="flex items-center justify-between p-4">
+                                    <div className="flex items-center gap-4">
+                                        {/* Avatar */}
+                                        <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold bg-gray-500">
+                                            {member.userName?.charAt(0).toUpperCase() || '?'}
+                                        </div>
 
-                        {/* Actions */}
-                        <div className="flex items-center gap-2">
-                            {/* Role dropdown + Save + Remove button (for admins editing non-owners) */}
-                            {canManageTeam && member.role !== 'owner' && member.userId !== user?.id && (
-                                <>
-                                    <NeuDropdown
-                                        value={pendingChanges[member.id] ?? member.role}
-                                        onChange={(val) => handleRoleChange(member.id, val)}
-                                        options={[
-                                            { label: 'Admin', value: 'admin' },
-                                            { label: 'Editor', value: 'editor' },
-                                            { label: 'Viewer', value: 'viewer' },
-                                        ]}
-                                        className="min-w-[110px]"
-                                    />
-                                    {/* Inline Save button - only shows when this member has pending change */}
-                                    {pendingChanges[member.id] && (
-                                        <NeuButton
-                                            variant="primary"
-                                            onClick={() => handleSaveRole(member.id)}
-                                            disabled={savingMemberId === member.id}
-                                            className="!px-3 !py-2"
-                                        >
-                                            {savingMemberId === member.id ? (
-                                                <Loader2 size={16} className="animate-spin" />
-                                            ) : (
-                                                <Save size={16} />
+                                        {/* Info */}
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <span className={`font-bold ${styles.textMain}`}>
+                                                    {member.userName}
+                                                </span>
+                                            </div>
+                                            {member.userEmail && (
+                                                <p className={`text-xs ${styles.textSub} mt-0.5`}>
+                                                    {member.userEmail}
+                                                </p>
                                             )}
-                                        </NeuButton>
-                                    )}
-                                    <button
-                                        onClick={() => handleRemoveMember(member.id)}
-                                        className={`p-2 rounded-lg transition-colors text-red-400 hover:bg-red-500/10`}
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
-                                </>
-                            )}
+                                            <div className="flex items-center gap-2 mt-1">
+                                                {/* Role badge */}
+                                                <span className={`text-xs px-2 py-0.5 rounded-full border flex items-center gap-1 ${getRoleBadgeClass(member.role)}`}>
+                                                    {getRoleIcon(member.role)}
+                                                    {member.role}
+                                                </span>
 
-                            {/* Leave button for non-owners */}
-                            {member.userId === user?.id && member.role !== 'owner' && (
-                                <button
-                                    onClick={handleLeaveTeam}
-                                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors text-sm"
-                                >
-                                    <LogOut size={14} />
-                                    Leave
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                ))}
-            </NeuCard>
+                                                {/* Access scope badge */}
+                                                {member.accessScope === 'all' ? (
+                                                    <span className="text-xs px-2 py-0.5 rounded-full bg-brand/10 text-brand border border-brand/20 flex items-center gap-1">
+                                                        <Globe size={10} />
+                                                        All Businesses
+                                                    </span>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => hasMultipleBusinesses && toggleMemberExpanded(member.userId)}
+                                                        className={`text-xs px-2 py-0.5 rounded-full border flex items-center gap-1 ${isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'} ${styles.textSub} ${hasMultipleBusinesses ? 'cursor-pointer hover:bg-brand/10 hover:text-brand hover:border-brand/20' : ''}`}
+                                                    >
+                                                        {hasMultipleBusinesses && (isExpanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />)}
+                                                        {member.businesses.length} business{member.businesses.length !== 1 ? 'es' : ''}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Actions */}
+                                    <div className="flex items-center gap-2">
+                                        {/* Role dropdown */}
+                                        <NeuDropdown
+                                            value={pendingChanges[member.id] ?? member.role}
+                                            onChange={(val) => handleRoleChange(member.id, val)}
+                                            options={[
+                                                { label: 'Admin', value: 'admin' },
+                                                { label: 'Editor', value: 'editor' },
+                                                { label: 'Viewer', value: 'viewer' },
+                                            ]}
+                                            className="min-w-[110px]"
+                                        />
+
+                                        {/* Inline Save button */}
+                                        {pendingChanges[member.id] && (
+                                            <NeuButton
+                                                variant="primary"
+                                                className="!px-2 !py-1"
+                                                onClick={() => handleSaveRole(member.id)}
+                                                disabled={savingMemberId === member.id}
+                                            >
+                                                {savingMemberId === member.id ? (
+                                                    <Loader2 size={14} className="animate-spin" />
+                                                ) : (
+                                                    <Save size={14} />
+                                                )}
+                                            </NeuButton>
+                                        )}
+
+                                        {/* Remove button */}
+                                        <button
+                                            onClick={() => handleRemoveMember(member.id)}
+                                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Expanded business list */}
+                                {isExpanded && member.accessScope !== 'all' && (
+                                    <div className={`px-4 pb-4 pl-18 ${isDark ? 'bg-white/5' : 'bg-black/5'}`}>
+                                        <div className="pl-14 space-y-1">
+                                            {member.businesses.map(biz => (
+                                                <div key={biz.id} className={`text-xs ${styles.textSub} flex items-center gap-2`}>
+                                                    <div className="w-1.5 h-1.5 rounded-full bg-brand" />
+                                                    {biz.name}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </NeuCard>
+            )}
 
             {/* Pending Invitations */}
             {canManageTeam && invitations.length > 0 && (
@@ -362,8 +376,18 @@ const TeamSettings: React.FC<TeamSettingsProps> = ({
                                             <span className={`text-xs px-2 py-0.5 rounded-full border ${getRoleBadgeClass(invite.role)}`}>
                                                 {invite.role}
                                             </span>
+                                            {invite.accessScope === 'all' ? (
+                                                <span className="text-xs px-2 py-0.5 rounded-full bg-brand/10 text-brand border border-brand/20 flex items-center gap-1">
+                                                    <Globe size={10} />
+                                                    All Businesses
+                                                </span>
+                                            ) : invite.businessName && (
+                                                <span className={`text-xs ${styles.textSub}`}>
+                                                    {invite.businessName}
+                                                </span>
+                                            )}
                                             <span className={`text-xs ${styles.textSub}`}>
-                                                Expires {new Date(invite.expiresAt).toLocaleDateString()}
+                                                • Expires {new Date(invite.expiresAt).toLocaleDateString()}
                                             </span>
                                         </div>
                                     </div>
@@ -389,8 +413,8 @@ const TeamSettings: React.FC<TeamSettingsProps> = ({
             <InviteMemberModal
                 isOpen={showInviteModal}
                 onClose={() => setShowInviteModal(false)}
-                businessId={business.id}
-                businessName={business.name}
+                businessId={allBusinesses[0]?.id || ''}
+                businessName={allBusinesses[0]?.name || 'Your Business'}
                 allBusinesses={allBusinesses.length > 1 ? allBusinesses : undefined}
                 onInviteSent={loadTeamData}
             />

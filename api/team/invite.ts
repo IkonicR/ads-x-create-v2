@@ -15,6 +15,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
+import { randomUUID } from 'crypto';
 import React from 'react';
 import { render } from '@react-email/render';
 import { InviteEmail } from '../../emails/InviteEmail';
@@ -82,7 +83,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
-        // Create invitation(s) - let DB generate token UUIDs
+        // Generate a shared token for all invitations in this batch
+        const sharedToken = randomUUID();
+
+        // Create invitation(s) - all share the same token
         let insertData: any[] = [];
 
         if (accessScope === 'all') {
@@ -91,15 +95,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 business_id: businessIds[0],
                 email: email?.toLowerCase() || null,
                 role,
+                token: sharedToken,
                 invited_by: user.id,
                 expires_at: expiresAt.toISOString()
             }];
         } else {
-            // Separate invitation for each business
+            // Separate invitation for each business, same token so they're accepted together
             insertData = businessIds.map((bizId: string) => ({
                 business_id: bizId,
                 email: email?.toLowerCase() || null,
                 role,
+                token: sharedToken,
                 invited_by: user.id,
                 expires_at: expiresAt.toISOString()
             }));
@@ -115,14 +121,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             return res.status(500).json({ error: 'Failed to create invitation' });
         }
 
-        // Get the primary invite token (DB generated UUID)
-        const inviteToken = invitations?.[0]?.token;
-        if (!inviteToken) {
-            return res.status(500).json({ error: 'Failed to get invite token' });
-        }
-
         const baseUrl = 'https://app.xcreate.io';
-        const inviteLink = `${baseUrl}/invite/${inviteToken}`;
+        const inviteLink = `${baseUrl}/invite/${sharedToken}`;
 
         // Send email if requested
         if (sendEmail && email && process.env.RESEND_API_KEY) {
@@ -148,7 +148,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 }
 
                 await resend.emails.send({
-                    from: 'Ads x Create <team@xcreate.io>',
+                    from: 'Ads x Create <team@mail.xcreate.io>',
+                    replyTo: 'team@xcreate.io',
                     to: email,
                     subject,
                     html: emailHtml
@@ -163,7 +164,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             success: true,
             invitation: {
                 id: invitations?.[0]?.id,
-                token: inviteToken,
+                token: sharedToken,
                 expiresAt: expiresAt.toISOString(),
                 businessCount: businessIds.length,
                 accessScope
