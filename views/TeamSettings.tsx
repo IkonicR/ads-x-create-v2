@@ -239,11 +239,21 @@ const TeamSettings: React.FC<TeamSettingsProps> = ({
                                         )}
                                     </span>
                                 </div>
+                                {/* Email - show if available */}
+                                {member.userEmail && (
+                                    <p className={`text-xs ${styles.textSub} mt-0.5`}>
+                                        {member.userEmail}
+                                    </p>
+                                )}
                                 <div className="flex items-center gap-2 mt-1">
                                     {/* Static role badge for everyone */}
                                     <span className={`text-xs px-2 py-0.5 rounded-full border flex items-center gap-1 ${getRoleBadgeClass(member.role)}`}>
                                         {getRoleIcon(member.role)}
                                         {member.role}
+                                    </span>
+                                    {/* Join date */}
+                                    <span className={`text-xs ${styles.textSub}`}>
+                                        Joined {new Date(member.createdAt).toLocaleDateString()}
                                     </span>
                                 </div>
                             </div>
