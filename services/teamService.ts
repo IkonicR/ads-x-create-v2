@@ -47,11 +47,11 @@ export const TeamService = {
 
         if (!members || members.length === 0) return [];
 
-        // Get profile data for all members
+        // Get profile data for all members (including email)
         const userIds = members.map(m => m.user_id);
         const { data: profiles } = await supabase
             .from('profiles')
-            .select('id, full_name, avatar_url')
+            .select('id, full_name, email, avatar_url')
             .in('id', userIds);
 
         const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
@@ -66,6 +66,7 @@ export const TeamService = {
                 invitedBy: row.invited_by,
                 createdAt: row.created_at,
                 userName: profile?.full_name || 'Unknown',
+                userEmail: profile?.email,
                 avatarUrl: profile?.avatar_url
             };
         });
