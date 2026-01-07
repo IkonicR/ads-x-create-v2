@@ -174,10 +174,10 @@ export const StorageService = {
       console.error('[Storage] Error fetching owned businesses:', ownedError);
     }
 
-    // 2. Get businesses where user is a member (via business_members)
+    // 2. Get memberships with access_scope info
     const { data: membershipData, error: memberError } = await supabase
       .from('business_members')
-      .select('business_id')
+      .select('business_id, access_scope')
       .eq('user_id', userId);
 
     if (memberError) {
@@ -185,27 +185,62 @@ export const StorageService = {
     }
 
     let memberBusinesses: any[] = [];
-    if (membershipData && membershipData.length > 0) {
-      const memberBusinessIds = membershipData.map(m => m.business_id);
-      const { data: businesses, error: bizError } = await supabase
-        .from('businesses')
-        .select('*')
-        .in('id', memberBusinessIds);
+    let allAccessBusinesses: any[] = [];
 
-      if (bizError) {
-        console.error('[Storage] Error fetching member businesses:', bizError);
-      } else {
-        memberBusinesses = businesses || [];
+    if (membershipData && membershipData.length > 0) {
+      // Check for 'all' access scope - grants access to ALL owner's businesses
+      const hasAllAccess = membershipData.some(m => m.access_scope === 'all');
+
+      if (hasAllAccess) {
+        // Find the business where they have 'all' access
+        const allAccessMembership = membershipData.find(m => m.access_scope === 'all');
+        if (allAccessMembership) {
+          // Get the owner of that business
+          const { data: ownerBusiness } = await supabase
+            .from('business_members')
+            .select('user_id')
+            .eq('business_id', allAccessMembership.business_id)
+            .eq('role', 'owner')
+            .single();
+
+          if (ownerBusiness?.user_id) {
+            // Get ALL businesses owned by that owner
+            const { data: ownerBusinesses } = await supabase
+              .from('businesses')
+              .select('*')
+              .eq('owner_id', ownerBusiness.user_id);
+
+            allAccessBusinesses = ownerBusinesses || [];
+          }
+        }
+      }
+
+      // Get regular (single-access) member businesses
+      const singleAccessIds = membershipData
+        .filter(m => m.access_scope !== 'all')
+        .map(m => m.business_id);
+
+      if (singleAccessIds.length > 0) {
+        const { data: businesses, error: bizError } = await supabase
+          .from('businesses')
+          .select('*')
+          .in('id', singleAccessIds);
+
+        if (bizError) {
+          console.error('[Storage] Error fetching member businesses:', bizError);
+        } else {
+          memberBusinesses = businesses || [];
+        }
       }
     }
 
     // 3. Merge and deduplicate by ID
-    const allBusinesses = [...(ownedBusinesses || []), ...memberBusinesses];
+    const allBusinesses = [...(ownedBusinesses || []), ...memberBusinesses, ...allAccessBusinesses];
     const uniqueBusinesses = allBusinesses.filter(
       (biz, index, self) => index === self.findIndex(b => b.id === biz.id)
     );
 
-    console.log(`[Storage] Found ${uniqueBusinesses.length} businesses (${ownedBusinesses?.length || 0} owned, ${memberBusinesses.length} as member)`);
+    console.log(`[Storage] Found ${uniqueBusinesses.length} businesses (${ownedBusinesses?.length || 0} owned, ${memberBusinesses.length} as member, ${allAccessBusinesses.length} via all-access)`);
 
     if (!uniqueBusinesses || uniqueBusinesses.length === 0) {
       return [];

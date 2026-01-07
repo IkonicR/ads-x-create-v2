@@ -1,6 +1,7 @@
 /**
  * Team Accept Endpoint
  * Accepts an invitation and adds user to business_members
+ * Handles both single and 'all' access scope
  * 
  * POST /api/team/accept
  * Body: { inviteToken }
@@ -32,82 +33,123 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(401).json({ error: 'Invalid token' });
     }
 
-    const { inviteToken } = req.body;
+    const { inviteToken, accessScope: requestedScope } = req.body;
     if (!inviteToken) {
         return res.status(400).json({ error: 'inviteToken is required' });
     }
 
     try {
-        // Get invitation
-        const { data: invitation, error: inviteError } = await supabase
+        // Get all invitations with this token (for multi-business) or email match
+        const { data: invitations, error: inviteError } = await supabase
             .from('invitations')
             .select('*, businesses(name)')
-            .eq('token', inviteToken)
-            .single();
+            .eq('token', inviteToken);
 
-        if (inviteError || !invitation) {
+        if (inviteError || !invitations || invitations.length === 0) {
             return res.status(404).json({ error: 'Invitation not found' });
         }
 
-        if (invitation.accepted_at) {
+        const primaryInvite = invitations[0];
+
+        if (primaryInvite.accepted_at) {
             return res.status(400).json({ error: 'Invitation already accepted' });
         }
 
-        if (new Date(invitation.expires_at) < new Date()) {
+        if (new Date(primaryInvite.expires_at) < new Date()) {
             return res.status(400).json({ error: 'Invitation expired' });
         }
 
-        // Check if already member
-        const { data: existing } = await supabase
-            .from('business_members')
-            .select('id')
-            .eq('business_id', invitation.business_id)
-            .eq('user_id', user.id)
-            .single();
+        // Determine access scope
+        // If requestedScope is 'all', create membership with access_scope='all'
+        // Otherwise, create per-business memberships
+        const accessScope = requestedScope || 'single';
+        const businessIds = invitations.map(inv => inv.business_id);
+        const addedBusinesses: string[] = [];
 
-        if (existing) {
-            return res.status(400).json({ error: 'Already a member' });
+        if (accessScope === 'all') {
+            // Check if already member of the primary business
+            const { data: existing } = await supabase
+                .from('business_members')
+                .select('id')
+                .eq('business_id', primaryInvite.business_id)
+                .eq('user_id', user.id)
+                .single();
+
+            if (existing) {
+                return res.status(400).json({ error: 'Already a member' });
+            }
+
+            // Add ONE membership with access_scope = 'all'
+            const { error: memberError } = await supabase
+                .from('business_members')
+                .insert({
+                    business_id: primaryInvite.business_id,
+                    user_id: user.id,
+                    role: primaryInvite.role,
+                    invited_by: primaryInvite.invited_by,
+                    access_scope: 'all'
+                });
+
+            if (memberError) {
+                console.error('[Team] Member add error:', memberError);
+                return res.status(500).json({ error: 'Failed to add member' });
+            }
+            addedBusinesses.push(primaryInvite.business_id);
+        } else {
+            // Add membership for each business
+            for (const inv of invitations) {
+                // Check if already member
+                const { data: existing } = await supabase
+                    .from('business_members')
+                    .select('id')
+                    .eq('business_id', inv.business_id)
+                    .eq('user_id', user.id)
+                    .single();
+
+                if (!existing) {
+                    const { error: memberError } = await supabase
+                        .from('business_members')
+                        .insert({
+                            business_id: inv.business_id,
+                            user_id: user.id,
+                            role: inv.role,
+                            invited_by: inv.invited_by,
+                            access_scope: 'single'
+                        });
+
+                    if (!memberError) {
+                        addedBusinesses.push(inv.business_id);
+                    }
+                }
+            }
         }
 
-        // Add to members
-        const { error: memberError } = await supabase
-            .from('business_members')
-            .insert({
-                business_id: invitation.business_id,
-                user_id: user.id,
-                role: invitation.role,
-                invited_by: invitation.invited_by
-            });
-
-        if (memberError) {
-            console.error('[Team] Member add error:', memberError);
-            return res.status(500).json({ error: 'Failed to add member' });
-        }
-
-        // Mark accepted
+        // Mark all invitations as accepted
         await supabase
             .from('invitations')
             .update({ accepted_at: new Date().toISOString() })
-            .eq('id', invitation.id);
+            .in('id', invitations.map(inv => inv.id));
 
         // Notify the inviter
-        if (invitation.invited_by) {
+        if (primaryInvite.invited_by) {
             await supabase.from('notifications').insert({
-                user_id: invitation.invited_by,
+                user_id: primaryInvite.invited_by,
                 type: 'success',
                 title: 'Invite Accepted!',
-                message: `${user.email} has joined ${invitation.businesses?.name || 'your business'} as ${invitation.role}`,
+                message: `${user.email} has joined ${primaryInvite.businesses?.name || 'your business'} as ${primaryInvite.role}`,
                 link: `/profile?tab=team`
             });
         }
 
-        console.log('[Team] Invite accepted, user added to:', invitation.business_id);
+        console.log('[Team] Invite accepted, user added to businesses:', addedBusinesses);
 
         return res.json({
             success: true,
-            businessId: invitation.business_id,
-            businessName: invitation.businesses?.name,
-            role: invitation.role
+            businessId: primaryInvite.business_id,
+            businessName: primaryInvite.businesses?.name,
+            role: primaryInvite.role,
+            accessScope,
+            businessCount: addedBusinesses.length
         });
 
     } catch (error) {

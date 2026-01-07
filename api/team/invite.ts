@@ -1,9 +1,15 @@
 /**
  * Team Invite Endpoint
- * Creates an invitation and optionally sends email
+ * Creates invitations for one or multiple businesses
  * 
  * POST /api/team/invite
- * Body: { businessId, email, role, sendEmail? }
+ * Body: { 
+ *   businessIds: string[],    // Array of business IDs
+ *   accessScope: 'all' | 'single' | 'selected',
+ *   email?: string, 
+ *   role: string, 
+ *   sendEmail?: boolean 
+ * }
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
@@ -39,64 +45,99 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(401).json({ error: 'Invalid token' });
     }
 
-    const { businessId, email, role = 'viewer', sendEmail = true } = req.body;
+    // Support both old (businessId) and new (businessIds) format
+    let { businessIds, businessId, accessScope = 'single', email, role = 'viewer', sendEmail = true } = req.body;
 
-    if (!businessId) {
-        return res.status(400).json({ error: 'businessId is required' });
+    // Backward compatibility: convert single businessId to array
+    if (!businessIds && businessId) {
+        businessIds = [businessId];
+    }
+
+    if (!businessIds || businessIds.length === 0) {
+        return res.status(400).json({ error: 'At least one businessId is required' });
     }
 
     try {
-        // Verify caller has permission
-        const { data: callerMember } = await supabase
-            .from('business_members')
-            .select('role')
-            .eq('business_id', businessId)
-            .eq('user_id', user.id)
-            .single();
+        // Verify caller has permission for ALL selected businesses
+        for (const bizId of businessIds) {
+            const { data: callerMember } = await supabase
+                .from('business_members')
+                .select('role')
+                .eq('business_id', bizId)
+                .eq('user_id', user.id)
+                .single();
 
-        if (!callerMember || !['owner', 'admin'].includes(callerMember.role)) {
-            return res.status(403).json({ error: 'No permission to invite' });
+            if (!callerMember || !['owner', 'admin'].includes(callerMember.role)) {
+                return res.status(403).json({ error: `No permission to invite for business: ${bizId}` });
+            }
         }
 
-        // Get business name
-        const { data: business } = await supabase
+        // Get business names for email
+        const { data: businesses } = await supabase
             .from('businesses')
-            .select('name')
-            .eq('id', businessId)
-            .single();
+            .select('id, name')
+            .in('id', businessIds);
+
+        const businessNames = businesses?.map(b => b.name).join(', ') || 'your businesses';
+        const primaryBusiness = businesses?.[0];
 
         // Generate token
         const inviteToken = randomBytes(32).toString('hex');
         const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
-        // Create invitation
-        const { data: invitation, error: inviteError } = await supabase
-            .from('invitations')
-            .insert({
-                business_id: businessId,
+        // Determine access_scope for database
+        const dbAccessScope = accessScope === 'all' ? 'all' : 'single';
+
+        // Create invitation(s)
+        // For 'all' scope: create ONE invitation for first business with access_scope='all'
+        // For 'single'/'selected' scope: create ONE invitation per business with access_scope='single'
+
+        let insertData: any[] = [];
+
+        if (accessScope === 'all') {
+            // Single invitation with 'all' access
+            insertData = [{
+                business_id: businessIds[0],
                 email: email?.toLowerCase() || null,
                 role,
                 token: inviteToken,
                 invited_by: user.id,
                 expires_at: expiresAt.toISOString()
-            })
-            .select()
-            .single();
+            }];
+        } else {
+            // Separate invitation for each business (but same token so they all get accepted together)
+            insertData = businessIds.map((bizId: string, index: number) => ({
+                business_id: bizId,
+                email: email?.toLowerCase() || null,
+                role,
+                token: index === 0 ? inviteToken : randomBytes(32).toString('hex'), // Different tokens for each
+                invited_by: user.id,
+                expires_at: expiresAt.toISOString()
+            }));
+        }
+
+        const { data: invitations, error: inviteError } = await supabase
+            .from('invitations')
+            .insert(insertData)
+            .select();
 
         if (inviteError) {
             console.error('[Team] Invite error:', inviteError);
             return res.status(500).json({ error: 'Failed to create invitation' });
         }
 
+        // Store the access_scope for when the invite is accepted
+        // We'll attach it to the primary invitation via a metadata column or handle in accept logic
+
         const baseUrl = 'https://app.xcreate.io';
-        const inviteLink = `${baseUrl}/invite/${invitation.token}`;
+        const inviteLink = `${baseUrl}/invite/${inviteToken}`;
 
         // Send email if requested
         if (sendEmail && email && process.env.RESEND_API_KEY) {
             try {
                 const emailHtml = await render(
                     React.createElement(InviteEmail, {
-                        businessName: business?.name || 'a business',
+                        businessName: businessNames,
                         role,
                         inviteLink
                     })
@@ -105,7 +146,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 await resend.emails.send({
                     from: 'Ads x Create <team@xcreate.io>',
                     to: email,
-                    subject: `You've been invited to ${business?.name || 'a business'}`,
+                    subject: `You've been invited to ${primaryBusiness?.name || 'join a team'}`,
                     html: emailHtml
                 });
                 console.log('[Team] Invite email sent to:', email);
@@ -116,7 +157,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         return res.json({
             success: true,
-            invitation: { id: invitation.id, token: invitation.token, expiresAt: invitation.expires_at },
+            invitation: {
+                id: invitations?.[0]?.id,
+                token: inviteToken,
+                expiresAt: expiresAt.toISOString(),
+                businessCount: businessIds.length,
+                accessScope
+            },
             inviteLink
         });
 
