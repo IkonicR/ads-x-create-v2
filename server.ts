@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import crypto from 'crypto';
 import { gateway } from '@ai-sdk/gateway';
 import { generateText } from 'ai';
 import { GoogleGenAI } from '@google/genai';
@@ -2393,7 +2394,7 @@ async function verifyBusinessRole(
     return { allowed: allowedRoles.includes(data.role), role: data.role };
 }
 
-// 1. Create Invitation
+// 1. Create Invitation (Multi-business support)
 app.post('/api/team/invite', async (req, res) => {
     console.log('[Team] Invite Request Received');
 
@@ -2412,44 +2413,76 @@ app.post('/api/team/invite', async (req, res) => {
         return;
     }
 
-    const { businessId, email, role, sendEmail = false } = req.body;
+    // Support both old (businessId) and new (businessIds) format
+    let { businessIds, businessId, accessScope = 'single', email, role, sendEmail = false } = req.body;
 
-    if (!businessId || !role) {
-        res.status(400).json({ error: 'businessId and role are required' });
+    // Backward compatibility: convert single businessId to array
+    if (!businessIds && businessId) {
+        businessIds = [businessId];
+    }
+
+    if (!businessIds || businessIds.length === 0) {
+        res.status(400).json({ error: 'At least one businessId is required' });
         return;
     }
 
-    if (!['admin', 'editor', 'viewer'].includes(role)) {
-        res.status(400).json({ error: 'Invalid role' });
+    if (!role || !['admin', 'editor', 'viewer'].includes(role)) {
+        res.status(400).json({ error: 'Valid role is required (admin, editor, viewer)' });
         return;
     }
 
-    // Verify permission
-    const { allowed } = await verifyBusinessRole(supabase, businessId, user.id, ['owner', 'admin']);
-    if (!allowed) {
-        res.status(403).json({ error: 'You do not have permission to invite members' });
-        return;
+    // Verify permission for ALL selected businesses
+    for (const bizId of businessIds) {
+        const { allowed } = await verifyBusinessRole(supabase, bizId, user.id, ['owner', 'admin']);
+        if (!allowed) {
+            res.status(403).json({ error: `No permission to invite for business: ${bizId}` });
+            return;
+        }
     }
 
     try {
-        // Get business name
-        const { data: business } = await supabase
+        // Get business names for email
+        const { data: businesses } = await supabase
             .from('businesses')
-            .select('name')
-            .eq('id', businessId)
-            .single();
+            .select('id, name')
+            .in('id', businessIds);
 
-        // Create invitation
-        const { data: invitation, error: inviteError } = await supabase
-            .from('invitations')
-            .insert({
-                business_id: businessId,
-                email: email || null,
+        const businessNames = businesses?.map(b => b.name).join(', ') || 'your businesses';
+        const primaryBusiness = businesses?.[0];
+
+        // Generate token
+        const inviteToken = crypto.randomBytes(32).toString('hex');
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+        // Create invitation(s)
+        let insertData: any[] = [];
+
+        if (accessScope === 'all') {
+            // Single invitation with 'all' access
+            insertData = [{
+                business_id: businessIds[0],
+                email: email?.toLowerCase() || null,
                 role,
-                invited_by: user.id
-            })
-            .select()
-            .single();
+                token: inviteToken,
+                invited_by: user.id,
+                expires_at: expiresAt.toISOString()
+            }];
+        } else {
+            // Separate invitation for each business
+            insertData = businessIds.map((bizId: string, index: number) => ({
+                business_id: bizId,
+                email: email?.toLowerCase() || null,
+                role,
+                token: index === 0 ? inviteToken : crypto.randomBytes(32).toString('hex'),
+                invited_by: user.id,
+                expires_at: expiresAt.toISOString()
+            }));
+        }
+
+        const { data: invitations, error: inviteError } = await supabase
+            .from('invitations')
+            .insert(insertData)
+            .select();
 
         if (inviteError) {
             console.error('[Team] Invite error:', inviteError);
@@ -2460,14 +2493,14 @@ app.post('/api/team/invite', async (req, res) => {
         const baseUrl = process.env.NODE_ENV === 'production'
             ? 'https://app.xcreate.io'
             : 'http://localhost:5173';
-        const inviteLink = `${baseUrl}/invite/${invitation.token}`;
+        const inviteLink = `${baseUrl}/invite/${inviteToken}`;
 
         // Send email if requested
         if (sendEmail && email && process.env.RESEND_API_KEY) {
             try {
                 const emailHtml = await render(
                     React.createElement(InviteEmail, {
-                        businessName: business?.name || 'a business',
+                        businessName: businessNames,
                         role,
                         inviteLink
                     })
@@ -2476,7 +2509,7 @@ app.post('/api/team/invite', async (req, res) => {
                 await resend.emails.send({
                     from: 'Ads x Create <team@xcreate.io>',
                     to: email,
-                    subject: `You've been invited to ${business?.name || 'a business'}`,
+                    subject: `You've been invited to ${primaryBusiness?.name || 'join a team'}`,
                     html: emailHtml
                 });
                 console.log('[Team] Invite email sent to:', email);
@@ -2487,7 +2520,13 @@ app.post('/api/team/invite', async (req, res) => {
 
         res.json({
             success: true,
-            invitation: { id: invitation.id, token: invitation.token, expiresAt: invitation.expires_at },
+            invitation: {
+                id: invitations?.[0]?.id,
+                token: inviteToken,
+                expiresAt: expiresAt.toISOString(),
+                businessCount: businessIds.length,
+                accessScope
+            },
             inviteLink
         });
 
