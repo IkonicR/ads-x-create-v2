@@ -669,18 +669,28 @@ export const StorageService = {
       // BACKWARD COMPATIBILITY:
       // If reference_images_json exists, use it.
       // If not, fall back to reference_images (text[]) and map to structure.
-      let refs = row.reference_images_json;
+      let rawRefs = row.reference_images_json;
+      let refs: any[] = [];
 
-      if (!refs || refs.length === 0) {
-        if (row.reference_images && row.reference_images.length > 0) {
-          refs = row.reference_images.map((url: string) => ({
-            id: url, // Use URL as ID for legacy
-            url: url,
-            isActive: true
-          }));
-        } else {
-          refs = [];
-        }
+      if (Array.isArray(rawRefs) && rawRefs.length > 0) {
+        // Normalize: Ensure everything is an object with url and isActive
+        refs = rawRefs.map((r: any) => {
+          if (typeof r === 'string') {
+            return { id: r, url: r, isActive: true };
+          }
+          return {
+            id: r.id || r.url,
+            url: r.url || r,
+            isActive: r.isActive !== false
+          };
+        });
+      } else if (Array.isArray(row.reference_images) && row.reference_images.length > 0) {
+        // Fallback to legacy text[] column
+        refs = row.reference_images.map((url: string) => ({
+          id: url,
+          url: url,
+          isActive: true
+        }));
       }
 
       return {

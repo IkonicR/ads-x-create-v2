@@ -3,13 +3,29 @@ import { waitUntil } from '@vercel/functions';
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
 
-// Helper: Convert URL to Base64
-async function urlToBase64(url: string): Promise<string | null> {
+// Helper: Resolve relative artifact URLs to absolute URLs
+function resolveUrl(url: string, host: string): string {
+    if (url.startsWith('/artifacts/')) {
+        // In local dev, it's localhost:5173. In prod, it's the Vercel domain.
+        // We use the host from headers if available.
+        const protocol = host.includes('localhost') ? 'http' : 'https';
+        return `${protocol}://${host}${url}`;
+    }
+    return url;
+}
+
+// Helper: Convert URL to Base64 with MimeType detection
+async function urlToBase64WithMime(url: string, host: string): Promise<{ base64: string, mimeType: string } | null> {
     try {
-        const response = await fetch(url);
+        const resolvedUrl = resolveUrl(url, host);
+        const response = await fetch(resolvedUrl);
+        if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
+
         const arrayBuffer = await response.arrayBuffer();
         const base64 = Buffer.from(arrayBuffer).toString('base64');
-        return base64;
+        const mimeType = response.headers.get('content-type') || 'image/png';
+
+        return { base64, mimeType };
     } catch (e) {
         console.error("[Generate] Failed to fetch image:", e);
         return null;
@@ -152,25 +168,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         console.log('[Generate] Job created:', job.id);
 
-        // Run generation synchronously (waitUntil doesn't work with @vercel/node runtime)
-        // The client polls for status, so this is compatible
-        await runGeneration(
-            job.id,
-            businessId,
-            prompt,
-            aspectRatio,
-            styleId,
-            subjectId,
-            modelTier,
-            subjectContext,
-            stylePreset,
-            strategy,
-            mappedBusiness,
-            supabase
+        // Return job ID immediately (FIRE AND FORGET)
+        res.json({ jobId: job.id, status: 'processing' });
+
+        // Run generation in the background using waitUntil
+        waitUntil(
+            runGeneration(
+                job.id,
+                businessId,
+                prompt,
+                aspectRatio,
+                styleId,
+                subjectId,
+                modelTier,
+                subjectContext,
+                stylePreset,
+                strategy,
+                mappedBusiness,
+                supabase,
+                req.headers.host || 'localhost:5173'
+            )
         );
 
-        // Return completed status
-        return res.json({ jobId: job.id, status: 'completed' });
+        return;
 
     } catch (error: any) {
         console.error('[Generate] Error:', error);
@@ -191,18 +211,39 @@ async function runGeneration(
     stylePreset: any,
     strategy: any,
     mappedBusiness: any,
-    supabase: any
+    supabase: any,
+    host: string
 ) {
     console.log('[Generate] 🚀 runGeneration STARTED for job:', jobId);
 
     try {
-        // Build prompt
+        // 1. Fetch PromptFactory logic
+        const { PromptFactory } = await import('../../services/prompts.js');
+
+        // Build robust prompt using PromptFactory (Matches server.ts)
         let visualPrompt = prompt;
         if (subjectContext) {
             visualPrompt += `\nPRIMARY SUBJECT: ${subjectContext.type}. ${subjectContext.preserveLikeness ? 'Maintain strict visual likeness.' : ''}`;
         }
 
-        const finalPrompt = visualPrompt;
+        const finalPrompt = await PromptFactory.createImagePrompt(
+            mappedBusiness as any,
+            visualPrompt,
+            mappedBusiness.voice.keywords || [],
+            (stylePreset?.avoid || []).join(', '),
+            undefined,
+            undefined,
+            subjectContext?.promotion,
+            subjectContext?.benefits,
+            subjectContext?.targetAudience || mappedBusiness.adPreferences?.targetAudience,
+            subjectContext?.preserveLikeness || false,
+            stylePreset,
+            subjectContext?.price,
+            subjectContext?.name,
+            strategy,
+            subjectContext?.isFree,
+            subjectContext?.termsAndConditions
+        );
 
         console.log('[Generate] ✅ Step 1: Prompt built, length:', finalPrompt.length);
 
@@ -245,36 +286,45 @@ async function runGeneration(
 
         // Add subject image
         if (subjectContext?.imageUrl) {
-            const subjectImage = await urlToBase64(subjectContext.imageUrl);
-            if (subjectImage) {
-                contentParts.push({ type: 'image', image: `data:image/png;base64,${subjectImage}` });
+            const subjectResult = await urlToBase64WithMime(subjectContext.imageUrl, host);
+            if (subjectResult) {
+                contentParts.push({ type: 'image', image: `data:${subjectResult.mimeType};base64,${subjectResult.base64}` });
                 contentParts.push({ type: 'text', text: ' [REFERENCE IMAGE 1: MAIN PRODUCT] ' });
             }
         }
 
         // Add logo
         if (mappedBusiness.logoUrl) {
-            const logoImage = await urlToBase64(mappedBusiness.logoUrl);
-            if (logoImage) {
-                contentParts.push({ type: 'image', image: `data:image/png;base64,${logoImage}` });
-                contentParts.push({ type: 'text', text: ' [REFERENCE IMAGE: LOGO] ' });
+            const logoResult = await urlToBase64WithMime(mappedBusiness.logoUrl, host);
+            if (logoResult) {
+                contentParts.push({ type: 'image', image: `data:${logoResult.mimeType};base64,${logoResult.base64}` });
+                contentParts.push({ type: 'text', text: ' [REFERENCE IMAGE: BUSINESS LOGO — PRESERVE ALL TEXT/LETTERING EXACTLY] ' });
             }
         }
 
-        // Add style reference
+        // Add style references (All active ones)
         if (stylePreset?.referenceImages?.length > 0) {
-            const activeRef = stylePreset.referenceImages.find((r: any) => r.isActive !== false);
-            if (activeRef) {
-                const styleImage = await urlToBase64(activeRef.url || activeRef);
-                if (styleImage) {
-                    contentParts.push({ type: 'image', image: `data:image/png;base64,${styleImage}` });
-                    contentParts.push({ type: 'text', text: ' [REFERENCE IMAGE: STYLE] ' });
+            const activeRefs = stylePreset.referenceImages.filter((r: any) => {
+                if (typeof r === 'object' && r !== null && 'isActive' in r) {
+                    return r.isActive === true;
+                }
+                return typeof r === 'string';
+            });
+
+            let refCount = 0;
+            for (const ref of activeRefs) {
+                const url = typeof ref === 'string' ? ref : (ref.url || ref);
+                const styleResult = await urlToBase64WithMime(url, host);
+                if (styleResult) {
+                    refCount++;
+                    contentParts.push({ type: 'image', image: `data:${styleResult.mimeType};base64,${styleResult.base64}` });
+                    contentParts.push({ type: 'text', text: ` [REFERENCE IMAGE ${refCount}: STYLE] ` });
                 }
             }
         } else if (stylePreset?.imageUrl) {
-            const styleImage = await urlToBase64(stylePreset.imageUrl);
-            if (styleImage) {
-                contentParts.push({ type: 'image', image: `data:image/png;base64,${styleImage}` });
+            const styleResult = await urlToBase64WithMime(stylePreset.imageUrl, host);
+            if (styleResult) {
+                contentParts.push({ type: 'image', image: `data:${styleResult.mimeType};base64,${styleResult.base64}` });
                 contentParts.push({ type: 'text', text: ' [REFERENCE IMAGE: STYLE] ' });
             }
         }
