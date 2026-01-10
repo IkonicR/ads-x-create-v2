@@ -183,50 +183,40 @@ export async function POST(req: Request) {
 
         console.log('[Generate] Job created:', job.id);
 
-        // Run generation in the background using waitUntil
-        // We use the modern waitUntil from @vercel/functions
-        console.log('[Generate] Calling waitUntil for background task...');
-        try {
-            waitUntil(
-                runGeneration(
-                    job.id,
-                    businessId,
-                    prompt,
-                    aspectRatio,
-                    styleId,
-                    subjectId,
-                    modelTier,
-                    subjectContext,
-                    stylePreset,
-                    strategy,
-                    mappedBusiness,
-                    supabase,
-                    host,
-                    systemPrompts
-                ).catch((bgError) => {
-                    console.error('[Generate] Background task CRASHED:', bgError);
-                    // Ensure job is marked as failed even if background crashes
-                    supabase.from('generation_jobs').update({
-                        status: 'failed',
-                        error_message: `BG Crash: ${bgError.message || 'Unknown'}`
-                    }).eq('id', job.id);
-                })
-            );
-            console.log('[Generate] waitUntil called successfully');
-        } catch (waitUntilError: any) {
-            console.error('[Generate] waitUntil ITSELF failed:', waitUntilError);
-            await supabase.from('generation_jobs').update({
-                status: 'failed',
-                error_message: `waitUntil failed: ${waitUntilError.message}`
-            }).eq('id', job.id);
-        }
+        // FIRE-AND-FORGET PATTERN - waitUntil is broken for Vite/React projects
+        // We start the promise but DO NOT await it - return immediately
+        // The function will continue running (hopefully) until Vercel's maxDuration
+        console.log('[Generate] Starting generation (fire-and-forget, no waitUntil)...');
 
+        // Start the promise - DO NOT AWAIT
+        runGeneration(
+            job.id,
+            businessId,
+            prompt,
+            aspectRatio,
+            styleId,
+            subjectId,
+            modelTier,
+            subjectContext,
+            stylePreset,
+            strategy,
+            mappedBusiness,
+            supabase,
+            host,
+            systemPrompts
+        ).catch((genError: any) => {
+            console.error('[Generate] Generation FAILED:', genError);
+        });
 
-        // Return job ID immediately (FIRE AND FORGET)
+        console.log('[Generate] Returning job ID immediately...');
+
+        // Return job ID immediately
         return new Response(JSON.stringify({ jobId: job.id, status: 'processing' }), {
             status: 200,
             headers: { 'Content-Type': 'application/json' }
         });
+
+
 
     } catch (error: any) {
         console.error('[Generate] Critical Handler Error:', error);
