@@ -122,11 +122,9 @@ const Generator: React.FC<GeneratorProps> = ({
 
           // Resume polling for each job
           jobs.forEach(job => {
-            console.log(`[Generator] Resuming polling for job: ${job.id}`);
             const pollInterval = setInterval(async () => {
               try {
                 const status = await pollJobStatus(job.id);
-                console.log(`[Generator] Heartbeat [Job:${job.id}]:`, status.status);
 
                 if (status.status === 'completed' && status.asset) {
                   console.log(`[Generator] ✅ Job ${job.id} COMPLETED.`);
@@ -396,15 +394,11 @@ const Generator: React.FC<GeneratorProps> = ({
       }
 
       // 4. If still processing, start polling (fallback for async mode)
-      console.log(`[Generator] Starting polling loop for job: ${jobId}`);
-
       const pollInterval = setInterval(async () => {
         try {
           const status = await pollJobStatus(jobId);
-          console.log(`[Generator] Heartbeat [Job:${jobId}]:`, status.status);
 
           if (status.status === 'completed' && status.asset) {
-            console.log(`[Generator] ✅ Job ${jobId} COMPLETED.`);
             clearInterval(pollInterval);
             pollingIntervalsRef.current.delete(jobId);
 

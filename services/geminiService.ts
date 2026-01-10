@@ -148,14 +148,12 @@ export const pollJobStatus = async (jobId: string): Promise<{
   asset?: any;
   errorMessage?: string;
 }> => {
-  console.log(`[GeminiService] Polling status for job: ${jobId}...`);
   const response = await fetch(`/api/generate-image/status/${jobId}`);
   if (!response.ok) {
-    console.error(`[GeminiService] \u274C Status poll FAILED for job: ${jobId}`);
+    console.error(`[GeminiService] Status poll failed for job: ${jobId}`);
     throw new Error('Failed to fetch job status');
   }
   const data = await response.json();
-  console.log(`[GeminiService] Heartbeat [Job:${jobId}]:`, data.status, data.status === 'completed' ? '\u2705' : '\u23F3');
   return data;
 };
 
