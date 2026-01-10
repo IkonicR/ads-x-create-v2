@@ -185,24 +185,42 @@ export async function POST(req: Request) {
 
         // Run generation in the background using waitUntil
         // We use the modern waitUntil from @vercel/functions
-        waitUntil(
-            runGeneration(
-                job.id,
-                businessId,
-                prompt,
-                aspectRatio,
-                styleId,
-                subjectId,
-                modelTier,
-                subjectContext,
-                stylePreset,
-                strategy,
-                mappedBusiness,
-                supabase,
-                host,
-                systemPrompts
-            )
-        );
+        console.log('[Generate] Calling waitUntil for background task...');
+        try {
+            waitUntil(
+                runGeneration(
+                    job.id,
+                    businessId,
+                    prompt,
+                    aspectRatio,
+                    styleId,
+                    subjectId,
+                    modelTier,
+                    subjectContext,
+                    stylePreset,
+                    strategy,
+                    mappedBusiness,
+                    supabase,
+                    host,
+                    systemPrompts
+                ).catch((bgError) => {
+                    console.error('[Generate] Background task CRASHED:', bgError);
+                    // Ensure job is marked as failed even if background crashes
+                    supabase.from('generation_jobs').update({
+                        status: 'failed',
+                        error_message: `BG Crash: ${bgError.message || 'Unknown'}`
+                    }).eq('id', job.id);
+                })
+            );
+            console.log('[Generate] waitUntil called successfully');
+        } catch (waitUntilError: any) {
+            console.error('[Generate] waitUntil ITSELF failed:', waitUntilError);
+            await supabase.from('generation_jobs').update({
+                status: 'failed',
+                error_message: `waitUntil failed: ${waitUntilError.message}`
+            }).eq('id', job.id);
+        }
+
 
         // Return job ID immediately (FIRE AND FORGET)
         return new Response(JSON.stringify({ jobId: job.id, status: 'processing' }), {
@@ -266,13 +284,26 @@ async function runGeneration(
     host: string,
     systemPrompts: any
 ) {
-    console.log(`[Trace] [Job:${jobId}] 📌 Background Task STARTED for business: ${businessId}`);
+    // IMMEDIATE STARTUP MARKER - This runs FIRST to prove the function started
+    console.log(`[Trace] [Job:${jobId}] 🚀 Background Task LAUNCHED`);
+
+    // Write startup marker to DB immediately - if this doesn't appear, waitUntil is failing
+    const supabaseForStartup = createClient(
+        process.env.VITE_SUPABASE_URL!,
+        process.env.SUPABASE_SECRET_KEY!
+    );
+    await supabaseForStartup.from('generation_jobs').update({
+        error_message: '🚀 Background worker STARTED'
+    }).eq('id', jobId);
+
+    console.log(`[Trace] [Job:${jobId}] 📌 Startup marker written to DB`);
     const traceId = jobId.substring(0, 4);
 
     try {
         // Milestone 1: Building Prompt
         console.log(`[Trace] [${traceId}] Building visual prompt...`);
         await supabase.from('generation_jobs').update({ error_message: 'Building prompt...' }).eq('id', jobId);
+
 
         // Build robust prompt using PromptFactory
         let visualPrompt = prompt;
