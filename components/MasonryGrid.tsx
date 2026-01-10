@@ -61,7 +61,7 @@ const MasonryGrid = <T,>({
       {columnWrapper.map((colItems, colIndex) => (
         <div key={colIndex} className="flex flex-col flex-1" style={{ gap: `${gap}px` }}>
           {colItems.map((item, itemIndex) => (
-            <React.Fragment key={itemIndex}>
+            <React.Fragment key={(item as any).id || (item as any).jobId || itemIndex}>
               {renderItem(item)}
             </React.Fragment>
           ))}

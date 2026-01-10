@@ -329,6 +329,7 @@ export interface ExtendedAsset extends Asset {
   localStatus?: AssetStatus;
   jobId?: string; // Server job ID for polling
   animationPhase?: 'warmup' | 'cruise' | 'deceleration' | 'revealed'; // Tracks animation progress
+  progress?: number; // <--- NEW: Persist display progress (0-100)
 }
 
 export interface StyleReferenceImage {

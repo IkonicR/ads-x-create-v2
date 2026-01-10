@@ -47,12 +47,18 @@ const Generator: React.FC<GeneratorProps> = ({
   const [firstJobProgress, setFirstJobProgress] = useState(0);
 
   // Update first job progress when called from GeneratorCard
+  // Update progress for each job in the pendingAssets list (for parent tracking and durability)
   const handleProgressUpdate = useCallback((assetId: string, progress: number) => {
-    // Only track the first pending asset's progress
+    // 1. Sync for the generate button (first job only)
     if (pendingAssets[0]?.id === assetId) {
       setFirstJobProgress(progress);
     }
-  }, [pendingAssets]);
+
+    // 2. Persist in the main state for tab-switch durability (Debounce if performance issues)
+    setPendingAssets(prev => prev.map(a =>
+      a.id === assetId ? { ...a, progress } : a
+    ));
+  }, [pendingAssets, setPendingAssets]);
 
   // Load more assets via context pagination
   const handleLoadMore = useCallback(async () => {
@@ -541,6 +547,7 @@ const Generator: React.FC<GeneratorProps> = ({
                       animationPhase={(asset as ExtendedAsset).animationPhase || 'warmup'}
                       onPhaseChange={(phase) => handlePhaseChange(asset.id, phase)}
                       onProgressUpdate={(progress) => handleProgressUpdate(asset.id, progress)}
+                      initialProgress={(asset as ExtendedAsset).progress || 0}
                     />
                   </motion.div>
                 );

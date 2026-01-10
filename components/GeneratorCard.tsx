@@ -13,6 +13,7 @@ interface GeneratorCardProps {
   onPhaseChange?: (phase: 'warmup' | 'cruise' | 'deceleration' | 'revealed') => void;
   // Progress callback for parent tracking
   onProgressUpdate?: (progress: number) => void;
+  initialProgress?: number; // <--- NEW: Persistent progress for tab-switching
 }
 
 const getPaddingBottom = (ratio: string = '1:1') => {
@@ -28,13 +29,14 @@ const GeneratorCardComponent: React.FC<GeneratorCardProps> = ({
   resultContent,
   animationPhase = 'warmup',
   onPhaseChange,
-  onProgressUpdate
+  onProgressUpdate,
+  initialProgress = 0
 }) => {
   const { theme, styles } = useThemeStyles();
   const isDark = theme === 'dark';
 
   // State Management
-  const [displayProgress, setDisplayProgress] = useState(0);
+  const [displayProgress, setDisplayProgress] = useState(initialProgress);
   const [isImageLoaded, setIsImageLoaded] = useState(false);
 
   // Shader State (Reactive to 60fps loop)
@@ -52,7 +54,7 @@ const GeneratorCardComponent: React.FC<GeneratorCardProps> = ({
   // Refs for logic persistence
   const statusRef = useRef(status);
   const isImageLoadedRef = useRef(false);
-  const progressRef = useRef(0);
+  const progressRef = useRef(initialProgress);
   const phaseRef = useRef(animationPhase);
   const revealProgressRef = useRef(0); // 0 -> 1 internal cross-fade
 
