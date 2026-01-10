@@ -183,38 +183,57 @@ export async function POST(req: Request) {
 
         console.log('[Generate] Job created:', job.id);
 
-        // FIRE-AND-FORGET PATTERN - waitUntil is broken for Vite/React projects
-        // We start the promise but DO NOT await it - return immediately
-        // The function will continue running (hopefully) until Vercel's maxDuration
-        console.log('[Generate] Starting generation (fire-and-forget, no waitUntil)...');
+        // SYNCHRONOUS EXECUTION - All async patterns (waitUntil, fire-and-forget) are broken
+        // on Vercel for Vite/React. We MUST await the generation before returning.
+        // Client will wait ~20-60s but generation WILL complete.
+        console.log('[Generate] Running generation SYNCHRONOUSLY...');
 
-        // Start the promise - DO NOT AWAIT
-        runGeneration(
-            job.id,
-            businessId,
-            prompt,
-            aspectRatio,
-            styleId,
-            subjectId,
-            modelTier,
-            subjectContext,
-            stylePreset,
-            strategy,
-            mappedBusiness,
-            supabase,
-            host,
-            systemPrompts
-        ).catch((genError: any) => {
+        try {
+            await runGeneration(
+                job.id,
+                businessId,
+                prompt,
+                aspectRatio,
+                styleId,
+                subjectId,
+                modelTier,
+                subjectContext,
+                stylePreset,
+                strategy,
+                mappedBusiness,
+                supabase,
+                host,
+                systemPrompts
+            );
+            console.log('[Generate] Generation completed successfully');
+
+            // Get the completed job status
+            const { data: completedJob } = await supabase
+                .from('generation_jobs')
+                .select('status, result_asset_id')
+                .eq('id', job.id)
+                .single();
+
+            return new Response(JSON.stringify({
+                jobId: job.id,
+                status: completedJob?.status || 'completed',
+                resultAssetId: completedJob?.result_asset_id
+            }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        } catch (genError: any) {
             console.error('[Generate] Generation FAILED:', genError);
-        });
+            return new Response(JSON.stringify({
+                jobId: job.id,
+                status: 'failed',
+                error: genError.message
+            }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
 
-        console.log('[Generate] Returning job ID immediately...');
-
-        // Return job ID immediately
-        return new Response(JSON.stringify({ jobId: job.id, status: 'processing' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' }
-        });
 
 
 

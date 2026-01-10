@@ -351,8 +351,8 @@ const Generator: React.FC<GeneratorProps> = ({
     setPendingAssets(prev => [newPendingAsset, ...prev]);
 
     try {
-      // 1. Call API - returns job ID
-      const { jobId } = await generateImage(
+      // 1. Call API - now runs SYNCHRONOUSLY and may return completed status
+      const response = await generateImage(
         prompt,
         business,
         stylePreset,
@@ -365,13 +365,39 @@ const Generator: React.FC<GeneratorProps> = ({
         strategy
       );
 
-      // 2. Store jobId for polling (but DON'T change the id - that's the React key!)
+      const { jobId, status: responseStatus, resultAssetId, error } = response as any;
+
+      // 2. Store jobId (but DON'T change the id - that's the React key!)
       setPendingAssets(prev => prev.map(a =>
         a.id === stableId ? { ...a, jobId: jobId } : a
       ));
 
-      // 3. Poll for completion
+      // 3. Handle synchronous completion (new pattern - server awaits generation)
+      if (responseStatus === 'completed' && resultAssetId) {
+        console.log(`[Generator] ✅ Job ${jobId} completed SYNCHRONOUSLY`);
+        // Fetch the asset
+        const statusData = await pollJobStatus(jobId);
+        if (statusData.asset) {
+          setPendingAssets(prev => prev.map(a =>
+            a.id === stableId
+              ? { ...a, localStatus: 'complete', content: statusData.asset.content }
+              : a
+          ));
+        }
+        return; // No polling needed
+      }
+
+      if (responseStatus === 'failed') {
+        console.error(`[Generator] ❌ Job ${jobId} failed SYNCHRONOUSLY:`, error);
+        setPendingAssets(prev => prev.filter(a => a.id !== stableId));
+        refundCredits(cost);
+        alert(error || 'Generation failed. Credits have been refunded.');
+        return; // No polling needed
+      }
+
+      // 4. If still processing, start polling (fallback for async mode)
       console.log(`[Generator] Starting polling loop for job: ${jobId}`);
+
       const pollInterval = setInterval(async () => {
         try {
           const status = await pollJobStatus(jobId);
