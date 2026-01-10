@@ -152,12 +152,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         console.log('[Generate] Job created:', job.id);
 
-        // Return job ID immediately
-        res.json({ jobId: job.id, status: 'processing' });
-
-        // 3. Run Generation in Background (after response sent)
-        // Use waitUntil to keep the function running until generation completes
-        waitUntil(runGeneration(
+        // Run generation synchronously (waitUntil doesn't work with @vercel/node runtime)
+        // The client polls for status, so this is compatible
+        await runGeneration(
             job.id,
             businessId,
             prompt,
@@ -170,7 +167,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             strategy,
             mappedBusiness,
             supabase
-        ));
+        );
+
+        // Return completed status
+        return res.json({ jobId: job.id, status: 'completed' });
 
     } catch (error: any) {
         console.error('[Generate] Error:', error);
