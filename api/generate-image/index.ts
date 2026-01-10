@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { waitUntil } from '@vercel/functions';
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
 
@@ -155,7 +156,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.json({ jobId: job.id, status: 'processing' });
 
         // 3. Run Generation in Background (after response sent)
-        runGeneration(
+        // Use waitUntil to keep the function running until generation completes
+        waitUntil(runGeneration(
             job.id,
             businessId,
             prompt,
@@ -168,7 +170,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             strategy,
             mappedBusiness,
             supabase
-        );
+        ));
 
     } catch (error: any) {
         console.error('[Generate] Error:', error);
