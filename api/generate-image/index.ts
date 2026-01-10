@@ -1,7 +1,7 @@
 import { waitUntil } from '@vercel/functions';
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
-import { PromptFactory } from '../../services/prompts';
+// NOTE: PromptFactory removed - cannot import from browser-only services in serverless
 
 // Config: Use Edge Runtime for better waitUntil support and performance
 // Note: If using standard Node.js runtime, waitUntil is still supported in newer versions
@@ -314,31 +314,40 @@ async function runGeneration(
         await supabase.from('generation_jobs').update({ error_message: 'Building prompt...' }).eq('id', jobId);
 
 
-        // Build robust prompt using PromptFactory
+        // Build robust prompt INLINE (PromptFactory can't be used in serverless)
         let visualPrompt = prompt;
         if (subjectContext) {
             visualPrompt += `\nPRIMARY SUBJECT: ${subjectContext.type}. ${subjectContext.preserveLikeness ? 'Maintain strict visual likeness.' : ''}`;
         }
 
-        const finalPrompt = await PromptFactory.createImagePrompt(
-            mappedBusiness as any,
-            visualPrompt,
-            mappedBusiness.voice.keywords || [],
-            (stylePreset?.avoid || []).join(', '),
-            undefined,
-            undefined,
-            subjectContext?.promotion,
-            subjectContext?.benefits,
-            subjectContext?.targetAudience || mappedBusiness.adPreferences?.targetAudience,
-            subjectContext?.preserveLikeness || false,
-            stylePreset,
-            subjectContext?.price,
-            subjectContext?.name,
-            strategy,
-            subjectContext?.isFree,
-            subjectContext?.termsAndConditions,
-            systemPrompts // Injected
-        );
+        // Build comprehensive prompt inline
+        const businessName = mappedBusiness.name || 'Business';
+        const brandColors = mappedBusiness.colors?.palette?.join(', ') || '';
+        const voiceKeywords = (mappedBusiness.voice?.keywords || []).join(', ');
+        const styleInstructions = stylePreset?.config ? JSON.stringify(stylePreset.config) : '';
+
+        const finalPrompt = `
+=== BRAND IDENTITY ===
+Business: ${businessName}
+${brandColors ? `Brand Colors: ${brandColors}` : ''}
+${voiceKeywords ? `Voice Keywords: ${voiceKeywords}` : ''}
+
+=== VISUAL REQUEST ===
+${visualPrompt}
+
+${subjectContext?.promotion ? `PROMOTION: ${subjectContext.promotion}` : ''}
+${subjectContext?.price ? `PRICE: ${subjectContext.price}` : ''}
+${subjectContext?.benefits ? `BENEFITS: ${subjectContext.benefits}` : ''}
+${subjectContext?.targetAudience ? `TARGET AUDIENCE: ${subjectContext.targetAudience}` : ''}
+
+${styleInstructions ? `=== STYLE INSTRUCTIONS ===\n${styleInstructions}` : ''}
+
+=== TECHNICAL REQUIREMENTS ===
+- Generate a professional advertising image
+- Include any text as DIEGETIC (part of the scene) where applicable
+- Aspect ratio: ${aspectRatio}
+        `.trim();
+
 
         // Milestone 2: Fetching Refs
         console.log(`[Trace] [${traceId}] Prompt Built. Fetching reference images...`);
