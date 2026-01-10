@@ -72,6 +72,7 @@ app.post('/api/generate-text', async (req, res) => {
 
 // import generateImageHandler from './api/generate-image';
 import exportPrintHandler from './api/export-print';
+import businessOrderHandler from './api/business-order';
 import testVercelAiHandler from './api/test-vercel-ai';
 
 // Share API Handlers (Printer Share Link)
@@ -115,6 +116,19 @@ app.post('/api/generate-image', async (req, res) => {
     }
 });
 */
+
+// --- API ROUTE: Business Order (Persist drag-drop reordering) ---
+app.put('/api/business-order', async (req, res) => {
+    console.log('[Server] Business Order Update Request');
+    try {
+        await businessOrderHandler(req as any, res as any);
+    } catch (error: any) {
+        console.error('[Server] Business Order Error:', error);
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to update order', details: error.message });
+        }
+    }
+});
 
 // --- API ROUTE: Print Export (Adapter for Vercel Function) ---
 app.post('/api/export-print', async (req, res) => {

@@ -43,6 +43,17 @@ const Generator: React.FC<GeneratorProps> = ({
   const { assets, addAsset, deleteAsset, loadAssets, hasMore, loading } = useAssets();
   const { creditsRemaining, deductCredits: deductSubscriptionCredits, refundCredits } = useSubscription();
 
+  // Progress tracking for first pending job (piped to generate button)
+  const [firstJobProgress, setFirstJobProgress] = useState(0);
+
+  // Update first job progress when called from GeneratorCard
+  const handleProgressUpdate = useCallback((assetId: string, progress: number) => {
+    // Only track the first pending asset's progress
+    if (pendingAssets[0]?.id === assetId) {
+      setFirstJobProgress(progress);
+    }
+  }, [pendingAssets]);
+
   // Load more assets via context pagination
   const handleLoadMore = useCallback(async () => {
     if (!business.id || loading || !hasMore) return;
@@ -264,6 +275,9 @@ const Generator: React.FC<GeneratorProps> = ({
     subjectId: string,
     modelTier: 'flash' | 'pro' | 'ultra'
   ) => {
+    // RESET PROGRESS SIGNAL IMMEDIATELY
+    setFirstJobProgress(0);
+
     // Pricing Logic - Uses config/pricing.ts as source of truth
     // flash/pro = 2K = 1 credit, ultra = 4K = 2 credits
     const cost = modelTier === 'ultra' ? CREDITS.perImage4K : CREDITS.perImage2K;
@@ -526,6 +540,7 @@ const Generator: React.FC<GeneratorProps> = ({
                       resultContent={(asset as ExtendedAsset).content}
                       animationPhase={(asset as ExtendedAsset).animationPhase || 'warmup'}
                       onPhaseChange={(phase) => handlePhaseChange(asset.id, phase)}
+                      onProgressUpdate={(progress) => handleProgressUpdate(asset.id, progress)}
                     />
                   </motion.div>
                 );
@@ -569,6 +584,7 @@ const Generator: React.FC<GeneratorProps> = ({
         styles={aestheticStyles}
         subjects={subjects}
         activeCount={pendingAssets.length}
+        firstJobProgress={firstJobProgress}
         restoreState={restoreState}
         strategy={strategy}
         onStrategyChange={setStrategy}

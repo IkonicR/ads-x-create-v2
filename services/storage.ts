@@ -174,15 +174,21 @@ export const StorageService = {
       console.error('[Storage] Error fetching owned businesses:', ownedError);
     }
 
-    // 2. Get memberships with access_scope info
+    // 2. Get memberships with access_scope AND sort_order
     const { data: membershipData, error: memberError } = await supabase
       .from('business_members')
-      .select('business_id, access_scope')
+      .select('business_id, access_scope, sort_order')
       .eq('user_id', userId);
 
     if (memberError) {
       console.error('[Storage] Error fetching memberships:', memberError);
     }
+
+    // Build a map of business_id -> sort_order for sorting later
+    const sortOrderMap = new Map<string, number>();
+    membershipData?.forEach(m => {
+      sortOrderMap.set(m.business_id, m.sort_order ?? 0);
+    });
 
     let memberBusinesses: any[] = [];
     let allAccessBusinesses: any[] = [];
@@ -246,14 +252,25 @@ export const StorageService = {
       return [];
     }
 
-    return uniqueBusinesses.map(mapBusinessFromDB);
+    // 4. Map and sort by sort_order
+    const mappedBusinesses = uniqueBusinesses.map(mapBusinessFromDB);
+    mappedBusinesses.sort((a, b) => {
+      const orderA = sortOrderMap.get(a.id) ?? 999;
+      const orderB = sortOrderMap.get(b.id) ?? 999;
+      return orderA - orderB;
+    });
+
+    return mappedBusinesses;
   },
 
   saveBusiness: async (business: Business, userId?: string): Promise<void> => {
     const payload = mapBusinessToDB(business);
 
+    // Track if this is a new business (no owner_id yet)
+    const isNewBusiness = !payload.owner_id && userId;
+
     // SECURITY: Ensure owner_id is set on creation
-    if (!payload.owner_id && userId) {
+    if (isNewBusiness) {
       payload.owner_id = userId;
     }
 
@@ -271,6 +288,24 @@ export const StorageService = {
     if (!data || data.length === 0) {
       console.error('[Storage] Save failed silently: 0 rows updated. Likely permission/RLS issue.');
       throw new Error('You do not have permission to update this business profile.');
+    }
+
+    // CRITICAL: For new businesses, create the business_members owner record
+    // This is required for subscription lookups via get_business_owner_subscription RPC
+    if (isNewBusiness && userId) {
+      const { error: memberError } = await supabase
+        .from('business_members')
+        .upsert({
+          business_id: business.id,
+          user_id: userId,
+          role: 'owner',
+          access_scope: 'single'
+        }, { onConflict: 'business_id,user_id' });
+
+      if (memberError) {
+        console.error('[Storage] Warning: Failed to create owner membership:', memberError);
+        // Don't throw - business was created, membership is a secondary concern
+      }
     }
   },
 

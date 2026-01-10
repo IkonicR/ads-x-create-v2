@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence, animate } from 'framer-motion';
 import { GalaxyHeading } from '../../components/GalaxyHeading';
 import { useTheme } from '../../context/ThemeContext';
 import {
@@ -11,9 +11,46 @@ import {
     NeuListBuilder,
     NeuDropdown,
     BRAND_COLOR,
-    useThemeStyles
+    useThemeStyles,
+    useNeuAnimations
 } from '../../components/NeuComponents';
-import { Zap, Check, X } from 'lucide-react';
+import { Zap, Check, X, RefreshCw } from 'lucide-react';
+import { Dithering, LiquidMetal } from '@paper-design/shaders-react';
+
+// --- LAZY LOADING INFRASTRUCTURE ---
+// Only mount shaders when they scroll into view to avoid WebGL context overload
+const useInView = (options: IntersectionObserverInit = {}) => {
+    const ref = useRef<HTMLDivElement>(null);
+    const [isInView, setIsInView] = useState(false);
+
+    useEffect(() => {
+        const observer = new IntersectionObserver(([entry]) => {
+            if (entry.isIntersecting) {
+                setIsInView(true);
+                observer.disconnect(); // Once visible, stay mounted
+            }
+        }, { threshold: 0.1, rootMargin: '100px', ...options });
+
+        if (ref.current) observer.observe(ref.current);
+        return () => observer.disconnect();
+    }, []);
+
+    return { ref, isInView };
+};
+
+// Wrapper for shader sections - shows placeholder until in view
+const LazyShader: React.FC<{ children: React.ReactNode; height?: string }> = ({ children, height = 'h-40' }) => {
+    const { ref, isInView } = useInView();
+    return (
+        <div ref={ref}>
+            {isInView ? children : (
+                <div className={`${height} animate-pulse bg-gradient-to-br from-gray-800/20 to-gray-900/30 rounded-2xl flex items-center justify-center`}>
+                    <span className="text-xs opacity-30 font-mono">Loading shader...</span>
+                </div>
+            )}
+        </div>
+    );
+};
 
 const ColorSwatch = ({ color, name, hex }: { color: string, name: string, hex?: string }) => (
     <div className="flex flex-col gap-2">
@@ -157,6 +194,467 @@ interface DesignLabTabProps {
     styles: ReturnType<typeof useThemeStyles>['styles'];
 }
 
+// --- ISOLATED BUTTON COMPONENTS (Performance Optimization) ---
+const MoltenCoreButton = React.memo(() => {
+    const [state, setState] = React.useState<'idle' | 'generating' | 'complete' | 'deflating'>('idle');
+    const [progress, setProgress] = React.useState(0);
+    const [isHovered, setIsHovered] = React.useState(false);
+    const [hoverFactor, setHoverFactor] = React.useState(0);
+
+    // Physics-based lerp for buttery smooth hover
+    React.useEffect(() => {
+        let raf: number;
+        const update = () => {
+            setHoverFactor(prev => {
+                const target = isHovered && state === 'idle' ? 1 : 0;
+                const diff = target - prev;
+                if (Math.abs(diff) < 0.001) return target;
+                return prev + (diff * 0.1); // Smooth ease
+            });
+            raf = requestAnimationFrame(update);
+        };
+        raf = requestAnimationFrame(update);
+        return () => cancelAnimationFrame(raf);
+    }, [isHovered, state]);
+
+    const getProgressColor = (p: number) => {
+        if (p < 25) return '#94ca42';
+        if (p < 50) return '#fbbf24';
+        if (p < 75) return '#f97316';
+        return '#ff6b35';
+    };
+
+    const handleClick = () => {
+        if (state !== 'idle') return;
+        setState('generating');
+
+        // Phase 1: Animate UP (0 → 100)
+        animate(0, 100, {
+            duration: 3.5,
+            ease: "easeInOut",
+            onUpdate: (latest) => setProgress(latest),
+            onComplete: () => {
+                setState('complete');
+                // Brief pause at peak, then deflate
+                setTimeout(() => {
+                    setState('deflating');
+                    // Phase 2: Animate DOWN (100 → 0)
+                    animate(100, 0, {
+                        duration: 1.2,
+                        ease: "easeOut",
+                        onUpdate: (latest) => setProgress(latest),
+                        onComplete: () => setState('idle')
+                    });
+                }, 1000);
+            }
+        });
+    };
+
+    // Shader uses mixed progress + smooth hover
+    // NOTE: Math.floor removed for infinite smoothness
+    const shader = {
+        tint: getProgressColor(progress),
+        rep: 4 + (progress / 20) + (hoverFactor * 2),     // Seamless float scailing
+        dist: 0.3 + (progress * 0.007) + (hoverFactor * 0.2),
+        spd: 0.8 + (progress * 0.02) + (hoverFactor * 1.5), // Big speed boost on hover
+        scl: 1.2 + (progress * 0.01) + (hoverFactor * 0.15)
+    };
+
+    return (
+        <div className="flex flex-col items-center justify-center space-y-4">
+            <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">2. Molten Core</h4>
+            {/* Outer Neumorphic Container */}
+            <div className="w-20 h-20 rounded-full shadow-neu-out-light dark:shadow-neu-out-dark p-1.5 bg-neu-light dark:bg-neu-dark flex items-center justify-center transition-all duration-300"
+                style={{
+                    boxShadow: (state === 'generating' || state === 'deflating') // Glows during both active phases
+                        ? `0 0 30px ${getProgressColor(progress)}50, 4px 4px 8px rgba(0,0,0,0.3), -4px -4px 8px rgba(255,255,255,0.05)`
+                        : state === 'complete'
+                            ? '0 0 40px #94ca4260, 4px 4px 8px rgba(0,0,0,0.3), -4px -4px 8px rgba(255,255,255,0.05)'
+                            : undefined
+                }}
+            >
+                {/* Inner Button with press animation + hover detection */}
+                <motion.button
+                    onClick={handleClick}
+                    onMouseEnter={() => setIsHovered(true)}
+                    onMouseLeave={() => setIsHovered(false)}
+                    initial={{ scale: 1 }}
+                    whileHover={{ scale: 0.97 }}
+                    whileTap={{ scale: 0.92 }}
+                    animate={{
+                        rotate: state === 'generating' ? 360 : 0,
+                        scale: state === 'complete' ? [1, 1.05, 1] : 1
+                    }}
+                    transition={{
+                        rotate: { duration: 4, ease: 'linear', repeat: state === 'generating' ? Infinity : 0 },
+                        scale: { duration: 0.15, ease: 'easeOut' }
+                    }}
+                    className="w-full h-full rounded-full shadow-neu-in-light dark:shadow-neu-in-dark overflow-hidden relative cursor-pointer"
+                >
+                    <LiquidMetal
+                        colorBack="#0a0a0a"
+                        colorTint={shader.tint}
+                        shape="circle"
+                        repetition={shader.rep}
+                        softness={0.5}
+                        distortion={shader.dist}
+                        speed={shader.spd}
+                        scale={shader.scl}
+                        style={{
+                            width: '100%',
+                            height: '100%'
+                        }}
+                    />
+                    <AnimatePresence>
+                        {state === 'idle' && (
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.5 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.5 }}
+                                className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                            >
+                                <Zap className="w-8 h-8 text-white/90 drop-shadow-md" />
+                            </motion.div>
+                        )}
+                        {(state === 'generating' || state === 'deflating') && (
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                            >
+                                <span className="font-mono text-xs font-bold text-white/90">{Math.round(progress)}%</span>
+                            </motion.div>
+                        )}
+                        {state === 'complete' && (
+                            <motion.div
+                                initial={{ opacity: 0, scale: 1.5 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0 }}
+                                className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                            >
+                                <Check className="w-10 h-10 text-white drop-shadow-lg" strokeWidth={3} />
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                </motion.button>
+            </div>
+        </div>
+    );
+});
+
+const PlasmaConduitButton = React.memo(() => {
+    const [state, setState] = React.useState<'idle' | 'generating' | 'complete' | 'deflating'>('idle');
+    const [progress, setProgress] = React.useState(0);
+    const [isHovered, setIsHovered] = React.useState(false);
+    const [hoverFactor, setHoverFactor] = React.useState(0);
+
+    // Physics-based lerp for buttery smooth hover
+    React.useEffect(() => {
+        let raf: number;
+        const update = () => {
+            setHoverFactor(prev => {
+                const target = isHovered && state === 'idle' ? 1 : 0;
+                const diff = target - prev;
+                if (Math.abs(diff) < 0.001) return target;
+                return prev + (diff * 0.1); // Smooth ease
+            });
+            raf = requestAnimationFrame(update);
+        };
+        raf = requestAnimationFrame(update);
+        return () => cancelAnimationFrame(raf);
+    }, [isHovered, state]);
+
+    const getProgressColor = (p: number) => {
+        if (p < 25) return '#a78bfa'; // purple
+        if (p < 50) return '#c084fc'; // lighter purple
+        if (p < 75) return '#fbbf24'; // yellow
+        return '#f97316'; // orange
+    };
+
+    const handleClick = () => {
+        if (state !== 'idle') return;
+        setState('generating');
+
+        // Phase 1: Animate UP (0 → 100)
+        animate(0, 100, {
+            duration: 3.5,
+            ease: "easeInOut",
+            onUpdate: (latest) => setProgress(latest),
+            onComplete: () => {
+                setState('complete');
+                // Brief pause at peak, then deflate
+                setTimeout(() => {
+                    setState('deflating');
+                    // Phase 2: Animate DOWN (100 → 0)
+                    animate(100, 0, {
+                        duration: 1.2,
+                        ease: "easeOut",
+                        onUpdate: (latest) => setProgress(latest),
+                        onComplete: () => setState('idle')
+                    });
+                }, 1000);
+            }
+        });
+    };
+
+    // Shader uses mixed progress + smooth hover
+    const shader = {
+        tint: getProgressColor(progress),
+        rep: 4 + (progress / 20) + (hoverFactor * 2),
+        dist: 0.3 + (progress * 0.007) + (hoverFactor * 0.2),
+        spd: 0.8 + (progress * 0.02) + (hoverFactor * 1.5),
+        scl: 1.2 + (progress * 0.01) + (hoverFactor * 0.15)
+    };
+
+    return (
+        <div className="flex flex-col items-center justify-center space-y-4">
+            <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">4. Plasma Conduit</h4>
+            {/* Outer Neumorphic Container */}
+            <div className="w-20 h-20 rounded-full shadow-neu-out-light dark:shadow-neu-out-dark p-1.5 bg-neu-light dark:bg-neu-dark flex items-center justify-center transition-all duration-300"
+                style={{
+                    boxShadow: (state === 'generating' || state === 'deflating') // Glows during both active phases
+                        ? `0 0 30px ${getProgressColor(progress)}50, 4px 4px 8px rgba(0,0,0,0.3), -4px -4px 8px rgba(255,255,255,0.05)`
+                        : state === 'complete'
+                            ? '0 0 40px #22c55e60, 4px 4px 8px rgba(0,0,0,0.3), -4px -4px 8px rgba(255,255,255,0.05)'
+                            : undefined
+                }}
+            >
+                {/* Inner Button with design system animations + hover detection */}
+                <motion.button
+                    onClick={handleClick}
+                    onMouseEnter={() => setIsHovered(true)}
+                    onMouseLeave={() => setIsHovered(false)}
+                    initial={{ scale: 1 }}
+                    whileHover={{ scale: 0.97 }}
+                    whileTap={{ scale: 0.92 }}
+                    animate={{
+                        scale: state === 'generating' ? [1, 0.96, 1] : state === 'complete' ? [1, 1.05, 1] : 1
+                    }}
+                    transition={{
+                        scale: state === 'generating'
+                            ? { duration: 0.5, repeat: Infinity }
+                            : { duration: 0.15, ease: 'easeOut' }
+                    }}
+                    className="w-full h-full rounded-full shadow-neu-in-light dark:shadow-neu-in-dark overflow-hidden relative cursor-pointer"
+                >
+                    <LiquidMetal
+                        colorBack="#0a0a0a"
+                        colorTint={shader.tint}
+                        shape="circle"
+                        repetition={shader.rep}
+                        softness={0.7}
+                        distortion={shader.dist}
+                        speed={shader.spd}
+                        scale={shader.scl}
+                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                        <AnimatePresence mode="wait">
+                            {state === 'idle' && (
+                                <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }}>
+                                    <Zap size={20} fill="#94ca42" className="text-brand drop-shadow-lg" />
+                                </motion.div>
+                            )}
+                            {(state === 'generating' || state === 'deflating') && (
+                                <motion.div
+                                    key="progress"
+                                    initial={{ opacity: 0, scale: 0.5 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    exit={{ opacity: 0, scale: 0.5 }}
+                                    className="font-mono text-xs font-black"
+                                    style={{ color: getProgressColor(progress), textShadow: `0 0 10px ${getProgressColor(progress)}` }}
+                                >
+                                    {Math.round(progress)}%
+                                </motion.div>
+                            )}
+                            {state === 'complete' && (
+                                <motion.div key="done" initial={{ scale: 0, rotate: -90 }} animate={{ scale: 1, rotate: 0 }} exit={{ opacity: 0 }} transition={{ type: 'spring', stiffness: 400 }}>
+                                    <Check size={22} className="text-green-400" strokeWidth={3} />
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
+                </motion.button>
+            </div>
+        </div>
+    );
+});
+
+const MoltenCoreProButton = React.memo(() => {
+    const [state, setState] = React.useState<'idle' | 'generating' | 'complete' | 'deflating'>('idle');
+    const [progress, setProgress] = React.useState(0);
+    const [isHovered, setIsHovered] = React.useState(false);
+    const [hoverFactor, setHoverFactor] = React.useState(0);
+
+    // Physics-based lerp for buttery smooth hover
+    React.useEffect(() => {
+        let raf: number;
+        const update = () => {
+            setHoverFactor(prev => {
+                const target = isHovered && state === 'idle' ? 1 : 0;
+                const diff = target - prev;
+                if (Math.abs(diff) < 0.001) return target;
+                return prev + (diff * 0.1); // Smooth ease
+            });
+            raf = requestAnimationFrame(update);
+        };
+        raf = requestAnimationFrame(update);
+        return () => cancelAnimationFrame(raf);
+    }, [isHovered, state]);
+
+    // Stage-based colors matching brand system
+    const getProgressColor = (p: number) => {
+        if (p < 25) return '#94ca42'; // brand green
+        if (p < 50) return '#fbbf24'; // yellow
+        if (p < 75) return '#f97316'; // orange
+        return '#ef4444'; // red hot
+    };
+
+    const getStatusText = (p: number) => {
+        if (p < 20) return 'IGNITING...';
+        if (p < 40) return 'HEATING...';
+        if (p < 60) return 'MELTING...';
+        if (p < 80) return 'FORGING...';
+        if (p < 100) return 'SEALING...';
+        return 'COMPLETE';
+    };
+
+    const handleClick = () => {
+        if (state !== 'idle') return;
+        setState('generating');
+
+        // Phase 1: Animate UP (0 → 100)
+        animate(0, 100, {
+            duration: 3.5,
+            ease: "easeInOut",
+            onUpdate: (latest) => setProgress(latest),
+            onComplete: () => {
+                setState('complete');
+                // Brief pause at peak, then deflate
+                setTimeout(() => {
+                    setState('deflating');
+                    // Phase 2: Animate DOWN (100 → 0)
+                    animate(100, 0, {
+                        duration: 1.2,
+                        ease: "easeOut",
+                        onUpdate: (latest) => setProgress(latest),
+                        onComplete: () => setState('idle')
+                    });
+                }, 1000);
+            }
+        });
+    };
+
+    // Shader uses mixed progress + smooth hover
+    const shader = {
+        tint: getProgressColor(progress),
+        rep: 4 + (progress / 20) + (hoverFactor * 2),
+        dist: 0.3 + (progress * 0.007) + (hoverFactor * 0.2),
+        spd: 0.8 + (progress * 0.02) + (hoverFactor * 1.5),
+        scl: 1.2 + (progress * 0.01) + (hoverFactor * 0.15)
+    };
+
+    // Calculate circular progress
+    const circumference = 2 * Math.PI * 54; // radius 54
+    const strokeDashoffset = circumference - (progress / 100) * circumference;
+
+    return (
+        <div className="flex flex-col items-center justify-center space-y-4">
+            <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">5. Molten Core Pro</h4>
+
+            {/* Outer Neumorphic Container */}
+            <div
+                className="w-20 h-20 rounded-full shadow-neu-out-light dark:shadow-neu-out-dark p-1.5 bg-neu-light dark:bg-neu-dark flex items-center justify-center transition-all duration-300"
+                style={{
+                    boxShadow: (state === 'generating' || state === 'deflating') // Glows during both active phases
+                        ? `0 0 35px ${getProgressColor(progress)}50, 4px 4px 8px rgba(0,0,0,0.3), -4px -4px 8px rgba(255,255,255,0.05)`
+                        : state === 'complete'
+                            ? '0 0 45px #22c55e60, 4px 4px 8px rgba(0,0,0,0.3), -4px -4px 8px rgba(255,255,255,0.05)'
+                            : undefined
+                }}
+            >
+                {/* Inner Button with Design System */}
+                <motion.button
+                    onClick={handleClick}
+                    onMouseEnter={() => setIsHovered(true)}
+                    onMouseLeave={() => setIsHovered(false)}
+                    initial={{ scale: 1 }}
+                    whileHover={{ scale: 0.97 }}
+                    whileTap={{ scale: 0.92 }}
+                    animate={{
+                        rotate: state === 'generating' ? 360 : 0,
+                        scale: state === 'complete' ? [1, 1.05, 1] : 1
+                    }}
+                    transition={{
+                        rotate: { duration: 5, ease: 'linear', repeat: state === 'generating' ? Infinity : 0 },
+                        scale: { duration: 0.15, ease: 'easeOut' }
+                    }}
+                    className="w-full h-full rounded-full shadow-neu-in-light dark:shadow-neu-in-dark overflow-hidden relative cursor-pointer"
+                >
+                    {/* Liquid Metal Core - full at complete */}
+                    <LiquidMetal
+                        colorBack="#0a0a0a"
+                        colorTint={shader.tint}
+                        shape="circle"
+                        repetition={shader.rep}
+                        softness={0.5}
+                        distortion={shader.dist}
+                        speed={shader.spd}
+                        scale={shader.scl}
+                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+                    />
+
+                    {/* Circular Progress Ring */}
+                    {(state === 'generating' || state === 'deflating') && (
+                        <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 120 120">
+                            <circle cx="60" cy="60" r="54" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="3" />
+                            <motion.circle
+                                cx="60" cy="60" r="54" fill="none"
+                                stroke={getProgressColor(progress)}
+                                strokeWidth="3"
+                                strokeLinecap="round"
+                                strokeDasharray={circumference}
+                                initial={{ strokeDashoffset: circumference }}
+                                animate={{ strokeDashoffset }}
+                                className="transition-all duration-75"
+                            />
+                        </svg>
+                    )}
+
+                    {/* Overlay Content (Counter-rotated) */}
+                    <motion.div
+                        className="absolute inset-0 flex items-center justify-center"
+                        animate={{ rotate: state === 'generating' ? -360 : 0 }}
+                        transition={{ duration: 5, ease: 'linear', repeat: state === 'generating' ? Infinity : 0 }}
+                    >
+                        <AnimatePresence mode="wait">
+                            {state === 'idle' && (
+                                <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }} className="flex flex-col items-center">
+                                    <Zap size={20} fill="currentColor" className="text-white drop-shadow-md" />
+                                    <span className="text-[8px] font-black tracking-widest text-white/80 mt-1">PRO</span>
+                                </motion.div>
+                            )}
+                            {(state === 'generating' || state === 'deflating') && (
+                                <motion.div key="gen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-0.5">
+                                    <span className="font-mono text-[8px] text-white/70">{getStatusText(progress)}</span>
+                                    <span className="font-mono text-xs font-black text-white drop-shadow-md">{Math.round(progress)}%</span>
+                                </motion.div>
+                            )}
+                            {state === 'complete' && (
+                                <motion.div key="done" initial={{ scale: 0, rotate: -90 }} animate={{ scale: 1, rotate: 0 }} exit={{ opacity: 0 }} transition={{ type: 'spring', stiffness: 400 }}>
+                                    <Check size={26} className="text-green-400" strokeWidth={3} />
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </motion.div>
+                </motion.button>
+            </div>
+            <p className="text-[10px] opacity-40">Design System: hover/press + full shader at complete.</p>
+        </div>
+    );
+});
+
 export const DesignLabTab: React.FC<DesignLabTabProps> = ({ styles }) => {
     const { theme, toggleTheme } = useTheme();
     const isDark = theme === 'dark';
@@ -177,6 +675,51 @@ export const DesignLabTab: React.FC<DesignLabTabProps> = ({ styles }) => {
     const [btn4Holding, setBtn4Holding] = useState(false);
     const [btn5Holding, setBtn5Holding] = useState(false);
     const [btn6Holding, setBtn6Holding] = useState(false);
+
+    // --- DITHERING SHADER STATE ---
+    const [shaderConfig, setShaderConfig] = useState({
+        shape: 'ripple',
+        type: 'dots',
+        size: 5,
+        speed: 1,
+        scale: 4,
+        rotation: 0
+    });
+
+    const randomizeShader = () => {
+        const shapes = ['sphere', 'ripple', 'cylinder'];
+        const types = ['dots', 'lines', 'noise'];
+        setShaderConfig({
+            shape: shapes[Math.floor(Math.random() * shapes.length)],
+            type: types[Math.floor(Math.random() * types.length)],
+            size: Math.floor(Math.random() * 20) + 1,
+            speed: Math.random() * 2,
+            scale: Math.floor(Math.random() * 10) + 1,
+            rotation: Math.random() * 360
+        });
+    };
+
+    const loadPreset = (preset: 'ripple' | 'sphere') => {
+        if (preset === 'ripple') {
+            setShaderConfig({
+                shape: 'ripple',
+                type: 'dots',
+                size: 3,
+                speed: 0.5,
+                scale: 6,
+                rotation: 45
+            });
+        } else {
+            setShaderConfig({
+                shape: 'sphere',
+                type: 'dots',
+                size: 8,
+                speed: 1.2,
+                scale: 3,
+                rotation: 0
+            });
+        }
+    };
 
     return (
         <div className="space-y-12">
@@ -206,7 +749,7 @@ export const DesignLabTab: React.FC<DesignLabTabProps> = ({ styles }) => {
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
                     <ColorSwatch color="bg-brand" name="Brand Primary" hex={BRAND_COLOR} />
-                    <ColorSwatch color="bg-[#5849C2]" name="Brand Hover" hex="#5849C2" />
+                    <ColorSwatch color="bg-[#84b53b]" name="Brand Hover" hex="#84b53b" />
                     <ColorSwatch color="bg-red-500" name="Danger" hex="#EF4444" />
                     <ColorSwatch color="bg-green-500" name="Success" hex="#22C55E" />
                 </div>
@@ -902,7 +1445,7 @@ export const DesignLabTab: React.FC<DesignLabTabProps> = ({ styles }) => {
                                 className={`px-4 py-2 rounded-xl text-xs font-bold text-transparent bg-clip-text relative group`}
                                 style={{
                                     backgroundImage: isDark
-                                        ? 'radial-gradient(circle at center, #FFFFFF 0%, #6D5DFC 100%)' // Text gradient
+                                        ? 'radial-gradient(circle at center, #FFFFFF 0%, #94ca42 100%)' // Text gradient
                                         : 'radial-gradient(circle at center, #FFFFFF 0%, #E0E7FF 100%)',
                                     backgroundColor: '#000', // Void back
                                     boxShadow: `inset 0px 4px 10px rgba(0,0,0,0.9), 0 1px 0 rgba(255,255,255,0.2)`
@@ -932,8 +1475,8 @@ export const DesignLabTab: React.FC<DesignLabTabProps> = ({ styles }) => {
                             <button
                                 className={`px-4 py-2 rounded-xl text-xs font-bold text-white`}
                                 style={{
-                                    background: 'linear-gradient(180deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 50%, rgba(0,0,0,0.1) 100%), #6D5DFC',
-                                    boxShadow: `inset 0 1px 0 rgba(255,255,255,0.6), 0 2px 5px rgba(109, 93, 252, 0.4), inset 0 -2px 5px rgba(0,0,0,0.2)`
+                                    background: 'linear-gradient(180deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 50%, rgba(0,0,0,0.1) 100%), #94ca42',
+                                    boxShadow: `inset 0 1px 0 rgba(255,255,255,0.6), 0 2px 5px rgba(148, 202, 66, 0.4), inset 0 -2px 5px rgba(0,0,0,0.2)`
                                 }}>
                                 Active
                             </button>
@@ -951,19 +1494,19 @@ export const DesignLabTab: React.FC<DesignLabTabProps> = ({ styles }) => {
                         <h4 className="font-bold text-sm opacity-50">F. Scanline Data</h4>
                         <div className="flex gap-2">
                             <button
-                                className={`px-4 py-2 rounded-xl text-xs font-bold text-[#6D5DFC] relative overflow-hidden`}
+                                className={`px-4 py-2 rounded-xl text-xs font-bold text-[#94ca42] relative overflow-hidden`}
                                 style={{
-                                    backgroundColor: isDark ? '#1a1a2e' : '#e0e7ff',
-                                    border: '1px solid #6D5DFC',
-                                    boxShadow: `inset 0 0 10px rgba(109, 93, 252, 0.2)`
+                                    backgroundColor: isDark ? '#0a1a0a' : '#f0fdf4',
+                                    border: '1px solid #94ca42',
+                                    boxShadow: `inset 0 0 10px rgba(148, 202, 66, 0.2)`
                                 }}>
                                 <div className="absolute inset-0 opacity-20"
                                     style={{
-                                        backgroundImage: 'linear-gradient(0deg, transparent 24%, #6D5DFC 25%, #6D5DFC 26%, transparent 27%, transparent 74%, #6D5DFC 75%, #6D5DFC 76%, transparent 77%, transparent)',
+                                        backgroundImage: 'linear-gradient(0deg, transparent 24%, #94ca42 25%, #94ca42 26%, transparent 27%, transparent 74%, #94ca42 75%, #94ca42 76%, transparent 77%, transparent)',
                                         backgroundSize: '50px 50px'
                                     }}
                                 />
-                                <span className="relative z-10 drop-shadow-[0_0_5px_rgba(109,93,252,0.8)]">ACTIVE</span>
+                                <span className="relative z-10 drop-shadow-[0_0_5px_rgba(148,202,66,0.8)]">ACTIVE</span>
                             </button>
                             <button className={`px-4 py-2 rounded-xl text-xs font-bold ${isDark ? 'bg-neu-dark shadow-neu-out-dark text-neu-text-sub-dark' : 'bg-neu-light shadow-neu-out-light text-neu-text-sub-light'}`}>
                                 Inactive
@@ -979,6 +1522,462 @@ export const DesignLabTab: React.FC<DesignLabTabProps> = ({ styles }) => {
 
             {/* --- GOOGLE SANS FLEX SHOWCASE --- */}
             <GoogleSansFlexShowcase isDark={isDark} />
-        </div>
+
+
+            {/* --- 10. CELESTIAL NEUMORPHISM: DITHERING BUTTONS --- */}
+            <section className="space-y-8 pt-12 border-t border-black/10 dark:border-white/10">
+                <div>
+                    <h2 className="text-2xl font-bold text-brand">10. Celestial Neumorphism: Dithering Buttons</h2>
+                    <p className="opacity-70 mt-1">Tactile buttons with animated Dithering shader cores.</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
+                    {/* Dithering 1: The Ripple Pool */}
+                    <div className="flex flex-col items-center justify-center space-y-4">
+                        <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">1. Ripple Pool</h4>
+                        <motion.button
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.96, y: 2 }}
+                            className="relative w-56 h-16 rounded-2xl overflow-hidden shadow-neu-out-light dark:shadow-neu-out-dark"
+                        >
+                            <Dithering colorBack="#000000" colorFront="#94ca42" shape="ripple" type="noise" size={4} speed={0.5} scale={8} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
+                            <div className="absolute inset-0 flex items-center justify-center text-white font-bold text-lg tracking-widest drop-shadow-lg">
+                                GENERATE
+                            </div>
+                        </motion.button>
+                        <p className="text-[10px] opacity-40">Outward radial pulse. Calm energy.</p>
+                    </div>
+
+                    {/* Dithering 2: The Cylinder Press */}
+                    <div className="flex flex-col items-center justify-center space-y-4">
+                        <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">2. Cylinder Press</h4>
+                        <motion.button
+                            whileTap={{ scale: 0.94, y: 3 }}
+                            className="relative w-56 h-16 rounded-2xl overflow-hidden shadow-neu-out-light dark:shadow-neu-out-dark"
+                        >
+                            <Dithering colorBack="#94ca42" colorFront="#ffffff" shape="cylinder" type="dots" size={3} speed={1} scale={6} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
+                            <div className="absolute inset-0 flex items-center justify-center gap-2 text-white font-bold">
+                                <Zap size={18} fill="currentColor" />
+                                ACTIVATE
+                            </div>
+                        </motion.button>
+                        <p className="text-[10px] opacity-40">Mechanical rotation. High tension.</p>
+                    </div>
+
+                    {/* Dithering 3: The Noise Orb */}
+                    <div className="flex flex-col items-center justify-center space-y-4">
+                        <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">3. Noise Orb</h4>
+                        <motion.button
+                            whileHover={{ scale: 1.1, rotate: 5 }}
+                            whileTap={{ scale: 0.9, rotate: -5 }}
+                            className="relative w-20 h-20 rounded-full overflow-hidden shadow-neu-out-light dark:shadow-neu-out-dark"
+                        >
+                            <Dithering colorBack="#0a0a0a" colorFront="#94ca42" shape="sphere" type="8x8" size={5} speed={1.2} scale={12} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
+                            <div className="absolute inset-0 flex items-center justify-center text-white">
+                                <Zap size={28} fill="currentColor" />
+                            </div>
+                        </motion.button>
+                        <p className="text-[10px] opacity-40">Spherical distortion. FAB style.</p>
+                    </div>
+
+                    {/* Dithering 4: The Scanline Trigger */}
+                    <div className="flex flex-col items-center justify-center space-y-4">
+                        <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">4. Scanline Trigger</h4>
+                        <motion.button
+                            whileTap={{ y: 2 }}
+                            className="relative w-48 h-14 rounded-xl overflow-hidden shadow-neu-out-light dark:shadow-neu-out-dark border border-brand/20"
+                        >
+                            <Dithering colorBack="#000000" colorFront="#94ca42" shape="cylinder" type="lines" size={2} speed={2} scale={20} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.4 }} />
+                            <div className="absolute inset-0 flex items-center justify-center gap-2 text-brand font-bold text-sm tracking-tight uppercase">
+                                <Zap size={16} fill="#94ca42" />
+                                PRECISION
+                            </div>
+                        </motion.button>
+                        <p className="text-[10px] opacity-40">Retro CRT lines. Industrial.</p>
+                    </div>
+
+                    {/* Dithering 5: The Frosted Lens */}
+                    <div className="flex flex-col items-center justify-center space-y-4">
+                        <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">5. Frosted Lens</h4>
+                        <div className="relative w-56 h-16 rounded-xl overflow-hidden shadow-neu-out-light dark:shadow-neu-out-dark bg-neu-light dark:bg-neu-dark">
+                            <div className="absolute inset-0 z-0">
+                                <Dithering colorBack="#000000" colorFront="#94ca42" shape="sphere" type="dots" size={8} speed={1} scale={4} />
+                            </div>
+                            <motion.button
+                                whileHover={{ backgroundColor: 'rgba(255,255,255,0.1)' }}
+                                className="absolute inset-0 z-10 backdrop-blur-md bg-white/5 dark:bg-black/30 flex items-center justify-center text-brand font-bold tracking-widest"
+                            >
+                                ENGAGED
+                            </motion.button>
+                        </div>
+                        <p className="text-[10px] opacity-40">Shader behind frosted glass.</p>
+                    </div>
+
+                    {/* Dithering 6: The Underglow */}
+                    <div className="flex flex-col items-center justify-center space-y-4">
+                        <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">6. Underglow</h4>
+                        <div className="relative w-48 h-14">
+                            <div className="absolute top-3 left-0 w-full h-full rounded-xl overflow-hidden opacity-60 blur-md scale-95">
+                                <Dithering colorBack="#000000" colorFront="#94ca42" shape="ripple" type="noise" size={6} speed={0.5} scale={4} style={{ width: '100%', height: '100%' }} />
+                            </div>
+                            <motion.button
+                                whileHover={{ y: -2 }}
+                                whileTap={{ y: 2 }}
+                                className="relative w-full h-full bg-neu-light dark:bg-[#1a1a1a] rounded-xl border border-brand/30 flex items-center justify-center gap-2 font-bold text-brand"
+                            >
+                                START ENGINE
+                            </motion.button>
+                        </div>
+                        <p className="text-[10px] opacity-40">Floating plate. Ambient glow.</p>
+                    </div>
+                </div>
+            </section>
+
+            {/* --- 11. CELESTIAL NEUMORPHISM: LIQUID METAL BUTTONS (PREMIUM) --- */}
+            <section className="space-y-8 pt-12 border-t border-black/10 dark:border-white/10">
+                <div>
+                    <h2 className="text-2xl font-bold text-brand">11. Premium: Liquid Metal Generate Buttons</h2>
+                    <p className="opacity-70 mt-1">Click to trigger a 5-second simulated generation. Stage-based color transitions.</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-16">
+
+                    {/* --- 1. THE GENESIS FORGE --- */}
+                    {(() => {
+                        const [state, setState] = React.useState<'idle' | 'generating' | 'complete'>('idle');
+                        const [progress, setProgress] = React.useState(0);
+
+                        // Stage-based color: white → yellow → orange → green
+                        const getProgressColor = (p: number) => {
+                            if (p < 33) return '#ffffff';
+                            if (p < 66) return '#fbbf24'; // yellow
+                            if (p < 100) return '#f97316'; // orange
+                            return '#22c55e'; // green
+                        };
+
+                        const handleClick = () => {
+                            if (state !== 'idle') return;
+                            setState('generating');
+                            setProgress(0);
+                            const interval = setInterval(() => {
+                                setProgress(p => {
+                                    if (p >= 100) {
+                                        clearInterval(interval);
+                                        setState('complete');
+                                        setTimeout(() => setState('idle'), 2500);
+                                        return 100;
+                                    }
+                                    return p + 2;
+                                });
+                            }, 100);
+                        };
+
+                        return (
+                            <div className="flex flex-col items-center justify-center space-y-4">
+                                <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">1. Genesis Forge</h4>
+                                <motion.button
+                                    onClick={handleClick}
+                                    animate={{
+                                        scale: state === 'generating' ? [1, 1.02, 1] : 1,
+                                        boxShadow: state === 'generating'
+                                            ? [`0 0 15px ${getProgressColor(progress)}40`, `0 0 30px ${getProgressColor(progress)}60`, `0 0 15px ${getProgressColor(progress)}40`]
+                                            : '0 4px 12px rgba(0,0,0,0.3)'
+                                    }}
+                                    transition={{ duration: 0.6, repeat: state === 'generating' ? Infinity : 0 }}
+                                    className="relative w-40 h-11 rounded-xl overflow-hidden cursor-pointer"
+                                >
+                                    {/* Liquid Metal - always visible, intensifies on generate */}
+                                    <LiquidMetal
+                                        colorBack="#0a0a0a"
+                                        colorTint={state === 'complete' ? '#22c55e' : state === 'generating' ? getProgressColor(progress) : '#94ca42'}
+                                        shape="metaballs"
+                                        repetition={state === 'generating' ? 6 + Math.floor(progress / 20) : 4}
+                                        softness={0.7}
+                                        distortion={state === 'generating' ? 0.4 + (progress * 0.006) : 0.3}
+                                        speed={state === 'generating' ? 1.5 + (progress * 0.025) : 0.8}
+                                        scale={state === 'generating' ? 1.2 + (progress * 0.008) : 1.0}
+                                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+                                    />
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                        <AnimatePresence mode="wait">
+                                            {state === 'idle' && (
+                                                <motion.span key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-white font-bold text-sm tracking-widest drop-shadow-lg">
+                                                    GENERATE
+                                                </motion.span>
+                                            )}
+                                            {state === 'generating' && (
+                                                <motion.span
+                                                    key="gen"
+                                                    initial={{ opacity: 0 }}
+                                                    animate={{ opacity: 1 }}
+                                                    exit={{ opacity: 0 }}
+                                                    className="font-mono text-base font-black"
+                                                    style={{ color: getProgressColor(progress), textShadow: `0 0 12px ${getProgressColor(progress)}` }}
+                                                >
+                                                    {progress}%
+                                                </motion.span>
+                                            )}
+                                            {state === 'complete' && (
+                                                <motion.div key="done" initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-green-400">
+                                                    <Check size={20} strokeWidth={3} />
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
+                                    </div>
+                                </motion.button>
+                                <p className="text-[10px] opacity-40">Shader expands and intensifies during generation.</p>
+                            </div>
+                        );
+                    })()}
+
+                    {/* --- 2. THE MOLTEN CORE --- */}
+                    <MoltenCoreButton />
+
+                    {/* --- 3. THE CHROME REACTOR --- */}
+                    {(() => {
+                        const [state, setState] = React.useState<'idle' | 'generating' | 'complete'>('idle');
+                        const [progress, setProgress] = React.useState(0);
+
+                        const getStatusText = (p: number) => {
+                            if (p < 20) return 'INITIALIZING...';
+                            if (p < 40) return 'COMPILING...';
+                            if (p < 60) return 'RENDERING...';
+                            if (p < 80) return 'OPTIMIZING...';
+                            if (p < 100) return 'FINALIZING...';
+                            return 'DEPLOYED';
+                        };
+
+                        const getProgressColor = (p: number) => {
+                            if (p < 33) return '#c0c0c0'; // silver
+                            if (p < 66) return '#fbbf24'; // gold
+                            if (p < 100) return '#f97316';
+                            return '#22c55e';
+                        };
+
+                        const handleClick = () => {
+                            if (state !== 'idle') return;
+                            setState('generating');
+                            setProgress(0);
+                            const interval = setInterval(() => {
+                                setProgress(p => {
+                                    if (p >= 100) { clearInterval(interval); setState('complete'); setTimeout(() => setState('idle'), 2500); return 100; }
+                                    return p + 2;
+                                });
+                            }, 100);
+                        };
+
+                        return (
+                            <div className="flex flex-col items-center justify-center space-y-4">
+                                <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">3. Chrome Reactor</h4>
+                                <div className="relative">
+                                    <motion.div
+                                        animate={{
+                                            scale: state === 'generating' ? [1, 1.2, 1] : 1,
+                                            opacity: state === 'generating' ? [0.2, 0.5, 0.2] : 0
+                                        }}
+                                        transition={{ duration: 1.2, repeat: Infinity }}
+                                        className="absolute inset-0 rounded-2xl blur-xl"
+                                        style={{ background: getProgressColor(progress) }}
+                                    />
+                                    <motion.button
+                                        onClick={handleClick}
+                                        whileTap={{ scale: 0.96 }}
+                                        className="relative w-44 h-11 rounded-xl overflow-hidden cursor-pointer shadow-lg border border-white/10"
+                                    >
+                                        <LiquidMetal
+                                            colorBack="#0a0a0a"
+                                            colorTint={state === 'complete' ? '#22c55e' : getProgressColor(progress)}
+                                            shape="none"
+                                            repetition={6}
+                                            softness={0.8}
+                                            shiftRed={0.5}
+                                            shiftBlue={-0.5}
+                                            distortion={state === 'generating' ? 0.3 + (progress * 0.004) : 0.2}
+                                            speed={state === 'generating' ? 1.5 + (progress * 0.02) : 0.5}
+                                            scale={0.7}
+                                            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+                                        />
+                                        {/* Bottom progress line */}
+                                        {state === 'generating' && (
+                                            <motion.div
+                                                initial={{ width: 0 }}
+                                                animate={{ width: `${progress}%` }}
+                                                className="absolute bottom-0 left-0 h-1"
+                                                style={{ background: getProgressColor(progress) }}
+                                            />
+                                        )}
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                            <AnimatePresence mode="wait">
+                                                {state === 'idle' && (
+                                                    <motion.span key="idle" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} className="text-white font-bold tracking-widest">
+                                                        INITIALIZE
+                                                    </motion.span>
+                                                )}
+                                                {state === 'generating' && (
+                                                    <motion.div key="gen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-1">
+                                                        <span className="font-mono text-xs" style={{ color: getProgressColor(progress) }}>{getStatusText(progress)}</span>
+                                                        <span className="font-mono text-lg font-black" style={{ color: getProgressColor(progress), textShadow: `0 0 10px ${getProgressColor(progress)}` }}>{progress}%</span>
+                                                    </motion.div>
+                                                )}
+                                                {state === 'complete' && (
+                                                    <motion.span key="done" initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="text-green-400 font-bold flex items-center gap-2">
+                                                        <Check size={20} strokeWidth={3} /> DEPLOYED
+                                                    </motion.span>
+                                                )}
+                                            </AnimatePresence>
+                                        </div>
+                                    </motion.button>
+                                </div>
+                                <p className="text-[10px] opacity-40">Multi-stage status text. Dynamic glow color.</p>
+                            </div>
+                        );
+                    })()}
+
+                    {/* --- 4. THE PLASMA CONDUIT --- */}
+                    <PlasmaConduitButton />
+
+                    {/* --- 5. MOLTEN CORE PRO --- */}
+                    <MoltenCoreProButton />
+
+                    {/* --- 6. THE SPLIT COMMANDER --- */}
+                    {(() => {
+                        const [state, setState] = React.useState<'idle' | 'generating' | 'complete'>('idle');
+                        const [progress, setProgress] = React.useState(0);
+
+                        const getProgressColor = (p: number) => {
+                            if (p < 33) return '#94ca42';
+                            if (p < 66) return '#fbbf24';
+                            if (p < 100) return '#f97316';
+                            return '#22c55e';
+                        };
+
+                        const handleClick = () => {
+                            if (state !== 'idle') return;
+                            setState('generating');
+                            setProgress(0);
+                            const interval = setInterval(() => {
+                                setProgress(p => {
+                                    if (p >= 100) { clearInterval(interval); setState('complete'); setTimeout(() => setState('idle'), 2500); return 100; }
+                                    return p + 2;
+                                });
+                            }, 100);
+                        };
+
+                        return (
+                            <div className="flex flex-col items-center justify-center space-y-4">
+                                <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">6. Split Commander</h4>
+                                <div className="flex rounded-xl overflow-hidden shadow-lg h-11 w-48 bg-neu-light dark:bg-neu-dark">
+                                    <motion.div
+                                        animate={{ width: state === 'generating' ? '30%' : '40%' }}
+                                        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                                        className="flex items-center justify-center font-bold text-xs border-r border-black/10 dark:border-white/10 px-2"
+                                    >
+                                        <AnimatePresence mode="wait">
+                                            {state === 'idle' && <motion.span key="cfg" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>CFG</motion.span>}
+                                            {state === 'generating' && (
+                                                <motion.span key="pct" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="font-mono text-xs font-black" style={{ color: getProgressColor(progress) }}>
+                                                    {progress}%
+                                                </motion.span>
+                                            )}
+                                            {state === 'complete' && <motion.span key="ok" initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-green-500 font-bold">✓</motion.span>}
+                                        </AnimatePresence>
+                                    </motion.div>
+                                    <motion.button
+                                        onClick={handleClick}
+                                        animate={{ width: state === 'generating' ? '70%' : '60%' }}
+                                        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                                        className="relative overflow-hidden cursor-pointer"
+                                    >
+                                        {/* Liquid Metal - always visible, intensifies on generate */}
+                                        <LiquidMetal
+                                            colorBack="#0a0a0a"
+                                            colorTint={state === 'complete' ? '#22c55e' : state === 'generating' ? getProgressColor(progress) : '#94ca42'}
+                                            shape="metaballs"
+                                            repetition={state === 'generating' ? 5 + Math.floor(progress / 25) : 3}
+                                            softness={0.7}
+                                            distortion={state === 'generating' ? 0.3 + (progress * 0.005) : 0.25}
+                                            speed={state === 'generating' ? 1.2 + (progress * 0.02) : 0.6}
+                                            scale={state === 'generating' ? 1.0 + (progress * 0.006) : 0.9}
+                                            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+                                        />
+                                        <div className="absolute inset-0 flex items-center justify-center text-white">
+                                            <AnimatePresence mode="wait">
+                                                {state === 'complete' ? (
+                                                    <motion.div key="done" initial={{ scale: 0 }} animate={{ scale: 1 }}>
+                                                        <Check size={18} strokeWidth={3} />
+                                                    </motion.div>
+                                                ) : (
+                                                    <Zap size={18} fill="currentColor" />
+                                                )}
+                                            </AnimatePresence>
+                                        </div>
+                                    </motion.button>
+                                </div>
+                                <p className="text-[10px] opacity-40">Shader expands and intensifies during generation.</p>
+                            </div>
+                        );
+                    })()}
+
+                </div>
+            </section>
+
+            {/* --- 12. BRAND LOGO SHADERS --- */}
+            <section className="space-y-8 pt-12 border-t border-black/10 dark:border-white/10">
+                <div>
+                    <h2 className="text-2xl font-bold text-brand">12. Brand Logo Shaders</h2>
+                    <p className="opacity-70 mt-1">LiquidMetal applied to actual brand logo images.</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                    {/* Icon (Dark Mode) */}
+                    <div className="flex flex-col items-center justify-center space-y-4 p-8 bg-black rounded-3xl overflow-hidden shadow-2xl">
+                        <h4 className="text-brand/60 text-xs font-mono uppercase tracking-widest">BRAND ICON (LiquidMetal)</h4>
+                        <div className="w-64 h-64 relative">
+                            <LiquidMetal
+                                colorBack="#000000"
+                                colorTint="#94ca42"
+                                shape="circle"
+                                image="/header-icon-dark-mode (1).svg"
+                                repetition={6}
+                                softness={0.8}
+                                shiftRed={0.8}
+                                shiftBlue={-0.8}
+                                distortion={0.4}
+                                contour={0.4}
+                                speed={1}
+                                scale={0.8}
+                                fit="contain"
+                                style={{ width: '100%', height: '100%' }}
+                            />
+                        </div>
+                        <p className="text-[10px] text-white/40 text-center">Main brand icon with LiquidMetal overlay.</p>
+                    </div>
+
+                    {/* Wordmark (Dark Mode) */}
+                    <div className="flex flex-col items-center justify-center space-y-4 p-8 bg-black rounded-3xl overflow-hidden shadow-2xl">
+                        <h4 className="text-brand/60 text-xs font-mono uppercase tracking-widest">WORDMARK (LiquidMetal)</h4>
+                        <div className="w-full h-32 relative">
+                            <LiquidMetal
+                                colorBack="#000000"
+                                colorTint="#94ca42"
+                                shape="none"
+                                image="/xcreate-wordmark-logo-dark-mode.png"
+                                repetition={8}
+                                softness={0.6}
+                                shiftRed={0.5}
+                                shiftBlue={-0.5}
+                                distortion={0.3}
+                                contour={0.2}
+                                speed={0.6}
+                                scale={0.5}
+                                fit="contain"
+                                style={{ width: '100%', height: '100%' }}
+                            />
+                        </div>
+                        <p className="text-[10px] text-white/40 text-center">Wordmark with flowing metal texture.</p>
+                    </div>
+                </div>
+            </section>
+        </div >
     );
 };

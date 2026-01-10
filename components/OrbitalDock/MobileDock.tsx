@@ -17,7 +17,8 @@ import {
     LockKeyhole,
     Menu,
     X,
-    Calendar
+    Calendar,
+    Share2
 } from 'lucide-react';
 import { ViewState, Business } from '../../types';
 import { Check, Plus, Moon, Sun, ChevronLeft } from 'lucide-react';
@@ -190,8 +191,9 @@ export const MobileDock: React.FC<MobileDockProps> = ({
                                         <VaultItem icon={ShoppingBag} label="Offerings" onClick={() => handleNav(ViewState.OFFERINGS)} />
                                         <VaultItem icon={MessageSquareText} label="Chat" onClick={() => handleNav(ViewState.CHAT)} />
                                         <VaultItem icon={User} label="Profile" onClick={() => handleNav(ViewState.PROFILE)} />
+                                        <VaultItem icon={Share2} label="Social" onClick={() => handleNav(ViewState.SOCIAL)} />
 
-                                        <VaultItem icon={Settings} label="Settings" onClick={() => handleNav(ViewState.USER_PROFILE)} />
+                                        <VaultItem icon={Settings} label="Account" onClick={() => handleNav(ViewState.USER_PROFILE)} />
                                         {isAdmin && (
                                             <VaultItem icon={LockKeyhole} label="Admin" onClick={() => handleNav(ViewState.ADMIN)} />
                                         )}

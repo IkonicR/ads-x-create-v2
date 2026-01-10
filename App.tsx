@@ -32,6 +32,7 @@ import AcceptInvite from './views/AcceptInvite';
 import TeamSettings from './views/TeamSettings';
 
 import SocialSettings from './views/SocialSettings';
+import Social from './views/Social';
 import { PrinterDownload } from './views/PrinterDownload';
 import GlobalLoader from './components/GlobalLoader';
 import { GalaxyHeading } from './components/GalaxyHeading';
@@ -50,9 +51,10 @@ const getViewStateFromPath = (pathname: string): ViewState => {
     case '/planner': return ViewState.PLANNER;
     case '/chat': return ViewState.CHAT;
     case '/admin': return ViewState.ADMIN;
-    case '/user-profile': return ViewState.USER_PROFILE;
+    case '/account': return ViewState.USER_PROFILE;
     case '/onboarding': return ViewState.ONBOARDING;
     case '/design-lab': return ViewState.DESIGN_LAB;
+    case '/social': return ViewState.SOCIAL;
     default: return ViewState.DASHBOARD;
   }
 };
@@ -70,9 +72,10 @@ const getPathFromViewState = (view: ViewState): string => {
     case ViewState.PLANNER: return '/planner';
     case ViewState.CHAT: return '/chat';
     case ViewState.ADMIN: return '/admin';
-    case ViewState.USER_PROFILE: return '/user-profile';
+    case ViewState.USER_PROFILE: return '/account';
     case ViewState.ONBOARDING: return '/onboarding';
     case ViewState.DESIGN_LAB: return '/design-lab';
+    case ViewState.SOCIAL: return '/social';
     default: return '/dashboard';
   }
 };
@@ -107,6 +110,7 @@ const AppContent: React.FC = () => {
 
   const [pendingAssets, setPendingAssets] = useState<ExtendedAsset[]>([]);
   const [loadingData, setLoadingData] = useState(true);
+  const reorderTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
   // Load initial data
   useEffect(() => {
@@ -407,6 +411,37 @@ const AppContent: React.FC = () => {
     }
   };
 
+  // Handle business reorder (drag-and-drop)
+  const handleReorderBusinesses = async (orderedIds: string[]) => {
+    // Update local state immediately (optimistic)
+    const reordered = orderedIds
+      .map(id => businesses.find(b => b.id === id))
+      .filter(Boolean) as Business[];
+    setBusinesses(reordered);
+
+    // Debounce API call
+    if (reorderTimeoutRef.current) clearTimeout(reorderTimeoutRef.current);
+    reorderTimeoutRef.current = setTimeout(async () => {
+      try {
+        const session = await StorageService.getCurrentSession();
+        const token = session?.access_token;
+        if (!token) return;
+
+        await fetch('http://localhost:3000/api/business-order', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ businessIds: orderedIds })
+        });
+        console.log('[App] Business order persisted');
+      } catch (err) {
+        console.error('[App] Failed to persist business order:', err);
+      }
+    }, 300);
+  };
+
   return (
     <NavigationProvider currentView={currentView} onNavigate={handleSetView}>
       <MainLayout
@@ -414,6 +449,7 @@ const AppContent: React.FC = () => {
         businesses={businesses}
         switchBusiness={handleSwitchBusiness}
         toggleNewBusiness={() => navigate('/onboarding')}
+        onReorder={handleReorderBusinesses}
       >
         <Routes>
           <Route path="/onboarding" element={<Onboarding onComplete={handleBusinessCreate} />} />
@@ -459,9 +495,11 @@ const AppContent: React.FC = () => {
               <Route path="/planner" element={
                 <Planner business={activeBusiness} />
               } />
-              <Route path="/social-settings" element={
-                <SocialSettings business={activeBusiness} updateBusiness={updateBusiness} />
+              <Route path="/social" element={
+                <Social business={activeBusiness} updateBusiness={updateBusiness} />
               } />
+              {/* Redirect old route for backward compatibility */}
+              <Route path="/social-settings" element={<Navigate to="/social" replace />} />
               <Route path="/chat" element={
                 <ChatInterface business={activeBusiness} />
               } />
@@ -472,11 +510,11 @@ const AppContent: React.FC = () => {
           <Route path="/admin" element={
             profile?.is_admin ? <AdminDashboard onBusinessUpdated={handleExternalBusinessUpdate} /> : <Navigate to="/dashboard" replace />
           } />
-          <Route path="/user-profile" element={<UserProfile />} />
+          <Route path="/account" element={<UserProfile />} />
+          {/* Redirect old route for backward compatibility */}
+          <Route path="/user-profile" element={<Navigate to="/account" replace />} />
           <Route path="/business-manager" element={<BusinessManager />} />
-          <Route path="/design-lab" element={
-            profile?.is_admin ? <DesignLab /> : <Navigate to="/dashboard" replace />
-          } />
+          <Route path="/design-lab" element={<DesignLab />} />
           <Route path="/invite/:token" element={<AcceptInvite />} />
 
           {/* Public Routes (No Auth Required) */}

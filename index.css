@@ -14,8 +14,8 @@
   --font-sans: "Google Sans Flex", sans-serif;
 
   /* Brand Colors */
-  --color-brand: #6D5DFC;
-  --color-brand-hover: #5849C2;
+  --color-brand: #94ca42;
+  --color-brand-hover: #84b53b;
 
   /* Neumorphic System Colors */
   --color-neu-light: #F9FAFB;
@@ -184,8 +184,8 @@ body {
 /* Neumorphic accents for key elements */
 .neu-glow {
   box-shadow:
-    0 0 20px rgba(109, 93, 252, 0.15),
-    0 0 40px rgba(109, 93, 252, 0.08);
+    0 0 20px rgba(148, 202, 66, 0.15),
+    0 0 40px rgba(148, 202, 66, 0.08);
 }
 
 /* Animation: Scan line for holographic effects */

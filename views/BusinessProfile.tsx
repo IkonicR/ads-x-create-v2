@@ -1508,8 +1508,6 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
           tabs={[
             { id: 'profile', label: 'Profile & Contact', icon: <Globe size={16} /> },
             { id: 'ads', label: 'Ad Preferences', icon: <Megaphone size={16} /> },
-            { id: 'social', label: 'Social Accounts', icon: <Share2 size={16} /> },
-            { id: 'team', label: 'Team', icon: <Users size={16} /> },
           ]}
         />
       </div>
@@ -1518,35 +1516,6 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
       <div className="min-h-[500px]">
         {activeTab === 'profile' && renderProfileTab()}
         {activeTab === 'ads' && renderAdsTab()}
-        {activeTab === 'social' && (
-          <div className="space-y-8 animate-fade-in max-w-2xl">
-            <ConnectedAccountsCard
-              business={localBusiness}
-              onBusinessUpdate={(updated) => setLocalBusiness(updated)}
-            />
-
-            {/* Link to Social Settings */}
-            <NeuCard>
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className={`font-bold ${styles.textMain}`}>Social Posting Settings</h3>
-                  <p className={`text-sm ${styles.textSub}`}>
-                    Configure default hashtags, platforms, and posting preferences
-                  </p>
-                </div>
-                <NeuButton onClick={() => navigate('/social-settings')}>
-                  <Settings size={16} className="mr-2" />
-                  Configure
-                </NeuButton>
-              </div>
-            </NeuCard>
-          </div>
-        )}
-        {activeTab === 'team' && (
-          <div className="space-y-8 animate-fade-in">
-            <TeamSettings business={localBusiness} />
-          </div>
-        )}
       </div>
     </div>
   );

@@ -3,13 +3,16 @@ import { NeuCard, NeuInput, NeuButton, NeuBadge, useThemeStyles } from '../compo
 import { GalaxyHeading } from '../components/GalaxyHeading';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import { User, Mail, Lock, Bell, CreditCard, Shield, LogOut, Moon, Sun, Chrome, Building } from 'lucide-react';
+import { useSubscription } from '../context/SubscriptionContext';
+import { User, Mail, Lock, Bell, CreditCard, Shield, LogOut, Moon, Sun, Chrome, Building, Users } from 'lucide-react';
 import { StorageService } from '../services/storage';
+import { PLANS } from '../config/pricing';
 
 const UserProfile: React.FC = () => {
   const { styles } = useThemeStyles();
   const { theme, toggleTheme } = useTheme();
   const { user, profile, signInWithGoogle, signOut, refreshProfile, loading } = useAuth();
+  const { planId, planName, creditsRemaining, subscription } = useSubscription();
 
   // Local state for editing
   const [isEditing, setIsEditing] = useState(false);
@@ -80,10 +83,10 @@ const UserProfile: React.FC = () => {
       <header className="flex justify-between items-end">
         <div>
           <GalaxyHeading
-            text="User Profile"
+            text="Account Settings"
             className="text-4xl md:text-5xl font-extrabold tracking-tight mb-2 pb-2"
           />
-          <p className={styles.textSub}>Manage your personal account settings and preferences.</p>
+          <p className={styles.textSub}>Manage your account, billing, and preferences.</p>
         </div>
         {user && (
           <NeuButton onClick={signOut} className="text-red-500 text-sm font-bold">
@@ -106,17 +109,24 @@ const UserProfile: React.FC = () => {
             </div>
             <h2 className={`text-xl font-bold ${styles.textMain}`}>{profile?.full_name || user?.email}</h2>
             <p className={`text-sm ${styles.textSub} mb-4`}>{user?.email}</p>
-            <NeuBadge variant="accent">Free Tier</NeuBadge>
+            <NeuBadge variant="accent">{planName}</NeuBadge>
           </NeuCard>
 
           <NeuCard>
             <h3 className={`text-sm font-bold ${styles.textSub} uppercase tracking-wider mb-4`}>Subscription</h3>
             <div className="flex justify-between items-center mb-4">
               <div>
-                <div className="font-bold text-lg">Free Plan</div>
-                <div className="text-xs opacity-60">$0/month</div>
+                <div className="font-bold text-lg">{planName} Plan</div>
+                <div className="text-xs opacity-60">
+                  {planId === 'creator' ? '$39' : planId === 'growth' ? '$89' : '$299'}/month
+                </div>
               </div>
-              <div className="text-blue-500 font-bold text-xs px-2 py-1 bg-blue-500/10 rounded-full">Active</div>
+              <div className={`font-bold text-xs px-2 py-1 rounded-full ${subscription?.status === 'comped'
+                  ? 'text-purple-500 bg-purple-500/10'
+                  : 'text-blue-500 bg-blue-500/10'
+                }`}>
+                {subscription?.status === 'comped' ? 'Comped' : 'Active'}
+              </div>
             </div>
             <NeuButton className="w-full text-sm opacity-50 cursor-not-allowed"><CreditCard size={16} /> Manage Billing (Soon)</NeuButton>
           </NeuCard>
@@ -143,12 +153,19 @@ const UserProfile: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2 mb-4">
+              {/* Quick Links Section */}
+              <div className="md:col-span-2 mb-4 grid grid-cols-1 md:grid-cols-2 gap-3">
                 <NeuButton
-                  className="w-full flex items-center justify-center gap-2 py-3 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-600 dark:text-gray-300 transition-all font-bold"
+                  className="flex items-center justify-center gap-2 py-3 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-600 dark:text-gray-300 transition-all font-bold"
+                  onClick={() => window.location.href = '/team'}
+                >
+                  <Users size={16} /> Manage Team
+                </NeuButton>
+                <NeuButton
+                  className="flex items-center justify-center gap-2 py-3 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-600 dark:text-gray-300 transition-all font-bold"
                   onClick={() => window.location.href = '/business-manager'}
                 >
-                  <Building size={16} /> Manage All Businesses
+                  <Building size={16} /> Manage Businesses
                 </NeuButton>
               </div>
               <div>

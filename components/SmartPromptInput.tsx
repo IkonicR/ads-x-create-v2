@@ -1,7 +1,7 @@
-import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Send } from 'lucide-react';
+import React, { useState, useRef, useLayoutEffect } from 'react';
+import { motion } from 'framer-motion';
 import { useThemeStyles } from './NeuComponents';
+import { PremiumGenerateButton } from './PremiumGenerateButton';
 
 interface SmartPromptInputProps {
     prompt: string;
@@ -9,6 +9,7 @@ interface SmartPromptInputProps {
     onSubmit: () => void;
     placeholder?: string;
     activeCount: number;
+    firstJobProgress?: number;
     modelTier: 'flash' | 'pro' | 'ultra';
     disabled?: boolean;
 }
@@ -19,6 +20,7 @@ export const SmartPromptInput: React.FC<SmartPromptInputProps> = ({
     onSubmit,
     placeholder,
     activeCount,
+    firstJobProgress,
     modelTier,
     disabled
 }) => {
@@ -30,12 +32,12 @@ export const SmartPromptInput: React.FC<SmartPromptInputProps> = ({
     // Auto-resize logic
     useLayoutEffect(() => {
         if (textareaRef.current) {
-            textareaRef.current.style.height = 'auto'; // Reset to recalculate
+            textareaRef.current.style.height = 'auto';
             textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`;
         }
     }, [prompt]);
 
-    // Submit handler (Cmd+Enter)
+    // Submit handler (Enter)
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -48,7 +50,7 @@ export const SmartPromptInput: React.FC<SmartPromptInputProps> = ({
     return (
         <motion.div
             layout
-            className={`relative flex items-end gap-2 transition-all duration-200`}
+            className="relative flex items-center gap-2 transition-all duration-200"
         >
             <div className={`flex-1 relative rounded-2xl ${insetShadowClass} overflow-hidden min-h-[60px] flex items-center`}>
                 <textarea
@@ -65,66 +67,13 @@ export const SmartPromptInput: React.FC<SmartPromptInputProps> = ({
                 />
             </div>
 
-            <div className="relative pb-1">
-                {/* Techy Glowing Border (Only when active) */}
-                <AnimatePresence>
-                    {activeCount > 0 && (
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="absolute -inset-[3px] rounded-2xl overflow-hidden z-0"
-                        >
-                            <motion.div
-                                animate={{ rotate: 360 }}
-                                transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                                className="w-[200%] h-[200%] absolute top-[-50%] left-[-50%] bg-[conic-gradient(from_0deg,transparent_0deg,#3b82f6_180deg,transparent_360deg)] opacity-80 blur-sm"
-                            />
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-
-                <button
-                    onClick={onSubmit}
-                    disabled={disabled}
-                    className={`relative z-10 w-14 h-14 rounded-2xl flex items-center justify-center transition-all text-white overflow-hidden ${disabled
-                        ? 'bg-gray-400 cursor-not-allowed opacity-50'
-                        : modelTier === 'ultra'
-                            ? 'bg-gradient-to-tr from-purple-500 to-pink-500 shadow-lg shadow-purple-500/40 hover:scale-105 active:scale-95'
-                            : 'bg-[#1a1a1a] border border-white/10 shadow-lg active:scale-95'
-                        }`}
-                >
-                    <AnimatePresence mode="wait">
-                        {activeCount > 0 ? (
-                            <motion.div
-                                key="count"
-                                initial={{ scale: 0.5, opacity: 0 }}
-                                animate={{ scale: 1, opacity: 1 }}
-                                exit={{ scale: 0.5, opacity: 0 }}
-                                className="flex flex-col items-center justify-center relative"
-                            >
-                                {/* HUD Ring */}
-                                <motion.div
-                                    animate={{ rotate: -360 }}
-                                    transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-                                    className="absolute inset-[-8px] border border-blue-400/30 rounded-full border-t-transparent border-l-transparent"
-                                />
-                                <span className="text-[9px] font-bold leading-none text-blue-400 mb-0.5">GEN</span>
-                                <span className="text-sm font-bold leading-none text-white">{activeCount}</span>
-                            </motion.div>
-                        ) : (
-                            <motion.div
-                                key="icon"
-                                initial={{ scale: 0 }}
-                                animate={{ scale: 1 }}
-                                exit={{ scale: 0 }}
-                            >
-                                <Send size={24} />
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                </button>
-            </div>
+            <PremiumGenerateButton
+                onClick={onSubmit}
+                disabled={disabled}
+                activeCount={activeCount}
+                externalProgress={firstJobProgress}
+                modelTier={modelTier}
+            />
         </motion.div>
     );
 };

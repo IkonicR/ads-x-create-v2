@@ -12,6 +12,7 @@ interface LayoutProps {
   businesses: Business[];
   switchBusiness: (id: string) => void;
   toggleNewBusiness: () => void;
+  onReorder?: (orderedIds: string[]) => void;
 }
 
 export const Layout: React.FC<LayoutProps> = ({
@@ -19,7 +20,8 @@ export const Layout: React.FC<LayoutProps> = ({
   business,
   businesses,
   switchBusiness,
-  toggleNewBusiness
+  toggleNewBusiness,
+  onReorder
 }) => {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
@@ -37,6 +39,7 @@ export const Layout: React.FC<LayoutProps> = ({
             businesses={businesses}
             onSwitch={switchBusiness}
             onAdd={toggleNewBusiness}
+            onReorder={onReorder}
           />
         </div>
 

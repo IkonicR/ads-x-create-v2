@@ -11,7 +11,7 @@ function cn(...inputs: ClassValue[]) {
 }
 
 // --- Design System Constants ---
-export const BRAND_COLOR = '#6D5DFC';
+export const BRAND_COLOR = '#94ca42';
 
 // REFACTORED: Now uses the Tailwind Config tokens defined in index.html
 const THEMES = {

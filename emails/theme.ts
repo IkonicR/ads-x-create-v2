@@ -1,7 +1,7 @@
 export const EmailTheme = {
     colors: {
-        brand: '#6D5DFC',
-        brandGradient: 'linear-gradient(135deg, #6D5DFC 0%, #8B7DFC 100%)',
+        brand: '#94ca42',
+        brandGradient: 'linear-gradient(135deg, #94ca42 0%, #a8d659 100%)',
         background: '#F9FAFB',
         surface: '#FFFFFF',
         text: '#1C1C1E',

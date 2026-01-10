@@ -120,11 +120,12 @@ const Login: React.FC = () => {
       </div>
 
       <div className="text-center mb-12 relative z-10">
-        <div className="flex items-center justify-center gap-2 mb-4">
-          <div className="p-2 rounded-lg bg-gradient-to-tr from-brand to-purple-500 text-white shadow-lg">
-            <Zap size={24} fill="currentColor" />
-          </div>
-          <span className="text-xl font-bold tracking-tight text-white">Ads x Create</span>
+        <div className="flex items-center justify-center mb-6">
+          <img
+            src="/xcreate-wordmark-logo-dark-mode.png"
+            alt="Ads x Create"
+            className="h-14 w-auto object-contain"
+          />
         </div>
         <GalaxyHeading
           text="Enter the Portal"

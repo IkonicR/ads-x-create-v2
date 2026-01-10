@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { useThemeStyles } from './NeuComponents';
-import { GalaxyHeading } from './GalaxyHeading';
+
 
 /**
  * GlobalLoader - Premium loading screen using proper Neumorphic design system.
@@ -51,7 +51,12 @@ const GlobalLoader: React.FC = () => {
 
             {/* Branding */}
             <div className="flex flex-col items-center gap-4">
-                <GalaxyHeading text="ADS X CREATE" className="text-3xl md:text-5xl tracking-tight" />
+                {/* Logo Image - Mode Aware */}
+                <img
+                    src={isDark ? "/xcreate-wordmark-logo-dark-mode.png" : "/xcreate-wordmark-logo-light-mode.png"}
+                    alt="Ads x Create"
+                    className="h-10 md:h-14 w-auto object-contain"
+                />
 
                 {/* Loading bar - proper container */}
                 <div className="flex flex-col items-center gap-3">

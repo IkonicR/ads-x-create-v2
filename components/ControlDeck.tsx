@@ -20,6 +20,7 @@ interface ControlDeckProps {
   styles: StylePreset[];
   subjects: { id: string; name: string; type: 'product' | 'service' | 'person' | 'location'; imageUrl?: string; price?: string; description?: string; preserveLikeness?: boolean; promotion?: string }[];
   activeCount?: number;
+  firstJobProgress?: number; // Progress of first pending job (0-100)
   restoreState?: {
     prompt: string;
     styleId: string;
@@ -57,6 +58,7 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
   styles: aestheticStyles,
   subjects,
   activeCount = 0,
+  firstJobProgress = 0,
   restoreState,
   strategy,
   onStrategyChange,
@@ -813,6 +815,7 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
           onSubmit={handleSubmit}
           placeholder={selectedSubject ? `Describe the scene for ${activeSubjectLabel}...` : "Describe your vision..."}
           activeCount={activeCount}
+          firstJobProgress={firstJobProgress}
           modelTier={modelTier}
           disabled={!prompt.trim()}
         />

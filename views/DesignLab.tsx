@@ -13,7 +13,8 @@ import {
     NeuDropdown,
     BRAND_COLOR
 } from '../components/NeuComponents';
-import { Zap, Check, X, AlertCircle } from 'lucide-react';
+import { Zap, Check, X, AlertCircle, RefreshCw, Layers } from 'lucide-react';
+import { Dithering } from '@paper-design/shaders-react';
 
 const ColorSwatch = ({ color, name, hex }: { color: string, name: string, hex?: string }) => (
     <div className="flex flex-col gap-2">
@@ -32,6 +33,51 @@ const DesignLab = () => {
     const isDark = theme === 'dark';
     const [activeTab, setActiveTab] = useState('components');
     const [listItems, setListItems] = useState<string[]>(['Design', 'System', 'Rocks']);
+
+    // Shader Config
+    const [shaderConfig, setShaderConfig] = useState({
+        shape: 'ripple',
+        type: '8x8',
+        size: 2,
+        speed: 1,
+        scale: 1,
+        rotation: 0
+    });
+
+    const randomizeShader = () => {
+        const shapes = ['ripple', 'sphere', 'noise', 'warp', 'dots', 'wave', 'swirl'];
+        const types = ['2x2', '4x4', '8x8'];
+        setShaderConfig({
+            shape: shapes[Math.floor(Math.random() * shapes.length)],
+            type: types[Math.floor(Math.random() * types.length)] as any,
+            size: Number((Math.random() * 4 + 0.5).toFixed(1)),
+            speed: Number((Math.random() * 2 + 0.5).toFixed(1)),
+            scale: Number((Math.random() * 2 + 0.5).toFixed(1)),
+            rotation: 0
+        });
+    };
+
+    const loadPreset = (preset: 'ripple' | 'sphere') => {
+        if (preset === 'ripple') {
+            setShaderConfig({
+                shape: 'ripple',
+                type: '8x8',
+                size: 2,
+                speed: 1,
+                scale: 1,
+                rotation: 0
+            });
+        } else {
+            setShaderConfig({
+                shape: 'sphere',
+                type: '4x4',
+                size: 2,
+                speed: 1,
+                scale: 0.6,
+                rotation: 0
+            });
+        }
+    };
 
     return (
         <div className={`min-h-screen p-8 transition-colors duration-300 ${theme === 'dark' ? 'bg-neu-dark text-neu-text-main-dark' : 'bg-neu-light text-neu-text-main-light'}`}>
@@ -63,7 +109,7 @@ const DesignLab = () => {
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
                         <ColorSwatch color="bg-brand" name="Brand Primary" hex={BRAND_COLOR} />
-                        <ColorSwatch color="bg-[#5849C2]" name="Brand Hover" hex="#5849C2" />
+                        <ColorSwatch color="bg-[#84b53b]" name="Brand Hover" hex="#84b53b" />
                         <ColorSwatch color="bg-red-500" name="Danger" hex="#EF4444" />
                         <ColorSwatch color="bg-green-500" name="Success" hex="#22C55E" />
                     </div>
@@ -555,6 +601,60 @@ const DesignLab = () => {
                             </p>
                         </div>
 
+                    </div>
+                </section>
+
+                {/* --- DITHERING SHADER LAB --- */}
+                <section className="space-y-8">
+                    <div className="flex items-center justify-between border-b border-black/10 dark:border-white/10 pb-2">
+                        <h2 className="text-2xl font-bold text-brand">07. Dithering Shader Lab</h2>
+                        <div className="flex gap-2">
+                            <NeuButton onClick={() => loadPreset('ripple')} className="text-xs !py-2">Ripple Preset</NeuButton>
+                            <NeuButton onClick={() => loadPreset('sphere')} className="text-xs !py-2">Sphere Preset</NeuButton>
+                            <NeuButton onClick={randomizeShader} variant="primary" className="gap-2">
+                                <RefreshCw size={16} /> Generate Noise
+                            </NeuButton>
+                        </div>
+                    </div>
+                    <p className="opacity-70">Experimental shader playground using @paper-design/shaders-react. "It's mkight shit."</p>
+
+                    <div className="relative w-full h-[600px] rounded-3xl overflow-hidden bg-black shadow-2xl">
+                        <Dithering
+                            width={1200}
+                            height={600}
+                            colorBack="#000000"
+                            colorFront="#95ca44"
+                            shape={shaderConfig.shape}
+                            type={shaderConfig.type}
+                            size={shaderConfig.size}
+                            speed={shaderConfig.speed}
+                            scale={shaderConfig.scale}
+                            rotation={shaderConfig.rotation}
+                        />
+
+                        {/* Controls Overlay */}
+                        <div className="absolute bottom-6 left-6 right-6 p-6 bg-black/80 backdrop-blur-xl rounded-2xl border border-white/10 flex flex-wrap gap-8 text-white">
+                            <div className="flex flex-col gap-1">
+                                <span className="text-xs opacity-50 font-mono">SHAPE</span>
+                                <span className="font-bold text-brand">{shaderConfig.shape.toUpperCase()}</span>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                                <span className="text-xs opacity-50 font-mono">TYPE</span>
+                                <span className="font-bold">{shaderConfig.type}</span>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                                <span className="text-xs opacity-50 font-mono">SIZE</span>
+                                <span className="font-bold">{shaderConfig.size}</span>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                                <span className="text-xs opacity-50 font-mono">SPEED</span>
+                                <span className="font-bold">{shaderConfig.speed}</span>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                                <span className="text-xs opacity-50 font-mono">SCALE</span>
+                                <span className="font-bold">{shaderConfig.scale}</span>
+                            </div>
+                        </div>
                     </div>
                 </section>
             </div>

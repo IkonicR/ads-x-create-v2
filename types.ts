@@ -453,7 +453,8 @@ export enum ViewState {
   CHAT = 'CHAT',
   USER_PROFILE = 'USER_PROFILE',
   DESIGN_LAB = 'DESIGN_LAB',
-  PLANNER = 'PLANNER'
+  PLANNER = 'PLANNER',
+  SOCIAL = 'SOCIAL'
 }
 
 export interface ChatMessage {

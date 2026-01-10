@@ -68,9 +68,9 @@ const PrismSection: React.FC = () => {
                         <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-50 visible md:visible invisible" style={{ overflow: 'visible' }}>
                             <defs>
                                 <linearGradient id="flowGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                                    <stop offset="0%" stopColor="#6D5DFC" stopOpacity="0" />
-                                    <stop offset="50%" stopColor="#6D5DFC" stopOpacity="1" />
-                                    <stop offset="100%" stopColor="#6D5DFC" stopOpacity="0" />
+                                    <stop offset="0%" stopColor="#94ca42" stopOpacity="0" />
+                                    <stop offset="50%" stopColor="#94ca42" stopOpacity="1" />
+                                    <stop offset="100%" stopColor="#94ca42" stopOpacity="0" />
                                 </linearGradient>
                             </defs>
                             {/* Input Lines */}
@@ -134,7 +134,7 @@ const PrismSection: React.FC = () => {
                                 className={`group relative flex items-center gap-4 w-64 md:w-72 backdrop-blur-sm cursor-pointer !p-4 !rounded-xl border-t border-white/5 hover:border-brand/50 transition-colors`}
                                 forceTheme="dark"
                             >
-                                <div className="absolute top-1/2 -left-1.5 w-3 h-3 rounded-full bg-neu-dark border border-brand bg-brand shadow-[0_0_10px_rgba(109,93,252,0.5)] z-20" />
+                                <div className="absolute top-1/2 -left-1.5 w-3 h-3 rounded-full bg-neu-dark border border-brand bg-brand shadow-[0_0_10px_rgba(148,202,66,0.5)] z-20" />
 
                                 <div className="p-2 rounded-lg bg-brand/20 text-brand">
                                     <item.icon className="w-5 h-5" />
