@@ -193,6 +193,8 @@ async function runGeneration(
     mappedBusiness: any,
     supabase: any
 ) {
+    console.log('[Generate] 🚀 runGeneration STARTED for job:', jobId);
+
     try {
         // Build prompt
         let visualPrompt = prompt;
@@ -202,7 +204,7 @@ async function runGeneration(
 
         const finalPrompt = visualPrompt;
 
-        console.log('[Generate] Final prompt length:', finalPrompt.length);
+        console.log('[Generate] ✅ Step 1: Prompt built, length:', finalPrompt.length);
 
         // DEBUG BYPASS
         if (prompt.toLowerCase().startsWith('debug:')) {
@@ -233,6 +235,8 @@ async function runGeneration(
             console.log('[Generate] DEBUG: Job completed');
             return;
         }
+
+        console.log('[Generate] ✅ Step 2: Building content parts...');
 
         // Build message content with images
         const contentParts: Array<{ type: 'text'; text: string } | { type: 'image'; image: string }> = [
@@ -275,11 +279,14 @@ async function runGeneration(
             }
         }
 
-        console.log('[Generate] Calling Gemini 3 Pro Image via Direct Google API with aspectRatio:', aspectRatio);
+        console.log('[Generate] ✅ Step 3: Content parts ready, count:', contentParts.length);
+        console.log('[Generate] ✅ Step 4: Calling Gemini 3 Pro Image with aspectRatio:', aspectRatio);
         const genStartTime = Date.now();
 
         // Initialize Google AI client
+        console.log('[Generate] ✅ Step 5: Initializing Google AI client...');
         const googleClient = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY! });
+        console.log('[Generate] ✅ Step 6: Google AI client ready, calling API...');
 
         // Convert contentParts to Google format
         const googleParts: any[] = [];
@@ -314,7 +321,7 @@ async function runGeneration(
         });
 
         const genEndTime = Date.now();
-        console.log(`[Generate] ⏱️ AI Generation took: ${((genEndTime - genStartTime) / 1000).toFixed(2)}s`);
+        console.log(`[Generate] ✅ Step 7: AI Generation complete! Took: ${((genEndTime - genStartTime) / 1000).toFixed(2)}s`);
 
         // Extract image from response
         const parts = result.candidates?.[0]?.content?.parts || [];
@@ -326,11 +333,14 @@ async function runGeneration(
 
         const resultImage = `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
 
+        console.log('[Generate] ✅ Step 8: Image extracted, uploading to storage...');
+
         // Upload to storage
         const publicUrl = await uploadToStorage(resultImage, businessId, supabase);
         if (!publicUrl) {
             throw new Error('Failed to upload to storage');
         }
+        console.log('[Generate] ✅ Step 9: Upload complete, URL:', publicUrl.substring(0, 80) + '...');
 
         // Create asset
         const assetId = `asset_${Date.now()}_${Math.random().toString(36).substring(7)}`;
@@ -357,10 +367,11 @@ async function runGeneration(
             })
             .eq('id', jobId);
 
-        console.log('[Generate] Job completed:', jobId, '-> Asset:', assetId);
+        console.log('[Generate] ✅ Step 10: FULLY COMPLETED! Job:', jobId, '-> Asset:', assetId);
 
     } catch (error: any) {
-        console.error('[Generate] Generation failed:', error);
+        console.error('[Generate] ❌ GENERATION FAILED:', error.message);
+        console.error('[Generate] ❌ Full error:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
 
         await supabase
             .from('generation_jobs')
