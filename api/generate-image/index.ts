@@ -1,12 +1,9 @@
-import { waitUntil } from '@vercel/functions';
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
-// NOTE: PromptFactory removed - cannot import from browser-only services in serverless
 
-// Config: Use Edge Runtime for better waitUntil support and performance
-// Note: If using standard Node.js runtime, waitUntil is still supported in newer versions
+// Config: Extend function duration for image generation
 export const config = {
-    maxDuration: 60, // Extend to 60s for image generation
+    maxDuration: 60,
 };
 
 // Helper: Resolve relative artifact URLs to absolute URLs
@@ -293,24 +290,8 @@ async function runGeneration(
     host: string,
     systemPrompts: any
 ) {
-    // IMMEDIATE STARTUP MARKER - This runs FIRST to prove the function started
-    console.log(`[Trace] [Job:${jobId}] 🚀 Background Task LAUNCHED`);
-
-    // Write startup marker to DB immediately - if this doesn't appear, waitUntil is failing
-    const supabaseForStartup = createClient(
-        process.env.VITE_SUPABASE_URL!,
-        process.env.SUPABASE_SECRET_KEY!
-    );
-    await supabaseForStartup.from('generation_jobs').update({
-        error_message: '🚀 Background worker STARTED'
-    }).eq('id', jobId);
-
-    console.log(`[Trace] [Job:${jobId}] 📌 Startup marker written to DB`);
-    const traceId = jobId.substring(0, 4);
-
     try {
-        // Milestone 1: Building Prompt
-        console.log(`[Trace] [${traceId}] Building visual prompt...`);
+        // Update job status
         await supabase.from('generation_jobs').update({ error_message: 'Building prompt...' }).eq('id', jobId);
 
 
@@ -349,13 +330,10 @@ ${styleInstructions ? `=== STYLE INSTRUCTIONS ===\n${styleInstructions}` : ''}
         `.trim();
 
 
-        // Milestone 2: Fetching Refs
-        console.log(`[Trace] [${traceId}] Prompt Built. Fetching reference images...`);
         await supabase.from('generation_jobs').update({ error_message: 'Fetching images...' }).eq('id', jobId);
 
         // DEBUG BYPASS
         if (prompt.toLowerCase().startsWith('debug:')) {
-            console.log(`[Trace] [${traceId}] \uD83D\uDEE0 DEBUG BYPASS DETECTED.`);
             const debugUrl = "https://placehold.co/1024x1024/png?text=DEBUG+MODE";
             const assetId = `asset_${Date.now()}`;
 
@@ -376,7 +354,6 @@ ${styleInstructions ? `=== STYLE INSTRUCTIONS ===\n${styleInstructions}` : ''}
                 .update({ status: 'completed', result_asset_id: assetId, updated_at: new Date().toISOString() })
                 .eq('id', jobId);
 
-            console.log(`[Trace] [${traceId}] \u2705 DEBUG Job completed successfully.`);
             return;
         }
 
@@ -387,7 +364,6 @@ ${styleInstructions ? `=== STYLE INSTRUCTIONS ===\n${styleInstructions}` : ''}
 
         // Add subject image
         if (subjectContext?.imageUrl) {
-            console.log(`[Trace] [${traceId}] Fetching subject image...`);
             const subjectResult = await urlToBase64WithMime(subjectContext.imageUrl, host);
             if (subjectResult) {
                 contentParts.push({ type: 'image', image: `data:${subjectResult.mimeType};base64,${subjectResult.base64}` });
@@ -397,7 +373,6 @@ ${styleInstructions ? `=== STYLE INSTRUCTIONS ===\n${styleInstructions}` : ''}
 
         // Add logo
         if (mappedBusiness.logoUrl) {
-            console.log(`[Trace] [${traceId}] Fetching logo...`);
             const logoResult = await urlToBase64WithMime(mappedBusiness.logoUrl, host);
             if (logoResult) {
                 contentParts.push({ type: 'image', image: `data:${logoResult.mimeType};base64,${logoResult.base64}` });
@@ -429,7 +404,6 @@ ${styleInstructions ? `=== STYLE INSTRUCTIONS ===\n${styleInstructions}` : ''}
         }
 
         // Milestone 3: AI Generation (Heavy Lift)
-        console.log(`[Trace] [${traceId}] INITIALIZING GOOGLE AI CALL...`);
         await supabase.from('generation_jobs').update({ error_message: 'AI Generation in progress...' }).eq('id', jobId);
 
         const googleClient = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY! });
@@ -471,8 +445,7 @@ ${styleInstructions ? `=== STYLE INSTRUCTIONS ===\n${styleInstructions}` : ''}
 
         const result: any = await Promise.race([generatePromise, timeoutPromise]);
 
-        // Milestone 4: Storage
-        console.log(`[Trace] [${traceId}] AI Reponse Received. Uploading...`);
+        // Upload result
         await supabase.from('generation_jobs').update({ error_message: 'Uploading result...' }).eq('id', jobId);
 
         const parts = result.candidates?.[0]?.content?.parts || [];
@@ -490,9 +463,8 @@ ${styleInstructions ? `=== STYLE INSTRUCTIONS ===\n${styleInstructions}` : ''}
             throw new Error('Storage failure');
         }
 
-        // Milestone 5: Completion
-        console.log(`[Trace] [${traceId}] SUCCESS! Finalizing...`);
-        await supabase.from('generation_jobs').update({ error_message: 'Finalizing database...' }).eq('id', jobId);
+        // Finalize
+        await supabase.from('generation_jobs').update({ error_message: 'Finalizing...' }).eq('id', jobId);
 
         // Create asset
         const assetId = `asset_${Date.now()}_${Math.random().toString(36).substring(7)}`;
@@ -520,10 +492,8 @@ ${styleInstructions ? `=== STYLE INSTRUCTIONS ===\n${styleInstructions}` : ''}
             })
             .eq('id', jobId);
 
-        console.log(`[Trace] [${traceId}] \u2705 FULLY COMPLETED! Job: ${jobId}`);
-
     } catch (error: any) {
-        console.error(`[Trace] [${traceId}] \u274C FATAL:`, error.message);
+        console.error(`[Generate] Job ${jobId} failed:`, error.message);
         await supabase
             .from('generation_jobs')
             .update({
