@@ -1,9 +1,12 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useThemeStyles } from './NeuComponents';
+import { Trash2 } from 'lucide-react';
 import { LiquidMetal } from '@paper-design/shaders-react';
 
 interface GeneratorCardProps {
+  isAdmin?: boolean;
+  onKill?: () => void;
   aspectRatio?: string;
   status?: 'queued' | 'generating' | 'complete';
   onReveal?: () => void;
@@ -30,7 +33,9 @@ const GeneratorCardComponent: React.FC<GeneratorCardProps> = ({
   animationPhase = 'warmup',
   onPhaseChange,
   onProgressUpdate,
-  initialProgress = 0
+  initialProgress = 0,
+  isAdmin,
+  onKill
 }) => {
   const { theme, styles } = useThemeStyles();
   const isDark = theme === 'dark';
@@ -280,6 +285,23 @@ const GeneratorCardComponent: React.FC<GeneratorCardProps> = ({
                 {displayProgress}%
               </span>
             </motion.div>
+          )}
+
+          {/* ADMIN KILL SWITCH */}
+          {isAdmin && onKill && displayProgress < 100 && (
+            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onKill();
+                }}
+                className="p-2 bg-red-500/20 hover:bg-red-500/80 backdrop-blur-md rounded-lg text-white transition-all hover:scale-105 active:scale-95 shadow-lg pointer-events-auto border border-white/10"
+                title="Kill Stuck Job (Admin Only)"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
           )}
         </div>
       </div>

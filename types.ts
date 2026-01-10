@@ -13,6 +13,7 @@ export interface UserProfile {
   primary_goal?: string;   // 'generate_ads' | 'schedule_posts' | 'build_brand' | 'other'
   referral_source?: string; // 'google' | 'social' | 'friend' | 'other'
   invite_code_used?: string;
+  is_admin?: boolean;
 }
 
 export type BusinessType = 'Retail' | 'E-Commerce' | 'Service' | 'Other';

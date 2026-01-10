@@ -301,9 +301,8 @@ export const BusinessSelector: React.FC<BusinessSelectorProps> = ({
                         </button>
                     </div>
 
-                    {/* Expanding Dropdown Content */}
                     <AnimatePresence mode="wait">
-                        {dropdownMode === 'business' && (
+                        {dropdownMode === 'business' ? (
                             <motion.div
                                 key="business"
                                 variants={dropdownVariants}
@@ -369,9 +368,7 @@ export const BusinessSelector: React.FC<BusinessSelectorProps> = ({
                                     </motion.button>
                                 </div>
                             </motion.div>
-                        )}
-
-                        {dropdownMode === 'account' && (
+                        ) : dropdownMode === 'account' ? (
                             <motion.div
                                 key="account"
                                 variants={dropdownVariants}
@@ -465,7 +462,7 @@ export const BusinessSelector: React.FC<BusinessSelectorProps> = ({
                                     </motion.button>
                                 </div>
                             </motion.div>
-                        )}
+                        ) : null}
                     </AnimatePresence>
                 </motion.div>
             </div>

@@ -1,5 +1,5 @@
 
-import { Business, ProductionPresetConfig, GenerationStrategy } from '../types';
+import { Business, ProductionPresetConfig, GenerationStrategy, SystemPrompts } from '../types';
 import { StorageService } from './storage';
 import { formatBusinessHours } from '../utils/formatters';
 
@@ -497,9 +497,10 @@ export const PromptFactory = {
     subjectName?: string, // Product/Person Name
     strategy?: GenerationStrategy, // Strategy override
     isFree?: boolean, // NEW: Free offering flag
-    termsAndConditions?: string // NEW: Per-offering T&Cs
+    termsAndConditions?: string, // NEW: Per-offering T&Cs
+    customPromptsOverride?: SystemPrompts // NEW: Optional injection
   ): Promise<string> => {
-    const customPrompts = await StorageService.getSystemPrompts();
+    const customPrompts = customPromptsOverride || await StorageService.getSystemPrompts();
 
     // --- 1. INTELLIGENT DATA PARSING & PREPARATION ---
     const hasLogo = !!business.logoUrl;

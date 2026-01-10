@@ -7,12 +7,14 @@ import { AssetViewer } from '../components/AssetViewer';
 import MasonryGrid from '../components/MasonryGrid';
 import { ControlDeck } from '../components/ControlDeck';
 import { useThemeStyles, NeuButton } from '../components/NeuComponents';
+import { Trash2 } from 'lucide-react';
 import { NeuConfirmModal } from '../components/NeuConfirmModal';
 import { Business, Asset, ExtendedAsset, StylePreset, AssetStatus, GenerationStrategy, SubjectType } from '../types';
 import { DEFAULT_STRATEGY } from '../constants/campaignPresets';
-import { generateImage, pollJobStatus, getPendingJobs } from '../services/geminiService';
+import { generateImage, pollJobStatus, getPendingJobs, killJob } from '../services/geminiService';
 import { StorageService } from '../services/storage';
 import { useAssets } from '../context/AssetContext';
+import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import { CREDITS } from '../config/pricing';
 
@@ -28,15 +30,18 @@ interface GeneratorProps {
 
 const Generator: React.FC<GeneratorProps> = ({
   business,
-  deductCredit,
   updateCredits,
   pendingAssets,
   setPendingAssets,
   loadMoreAssets
 }) => {
+  const { profile } = useAuth();
   // const [loading, setLoading] = useState(false); // REMOVED for Concurrency
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const { styles, theme } = useThemeStyles();
+
+  // Track polling intervals by jobId for cleanup
+  const pollingIntervalsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
 
   // Strategy State (managed here, passed to ControlDeck)
   const [strategy, setStrategy] = useState<GenerationStrategy>(DEFAULT_STRATEGY);
@@ -92,6 +97,7 @@ const Generator: React.FC<GeneratorProps> = ({
           // Convert jobs to pending assets - mark with animationPhase so they resume properly
           const pendingFromJobs: ExtendedAsset[] = jobs.map(job => ({
             id: job.id,
+            jobId: job.id,
             type: 'image' as const,
             content: '',
             prompt: job.prompt,
@@ -116,29 +122,46 @@ const Generator: React.FC<GeneratorProps> = ({
 
           // Resume polling for each job
           jobs.forEach(job => {
+            console.log(`[Generator] Resuming polling for job: ${job.id}`);
             const pollInterval = setInterval(async () => {
               try {
                 const status = await pollJobStatus(job.id);
+                console.log(`[Generator] Heartbeat [Job:${job.id}]:`, status.status);
 
                 if (status.status === 'completed' && status.asset) {
+                  console.log(`[Generator] ✅ Job ${job.id} COMPLETED.`);
                   clearInterval(pollInterval);
+                  pollingIntervalsRef.current.delete(job.id);
                   setPendingAssets(prev => prev.map(a =>
                     a.id === job.id
                       ? { ...a, localStatus: 'complete', content: status.asset.content }
                       : a
                   ));
                 } else if (status.status === 'failed') {
+                  console.error(`[Generator] ❌ Job ${job.id} FAILED:`, status.errorMessage);
                   clearInterval(pollInterval);
+                  pollingIntervalsRef.current.delete(job.id);
                   setPendingAssets(prev => prev.filter(a => a.id !== job.id));
                   alert(status.errorMessage || 'A background generation failed.');
                 }
               } catch (err) {
-                console.error('[Generator] Poll error:', err);
+                console.error(`[Generator] Poll error for job ${job.id}:`, err);
+                // If 404, job was deleted - stop polling
+                if ((err as Error).message?.includes('Failed to fetch')) {
+                  clearInterval(pollInterval);
+                  pollingIntervalsRef.current.delete(job.id);
+                }
               }
             }, 2000);
 
+            // Track this interval
+            pollingIntervalsRef.current.set(job.id, pollInterval);
+
             // Safety timeout
-            setTimeout(() => clearInterval(pollInterval), 5 * 60 * 1000);
+            setTimeout(() => {
+              clearInterval(pollInterval);
+              pollingIntervalsRef.current.delete(job.id);
+            }, 5 * 60 * 1000);
           });
         }
       } catch (error) {
@@ -348,12 +371,16 @@ const Generator: React.FC<GeneratorProps> = ({
       ));
 
       // 3. Poll for completion
+      console.log(`[Generator] Starting polling loop for job: ${jobId}`);
       const pollInterval = setInterval(async () => {
         try {
           const status = await pollJobStatus(jobId);
+          console.log(`[Generator] Heartbeat [Job:${jobId}]:`, status.status);
 
           if (status.status === 'completed' && status.asset) {
+            console.log(`[Generator] ✅ Job ${jobId} COMPLETED.`);
             clearInterval(pollInterval);
+            pollingIntervalsRef.current.delete(jobId);
 
             // Update pending asset with URL and set to complete
             setPendingAssets(prev => prev.map(a =>
@@ -363,7 +390,9 @@ const Generator: React.FC<GeneratorProps> = ({
             ));
 
           } else if (status.status === 'failed') {
+            console.error(`[Generator] ❌ Job ${jobId} FAILED:`, status.errorMessage);
             clearInterval(pollInterval);
+            pollingIntervalsRef.current.delete(jobId);
 
             // Remove pending and refund
             setPendingAssets(prev => prev.filter(a => a.id !== stableId));
@@ -372,15 +401,24 @@ const Generator: React.FC<GeneratorProps> = ({
           }
           // If still 'processing' or 'pending', keep polling
         } catch (pollError) {
-          console.error("Poll error:", pollError);
-          // Don't clear interval on temporary errors
+          console.error(`[Generator] Poll error for job ${jobId}:`, pollError);
+          // If 404, the job was killed - stop polling
+          if ((pollError as Error).message?.includes('Failed to fetch')) {
+            clearInterval(pollInterval);
+            pollingIntervalsRef.current.delete(jobId);
+          }
         }
       }, 2000); // Poll every 2 seconds
+
+      // Track this interval
+      pollingIntervalsRef.current.set(jobId, pollInterval);
 
       // Safety: Stop polling after 5 minutes
       setTimeout(() => {
         clearInterval(pollInterval);
+        pollingIntervalsRef.current.delete(jobId);
       }, 5 * 60 * 1000);
+
 
     } catch (error) {
       console.error("Generation Error", error);
@@ -462,6 +500,54 @@ const Generator: React.FC<GeneratorProps> = ({
     setPendingAssets(prev => prev.filter(a => a.id !== id));
   }, [pendingAssets, addAsset, setPendingAssets]);
 
+  const handleKillJob = useCallback(async (assetId: string) => {
+    const asset = pendingAssets.find(a => a.id === assetId);
+    if (!asset) return;
+
+    const jobId = asset.jobId;
+
+    // Clear the polling interval immediately
+    if (jobId) {
+      const interval = pollingIntervalsRef.current.get(jobId);
+      if (interval) {
+        clearInterval(interval);
+        pollingIntervalsRef.current.delete(jobId);
+      }
+    }
+
+    // If no jobId yet (still creating), just remove from UI
+    if (!jobId) {
+      setPendingAssets(prev => prev.filter(a => a.id !== assetId));
+      return;
+    }
+
+    const ok = await killJob(jobId);
+    if (ok) {
+      setPendingAssets(prev => prev.filter(a => a.id !== assetId && a.jobId !== jobId));
+    } else {
+      alert("Failed to kill job. Try again or check logs.");
+    }
+  }, [pendingAssets, setPendingAssets]);
+
+
+  const handleClearAllPending = useCallback(async () => {
+    if (!confirm("Are you sure you want to kill ALL pending jobs? This cannot be undone.")) return;
+
+    // Clear all polling intervals first
+    pollingIntervalsRef.current.forEach((interval, jobId) => {
+      clearInterval(interval);
+    });
+    pollingIntervalsRef.current.clear();
+
+    const jobsToKill = pendingAssets.filter(a => !!a.jobId).map(a => a.jobId as string);
+
+    // Parallel kill
+    await Promise.all(jobsToKill.map(id => killJob(id)));
+
+    setPendingAssets([]);
+  }, [pendingAssets, setPendingAssets]);
+
+
   // Handle animation phase changes from GeneratorCard
   const handlePhaseChange = useCallback((id: string, phase: 'warmup' | 'cruise' | 'deceleration' | 'revealed') => {
     setPendingAssets(prev => prev.map(a =>
@@ -499,12 +585,25 @@ const Generator: React.FC<GeneratorProps> = ({
     <div className="min-h-screen pb-64">
 
       {/* Header */}
-      <div className="mb-8 px-4">
-        <GalaxyHeading
-          text="Visual Ad Studio"
-          className="text-5xl md:text-6xl font-extrabold tracking-tight animate-fade-in pb-2 leading-tight"
-        />
-        <p className={styles.textSub}>Create high-fidelity marketing assets with precision control.</p>
+      <div className="mb-8 px-4 flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <GalaxyHeading
+            text="Visual Ad Studio"
+            className="text-5xl md:text-6xl font-extrabold tracking-tight animate-fade-in pb-2 leading-tight"
+          />
+          <p className={styles.textSub}>Create high-fidelity marketing assets with precision control.</p>
+        </div>
+
+        {profile?.is_admin && pendingAssets.length > 0 && (
+          <NeuButton
+            onClick={handleClearAllPending}
+            variant="secondary"
+            className="flex items-center gap-2 text-red-500 border-red-500/10 hover:border-red-500/30"
+          >
+            <Trash2 size={16} />
+            Kill All Pending
+          </NeuButton>
+        )}
       </div>
 
       {/* The Masonry Feed */}
@@ -548,6 +647,8 @@ const Generator: React.FC<GeneratorProps> = ({
                       onPhaseChange={(phase) => handlePhaseChange(asset.id, phase)}
                       onProgressUpdate={(progress) => handleProgressUpdate(asset.id, progress)}
                       initialProgress={(asset as ExtendedAsset).progress || 0}
+                      isAdmin={profile?.is_admin}
+                      onKill={() => handleKillJob(asset.id)} // id is jobId for pending from mount, or stableId
                     />
                   </motion.div>
                 );

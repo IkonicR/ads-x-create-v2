@@ -21,7 +21,8 @@ export const EmailsTab: React.FC<EmailsTabProps> = ({ styles }) => {
 
         setSending(type);
         try {
-            const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/admin/test-email`, {
+            const baseUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3000' : '');
+            const res = await fetch(`${baseUrl}/api/admin/test-email`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

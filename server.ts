@@ -2857,12 +2857,17 @@ app.post('/api/admin/test-email', async (req, res) => {
 
 
 // Helper: Convert URL to Base64 with proper MIME type detection
-// Automatically converts SVG to PNG since Gemini doesn't support SVG
 async function urlToBase64WithMime(url: string): Promise<{ base64: string; mimeType: string } | null> {
     try {
-        const response = await fetch(url);
+        let finalUrl = url;
+        if (url.startsWith('/artifacts/')) {
+            // Local dev assumes port 5173 for artifacts
+            finalUrl = `http://localhost:5173${url}`;
+        }
+
+        const response = await fetch(finalUrl);
         if (!response.ok) {
-            console.error(`[Generate] Failed to fetch image: ${response.status} ${url}`);
+            console.error(`[Generate] Failed to fetch image: ${response.status} ${finalUrl}`);
             return null;
         }
 
@@ -3370,6 +3375,28 @@ app.get('/api/generate-image/pending/:businessId', async (req, res) => {
     }
 
     res.json({ jobs: jobs || [] });
+});
+
+// DELETE /api/generate-image/job/:jobId
+// Kill a stuck job (Admin only UI-side, but standard route here)
+app.delete('/api/generate-image/job/:jobId', async (req, res) => {
+    const { jobId } = req.params;
+    console.log(`[Generate] Killing job: ${jobId}`);
+
+    const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+
+    const { error } = await supabase
+        .from('generation_jobs')
+        .delete()
+        .eq('id', jobId);
+
+    if (error) {
+        console.error('[Generate] Failed to kill job:', error);
+        res.status(500).json({ error: 'Failed to kill job' });
+        return;
+    }
+
+    res.json({ success: true });
 });
 
 // Start Server

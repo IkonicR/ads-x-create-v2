@@ -325,33 +325,7 @@ export const PremiumGenerateButton = React.memo<PremiumGenerateButtonProps>(({
 
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <AnimatePresence mode="wait">
-                        {isIdle && (
-                            <motion.div
-                                key="idle"
-                                initial={{ scale: 0, opacity: 0 }}
-                                animate={{ scale: 1, opacity: 1 }}
-                                exit={{ scale: 0, opacity: 0 }}
-                                transition={{ duration: 0.2 }}
-                            >
-                                <Zap size={22} fill="white" className="text-white drop-shadow-md" />
-                            </motion.div>
-                        )}
-
-                        {isGenerating && !isMultiJob && localProgress > 0 && (
-                            <motion.div
-                                key="progress"
-                                initial={{ scale: 0.5, opacity: 0 }}
-                                animate={{ scale: 1, opacity: 1 }}
-                                exit={{ scale: 0.5, opacity: 0 }}
-                                transition={{ duration: 0.2 }}
-                            >
-                                <span className="font-mono text-xs font-black text-white drop-shadow-md">
-                                    {Math.floor(localProgress)}%
-                                </span>
-                            </motion.div>
-                        )}
-
-                        {isSuccess && (
+                        {isSuccess ? (
                             <motion.div
                                 key="success"
                                 initial={{ scale: 0, rotate: -180 }}
@@ -361,9 +335,7 @@ export const PremiumGenerateButton = React.memo<PremiumGenerateButtonProps>(({
                             >
                                 <Check size={24} className="text-white" strokeWidth={3} />
                             </motion.div>
-                        )}
-
-                        {isMultiJob && (
+                        ) : isMultiJob ? (
                             <motion.div
                                 key="queue"
                                 initial={{ scale: 0.5, opacity: 0 }}
@@ -375,7 +347,29 @@ export const PremiumGenerateButton = React.memo<PremiumGenerateButtonProps>(({
                                 <span className="text-[8px] font-bold leading-none text-white/80">GEN</span>
                                 <span className="text-sm font-black leading-none text-white">{activeCount}</span>
                             </motion.div>
-                        )}
+                        ) : (isGenerating && localProgress > 0) ? (
+                            <motion.div
+                                key="progress"
+                                initial={{ scale: 0.5, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0.5, opacity: 0 }}
+                                transition={{ duration: 0.2 }}
+                            >
+                                <span className="font-mono text-xs font-black text-white drop-shadow-md">
+                                    {Math.floor(localProgress)}%
+                                </span>
+                            </motion.div>
+                        ) : isIdle ? (
+                            <motion.div
+                                key="idle"
+                                initial={{ scale: 0, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0, opacity: 0 }}
+                                transition={{ duration: 0.2 }}
+                            >
+                                <Zap size={22} fill="white" className="text-white drop-shadow-md" />
+                            </motion.div>
+                        ) : null}
                     </AnimatePresence>
                 </div>
             </motion.button>

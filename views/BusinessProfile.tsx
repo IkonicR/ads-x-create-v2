@@ -245,7 +245,7 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
 
             {/* DYNAMIC: Location / Service Area */}
             <AnimatePresence mode="wait">
-              {(localBusiness.profile.operatingMode === 'storefront' || !localBusiness.profile.operatingMode) && (
+              {(localBusiness.profile.operatingMode === 'storefront' || !localBusiness.profile.operatingMode) ? (
                 <motion.div
                   key="storefront"
                   initial={{ opacity: 0, y: 10 }}
@@ -415,9 +415,7 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
                     </div>
                   </div>
                 </motion.div>
-              )}
-
-              {localBusiness.profile.operatingMode === 'service' && (
+              ) : localBusiness.profile.operatingMode === 'service' ? (
                 <motion.div
                   key="service"
                   initial={{ opacity: 0, y: 10 }}
@@ -525,9 +523,7 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
                     </div>
                   )}
                 </motion.div>
-              )}
-
-              {localBusiness.profile.operatingMode === 'appointment' && (
+              ) : localBusiness.profile.operatingMode === 'appointment' ? (
                 <motion.div
                   key="appointment"
                   initial={{ opacity: 0, y: 10 }}
@@ -643,9 +639,7 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
                     </div>
                   )}
                 </motion.div>
-              )}
-
-              {localBusiness.profile.operatingMode === 'online' && (
+              ) : localBusiness.profile.operatingMode === 'online' ? (
                 <motion.div
                   key="online"
                   initial={{ opacity: 0, y: 10 }}
@@ -750,7 +744,7 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
                     </div>
                   )}
                 </motion.div>
-              )}
+              ) : null}
             </AnimatePresence>
           </div>
         </NeuCard>

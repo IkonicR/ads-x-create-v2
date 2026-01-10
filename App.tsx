@@ -427,7 +427,8 @@ const AppContent: React.FC = () => {
         const token = session?.access_token;
         if (!token) return;
 
-        await fetch('http://localhost:3000/api/business-order', {
+        const apiUrl = import.meta.env.DEV ? 'http://localhost:3000/api/business-order' : '/api/business-order';
+        await fetch(apiUrl, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',

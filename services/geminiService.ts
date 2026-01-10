@@ -110,6 +110,8 @@ export const generateImage = async (
   strategy?: GenerationStrategy,
   thinkingMode?: 'LOW' | 'HIGH' // NEW: Optional thinking mode
 ): Promise<{ jobId: string; status: string }> => {
+  console.log(`[GeminiService] Initializing generation for business: ${business.id}`, { prompt, modelTier, aspectRatio });
+
   // Call the server-side API instead of generating client-side
   // This enables job persistence across page refreshes
   const response = await fetch('/api/generate-image', {
@@ -130,11 +132,14 @@ export const generateImage = async (
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Generation failed');
+    const errorData = await response.json().catch(() => ({ error: 'Network response was not ok' }));
+    console.error(`[GeminiService] \u274C API Error:`, errorData);
+    throw new Error(errorData.error || 'Generation failed');
   }
 
-  return response.json();
+  const data = await response.json();
+  console.log(`[GeminiService] \u2705 Generation job created:`, data.jobId);
+  return data;
 };
 
 // Poll for job completion
@@ -143,11 +148,15 @@ export const pollJobStatus = async (jobId: string): Promise<{
   asset?: any;
   errorMessage?: string;
 }> => {
+  console.log(`[GeminiService] Polling status for job: ${jobId}...`);
   const response = await fetch(`/api/generate-image/status/${jobId}`);
   if (!response.ok) {
+    console.error(`[GeminiService] \u274C Status poll FAILED for job: ${jobId}`);
     throw new Error('Failed to fetch job status');
   }
-  return response.json();
+  const data = await response.json();
+  console.log(`[GeminiService] Heartbeat [Job:${jobId}]:`, data.status, data.status === 'completed' ? '\u2705' : '\u23F3');
+  return data;
 };
 
 // Get pending jobs for a business (for page load recovery)
@@ -158,6 +167,19 @@ export const getPendingJobs = async (businessId: string): Promise<any[]> => {
   }
   const data = await response.json();
   return data.jobs || [];
+};
+
+// killJob - forcefully remove a stuck job
+export const killJob = async (jobId: string): Promise<boolean> => {
+  try {
+    const response = await fetch(`/api/generate-image/job/${jobId}`, {
+      method: 'DELETE'
+    });
+    return response.ok;
+  } catch (error) {
+    console.error('[GeminiService] Failed to kill job:', error);
+    return false;
+  }
 };
 
 

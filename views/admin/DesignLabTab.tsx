@@ -305,9 +305,10 @@ const MoltenCoreButton = React.memo(() => {
                             height: '100%'
                         }}
                     />
-                    <AnimatePresence>
-                        {state === 'idle' && (
+                    <AnimatePresence mode="wait">
+                        {state === 'idle' ? (
                             <motion.div
+                                key="idle"
                                 initial={{ opacity: 0, scale: 0.5 }}
                                 animate={{ opacity: 1, scale: 1 }}
                                 exit={{ opacity: 0, scale: 0.5 }}
@@ -315,9 +316,9 @@ const MoltenCoreButton = React.memo(() => {
                             >
                                 <Zap className="w-8 h-8 text-white/90 drop-shadow-md" />
                             </motion.div>
-                        )}
-                        {(state === 'generating' || state === 'deflating') && (
+                        ) : (state === 'generating' || state === 'deflating') ? (
                             <motion.div
+                                key="progress"
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
@@ -325,9 +326,9 @@ const MoltenCoreButton = React.memo(() => {
                             >
                                 <span className="font-mono text-xs font-bold text-white/90">{Math.round(progress)}%</span>
                             </motion.div>
-                        )}
-                        {state === 'complete' && (
+                        ) : state === 'complete' ? (
                             <motion.div
+                                key="complete"
                                 initial={{ opacity: 0, scale: 1.5 }}
                                 animate={{ opacity: 1, scale: 1 }}
                                 exit={{ opacity: 0, scale: 0 }}
@@ -335,7 +336,7 @@ const MoltenCoreButton = React.memo(() => {
                             >
                                 <Check className="w-10 h-10 text-white drop-shadow-lg" strokeWidth={3} />
                             </motion.div>
-                        )}
+                        ) : null}
                     </AnimatePresence>
                 </motion.button>
             </div>
@@ -1700,12 +1701,11 @@ export const DesignLabTab: React.FC<DesignLabTabProps> = ({ styles }) => {
                                     />
                                     <div className="absolute inset-0 flex items-center justify-center">
                                         <AnimatePresence mode="wait">
-                                            {state === 'idle' && (
+                                            {state === 'idle' ? (
                                                 <motion.span key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-white font-bold text-sm tracking-widest drop-shadow-lg">
                                                     GENERATE
                                                 </motion.span>
-                                            )}
-                                            {state === 'generating' && (
+                                            ) : state === 'generating' ? (
                                                 <motion.span
                                                     key="gen"
                                                     initial={{ opacity: 0 }}
@@ -1716,12 +1716,11 @@ export const DesignLabTab: React.FC<DesignLabTabProps> = ({ styles }) => {
                                                 >
                                                     {progress}%
                                                 </motion.span>
-                                            )}
-                                            {state === 'complete' && (
+                                            ) : state === 'complete' ? (
                                                 <motion.div key="done" initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-green-400">
                                                     <Check size={20} strokeWidth={3} />
                                                 </motion.div>
-                                            )}
+                                            ) : null}
                                         </AnimatePresence>
                                     </div>
                                 </motion.button>
@@ -1808,22 +1807,20 @@ export const DesignLabTab: React.FC<DesignLabTabProps> = ({ styles }) => {
                                         )}
                                         <div className="absolute inset-0 flex flex-col items-center justify-center">
                                             <AnimatePresence mode="wait">
-                                                {state === 'idle' && (
+                                                {state === 'idle' ? (
                                                     <motion.span key="idle" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} className="text-white font-bold tracking-widest">
                                                         INITIALIZE
                                                     </motion.span>
-                                                )}
-                                                {state === 'generating' && (
+                                                ) : state === 'generating' ? (
                                                     <motion.div key="gen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-1">
                                                         <span className="font-mono text-xs" style={{ color: getProgressColor(progress) }}>{getStatusText(progress)}</span>
                                                         <span className="font-mono text-lg font-black" style={{ color: getProgressColor(progress), textShadow: `0 0 10px ${getProgressColor(progress)}` }}>{progress}%</span>
                                                     </motion.div>
-                                                )}
-                                                {state === 'complete' && (
+                                                ) : state === 'complete' ? (
                                                     <motion.span key="done" initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="text-green-400 font-bold flex items-center gap-2">
                                                         <Check size={20} strokeWidth={3} /> DEPLOYED
                                                     </motion.span>
-                                                )}
+                                                ) : null}
                                             </AnimatePresence>
                                         </div>
                                     </motion.button>
@@ -1873,13 +1870,15 @@ export const DesignLabTab: React.FC<DesignLabTabProps> = ({ styles }) => {
                                         className="flex items-center justify-center font-bold text-xs border-r border-black/10 dark:border-white/10 px-2"
                                     >
                                         <AnimatePresence mode="wait">
-                                            {state === 'idle' && <motion.span key="cfg" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>CFG</motion.span>}
-                                            {state === 'generating' && (
+                                            {state === 'idle' ? (
+                                                <motion.span key="cfg" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>CFG</motion.span>
+                                            ) : state === 'generating' ? (
                                                 <motion.span key="pct" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="font-mono text-xs font-black" style={{ color: getProgressColor(progress) }}>
                                                     {progress}%
                                                 </motion.span>
-                                            )}
-                                            {state === 'complete' && <motion.span key="ok" initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-green-500 font-bold">✓</motion.span>}
+                                            ) : state === 'complete' ? (
+                                                <motion.span key="ok" initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-green-500 font-bold">✓</motion.span>
+                                            ) : null}
                                         </AnimatePresence>
                                     </motion.div>
                                     <motion.button

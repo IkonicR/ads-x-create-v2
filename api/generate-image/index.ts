@@ -1,13 +1,17 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { waitUntil } from '@vercel/functions';
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
+import { PromptFactory } from '../../services/prompts';
+
+// Config: Use Edge Runtime for better waitUntil support and performance
+// Note: If using standard Node.js runtime, waitUntil is still supported in newer versions
+export const config = {
+    maxDuration: 60, // Extend to 60s for image generation
+};
 
 // Helper: Resolve relative artifact URLs to absolute URLs
 function resolveUrl(url: string, host: string): string {
     if (url.startsWith('/artifacts/')) {
-        // In local dev, it's localhost:5173. In prod, it's the Vercel domain.
-        // We use the host from headers if available.
         const protocol = host.includes('localhost') ? 'http' : 'https';
         return `${protocol}://${host}${url}`;
     }
@@ -35,10 +39,9 @@ async function urlToBase64WithMime(url: string, host: string): Promise<{ base64:
 // Helper: Upload base64 to Supabase Storage
 async function uploadToStorage(base64Data: string, businessId: string, supabase: any): Promise<string | null> {
     try {
-        const base64Response = await fetch(base64Data);
-        const blob = await base64Response.blob();
-        const arrayBuffer = await blob.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
+        // Data URL to Buffer
+        const base64Content = base64Data.split(',')[1];
+        const buffer = Buffer.from(base64Content, 'base64');
 
         const fileName = `${businessId}/generated/${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
 
@@ -62,31 +65,38 @@ async function uploadToStorage(base64Data: string, businessId: string, supabase:
     }
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-    // Handle different methods
-    if (req.method === 'GET') {
-        // Parse path for status or pending endpoints
-        const url = new URL(req.url || '', `http://${req.headers.host}`);
-        const pathParts = url.pathname.split('/').filter(Boolean);
+// ============================================================================
+// WEB STANDARD API HANDLERS
+// ============================================================================
 
-        // api/generate-image/status/{jobId}
-        if (pathParts[2] === 'status' && pathParts[3]) {
-            return handleStatusCheck(req, res, pathParts[3]);
-        }
+export async function GET(req: Request) {
+    const url = new URL(req.url);
+    const pathParts = url.pathname.split('/').filter(Boolean);
+    const host = req.headers.get('host') || 'localhost:5173';
 
-        // api/generate-image/pending/{businessId}
-        if (pathParts[2] === 'pending' && pathParts[3]) {
-            return handlePendingJobs(req, res, pathParts[3]);
-        }
-
-        return res.status(404).json({ error: 'Not found' });
+    // api/generate-image/status/{jobId}
+    if (pathParts[2] === 'status' && pathParts[3]) {
+        return handleStatusCheck(pathParts[3]);
     }
 
-    if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Method not allowed' });
+    // api/generate-image/pending/{businessId}
+    if (pathParts[2] === 'pending' && pathParts[3]) {
+        return handlePendingJobs(pathParts[3]);
     }
 
-    console.log('[Generate] Image Generation Request Received');
+    return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 });
+}
+
+export async function POST(req: Request) {
+    console.log('[Generate] Image Generation Request Received (Web API)');
+    const host = req.headers.get('host') || 'localhost:5173';
+
+    let body;
+    try {
+        body = await req.json();
+    } catch (e) {
+        return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400 });
+    }
 
     const {
         businessId,
@@ -98,13 +108,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         strategy,
         subjectContext,
         stylePreset
-    } = req.body;
+    } = body;
 
     if (!businessId || !prompt) {
-        return res.status(400).json({ error: 'businessId and prompt are required' });
+        return new Response(JSON.stringify({ error: 'businessId and prompt are required' }), { status: 400 });
     }
-
-    // Vercel AI Gateway uses AI_GATEWAY_API_KEY (set automatically)
 
     const supabase = createClient(
         process.env.VITE_SUPABASE_URL!,
@@ -120,7 +128,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .single();
 
         if (bizError || !business) {
-            return res.status(404).json({ error: 'Business not found' });
+            return new Response(JSON.stringify({ error: 'Business not found' }), { status: 404 });
         }
 
         // Map DB business to app format
@@ -145,7 +153,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             locations: business.locations || []
         };
 
-        // 2. Create Job Record
+        // 2. Fetch System Prompts (using secret key avoids RLS issues in background)
+        const { data: systemPrompts } = await supabase
+            .from('system_prompts')
+            .select('*')
+            .single();
+
+        // 3. Create Job Record
         const { data: job, error: jobError } = await supabase
             .from('generation_jobs')
             .insert({
@@ -156,22 +170,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 style_id: styleId,
                 subject_id: subjectId,
                 model_tier: modelTier,
-                strategy: strategy || null
+                strategy: strategy || null,
+                error_message: 'Initializing...' // Milestone marker
             })
             .select()
             .single();
 
         if (jobError) {
             console.error('[Generate] Failed to create job:', jobError);
-            return res.status(500).json({ error: 'Failed to create job' });
+            return new Response(JSON.stringify({ error: 'Failed to create job' }), { status: 500 });
         }
 
         console.log('[Generate] Job created:', job.id);
 
-        // Return job ID immediately (FIRE AND FORGET)
-        res.json({ jobId: job.id, status: 'processing' });
-
         // Run generation in the background using waitUntil
+        // We use the modern waitUntil from @vercel/functions
         waitUntil(
             runGeneration(
                 job.id,
@@ -186,19 +199,57 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 strategy,
                 mappedBusiness,
                 supabase,
-                req.headers.host || 'localhost:5173'
+                host,
+                systemPrompts
             )
         );
 
-        return;
+        // Return job ID immediately (FIRE AND FORGET)
+        return new Response(JSON.stringify({ jobId: job.id, status: 'processing' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+        });
 
     } catch (error: any) {
-        console.error('[Generate] Error:', error);
-        return res.status(500).json({ error: 'Generation failed', details: error.message });
+        console.error('[Generate] Critical Handler Error:', error);
+        return new Response(JSON.stringify({ error: error.message }), { status: 500 });
     }
 }
 
-// Background generation function
+export async function DELETE(req: Request) {
+    const url = new URL(req.url);
+    const pathParts = url.pathname.split('/').filter(Boolean);
+
+    // api/generate-image/job/{jobId}
+    if (pathParts[2] === 'job' && pathParts[3]) {
+        const jobId = pathParts[3];
+        console.log(`[Generate] Vercel: Killing job: ${jobId}`);
+
+        const supabase = createClient(
+            process.env.VITE_SUPABASE_URL!,
+            process.env.SUPABASE_SECRET_KEY!
+        );
+
+        const { error } = await supabase
+            .from('generation_jobs')
+            .delete()
+            .eq('id', jobId);
+
+        if (error) {
+            console.error('[Generate] Failed to delete job:', error);
+            return new Response(JSON.stringify({ error: error.message }), { status: 500 });
+        }
+
+        return new Response(JSON.stringify({ success: true }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+        });
+    }
+
+    return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 });
+}
+
+// Background generation task
 async function runGeneration(
     jobId: string,
     businessId: string,
@@ -212,15 +263,18 @@ async function runGeneration(
     strategy: any,
     mappedBusiness: any,
     supabase: any,
-    host: string
+    host: string,
+    systemPrompts: any
 ) {
-    console.log('[Generate] 🚀 runGeneration STARTED for job:', jobId);
+    console.log(`[Trace] [Job:${jobId}] 📌 Background Task STARTED for business: ${businessId}`);
+    const traceId = jobId.substring(0, 4);
 
     try {
-        // 1. Fetch PromptFactory logic
-        const { PromptFactory } = await import('../../services/prompts.js');
+        // Milestone 1: Building Prompt
+        console.log(`[Trace] [${traceId}] Building visual prompt...`);
+        await supabase.from('generation_jobs').update({ error_message: 'Building prompt...' }).eq('id', jobId);
 
-        // Build robust prompt using PromptFactory (Matches server.ts)
+        // Build robust prompt using PromptFactory
         let visualPrompt = prompt;
         if (subjectContext) {
             visualPrompt += `\nPRIMARY SUBJECT: ${subjectContext.type}. ${subjectContext.preserveLikeness ? 'Maintain strict visual likeness.' : ''}`;
@@ -242,17 +296,17 @@ async function runGeneration(
             subjectContext?.name,
             strategy,
             subjectContext?.isFree,
-            subjectContext?.termsAndConditions
+            subjectContext?.termsAndConditions,
+            systemPrompts // Injected
         );
 
-        console.log('[Generate] ✅ Step 1: Prompt built, length:', finalPrompt.length);
+        // Milestone 2: Fetching Refs
+        console.log(`[Trace] [${traceId}] Prompt Built. Fetching reference images...`);
+        await supabase.from('generation_jobs').update({ error_message: 'Fetching images...' }).eq('id', jobId);
 
         // DEBUG BYPASS
         if (prompt.toLowerCase().startsWith('debug:')) {
-            console.log('=== DEBUG MODE: FULL PROMPT ===');
-            console.log(finalPrompt);
-            console.log('=== END PROMPT ===');
-
+            console.log(`[Trace] [${traceId}] \uD83D\uDEE0 DEBUG BYPASS DETECTED.`);
             const debugUrl = "https://placehold.co/1024x1024/png?text=DEBUG+MODE";
             const assetId = `asset_${Date.now()}`;
 
@@ -273,11 +327,9 @@ async function runGeneration(
                 .update({ status: 'completed', result_asset_id: assetId, updated_at: new Date().toISOString() })
                 .eq('id', jobId);
 
-            console.log('[Generate] DEBUG: Job completed');
+            console.log(`[Trace] [${traceId}] \u2705 DEBUG Job completed successfully.`);
             return;
         }
-
-        console.log('[Generate] ✅ Step 2: Building content parts...');
 
         // Build message content with images
         const contentParts: Array<{ type: 'text'; text: string } | { type: 'image'; image: string }> = [
@@ -286,6 +338,7 @@ async function runGeneration(
 
         // Add subject image
         if (subjectContext?.imageUrl) {
+            console.log(`[Trace] [${traceId}] Fetching subject image...`);
             const subjectResult = await urlToBase64WithMime(subjectContext.imageUrl, host);
             if (subjectResult) {
                 contentParts.push({ type: 'image', image: `data:${subjectResult.mimeType};base64,${subjectResult.base64}` });
@@ -295,14 +348,15 @@ async function runGeneration(
 
         // Add logo
         if (mappedBusiness.logoUrl) {
+            console.log(`[Trace] [${traceId}] Fetching logo...`);
             const logoResult = await urlToBase64WithMime(mappedBusiness.logoUrl, host);
             if (logoResult) {
                 contentParts.push({ type: 'image', image: `data:${logoResult.mimeType};base64,${logoResult.base64}` });
-                contentParts.push({ type: 'text', text: ' [REFERENCE IMAGE: BUSINESS LOGO — PRESERVE ALL TEXT/LETTERING EXACTLY] ' });
+                contentParts.push({ type: 'text', text: ' [REFERENCE IMAGE: BUSINESS LOGO \u2014 PRESERVE ALL TEXT/LETTERING EXACTLY] ' });
             }
         }
 
-        // Add style references (All active ones)
+        // Add style references
         if (stylePreset?.referenceImages?.length > 0) {
             const activeRefs = stylePreset.referenceImages.filter((r: any) => {
                 if (typeof r === 'object' && r !== null && 'isActive' in r) {
@@ -311,32 +365,25 @@ async function runGeneration(
                 return typeof r === 'string';
             });
 
-            let refCount = 0;
             for (const ref of activeRefs) {
                 const url = typeof ref === 'string' ? ref : (ref.url || ref);
                 const styleResult = await urlToBase64WithMime(url, host);
                 if (styleResult) {
-                    refCount++;
                     contentParts.push({ type: 'image', image: `data:${styleResult.mimeType};base64,${styleResult.base64}` });
-                    contentParts.push({ type: 'text', text: ` [REFERENCE IMAGE ${refCount}: STYLE] ` });
                 }
             }
         } else if (stylePreset?.imageUrl) {
             const styleResult = await urlToBase64WithMime(stylePreset.imageUrl, host);
             if (styleResult) {
                 contentParts.push({ type: 'image', image: `data:${styleResult.mimeType};base64,${styleResult.base64}` });
-                contentParts.push({ type: 'text', text: ' [REFERENCE IMAGE: STYLE] ' });
             }
         }
 
-        console.log('[Generate] ✅ Step 3: Content parts ready, count:', contentParts.length);
-        console.log('[Generate] ✅ Step 4: Calling Gemini 3 Pro Image with aspectRatio:', aspectRatio);
-        const genStartTime = Date.now();
+        // Milestone 3: AI Generation (Heavy Lift)
+        console.log(`[Trace] [${traceId}] INITIALIZING GOOGLE AI CALL...`);
+        await supabase.from('generation_jobs').update({ error_message: 'AI Generation in progress...' }).eq('id', jobId);
 
-        // Initialize Google AI client
-        console.log('[Generate] ✅ Step 5: Initializing Google AI client...');
         const googleClient = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY! });
-        console.log('[Generate] ✅ Step 6: Google AI client ready, calling API...');
 
         // Convert contentParts to Google format
         const googleParts: any[] = [];
@@ -344,7 +391,6 @@ async function runGeneration(
             if (part.type === 'text') {
                 googleParts.push({ text: part.text });
             } else if (part.type === 'image' && typeof part.image === 'string') {
-                // Extract base64 from data URL
                 const base64Match = part.image.match(/^data:([^;]+);base64,(.+)$/);
                 if (base64Match) {
                     googleParts.push({
@@ -357,8 +403,8 @@ async function runGeneration(
             }
         }
 
-        // Call Gemini 3 Pro Image directly
-        const result = await googleClient.models.generateContent({
+        // ADD TIMEOUT SAFETY: 40s (Max duration is 60s)
+        const generatePromise = googleClient.models.generateContent({
             model: 'gemini-3-pro-image-preview',
             contents: [{ role: 'user', parts: googleParts }],
             config: {
@@ -370,10 +416,16 @@ async function runGeneration(
             } as any,
         });
 
-        const genEndTime = Date.now();
-        console.log(`[Generate] ✅ Step 7: AI Generation complete! Took: ${((genEndTime - genStartTime) / 1000).toFixed(2)}s`);
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('AI generation timed out (40s)')), 40000)
+        );
 
-        // Extract image from response
+        const result: any = await Promise.race([generatePromise, timeoutPromise]);
+
+        // Milestone 4: Storage
+        console.log(`[Trace] [${traceId}] AI Reponse Received. Uploading...`);
+        await supabase.from('generation_jobs').update({ error_message: 'Uploading result...' }).eq('id', jobId);
+
         const parts = result.candidates?.[0]?.content?.parts || [];
         const imagePart = parts.find((p: any) => p.inlineData?.mimeType?.startsWith('image/'));
 
@@ -383,14 +435,15 @@ async function runGeneration(
 
         const resultImage = `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
 
-        console.log('[Generate] ✅ Step 8: Image extracted, uploading to storage...');
-
         // Upload to storage
         const publicUrl = await uploadToStorage(resultImage, businessId, supabase);
         if (!publicUrl) {
-            throw new Error('Failed to upload to storage');
+            throw new Error('Storage failure');
         }
-        console.log('[Generate] ✅ Step 9: Upload complete, URL:', publicUrl.substring(0, 80) + '...');
+
+        // Milestone 5: Completion
+        console.log(`[Trace] [${traceId}] SUCCESS! Finalizing...`);
+        await supabase.from('generation_jobs').update({ error_message: 'Finalizing database...' }).eq('id', jobId);
 
         // Create asset
         const assetId = `asset_${Date.now()}_${Math.random().toString(36).substring(7)}`;
@@ -413,29 +466,30 @@ async function runGeneration(
             .update({
                 status: 'completed',
                 result_asset_id: assetId,
+                error_message: null, // Clear milestones on success
                 updated_at: new Date().toISOString()
             })
             .eq('id', jobId);
 
-        console.log('[Generate] ✅ Step 10: FULLY COMPLETED! Job:', jobId, '-> Asset:', assetId);
+        console.log(`[Trace] [${traceId}] \u2705 FULLY COMPLETED! Job: ${jobId}`);
 
     } catch (error: any) {
-        console.error('[Generate] ❌ GENERATION FAILED:', error.message);
-        console.error('[Generate] ❌ Full error:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
-
+        console.error(`[Trace] [${traceId}] \u274C FATAL:`, error.message);
         await supabase
             .from('generation_jobs')
             .update({
                 status: 'failed',
-                error_message: error.message || 'Unknown error',
+                error_message: error.message || 'Background failure',
                 updated_at: new Date().toISOString()
             })
-            .eq('id', jobId);
+            .eq('id', jobId)
+            .catch((e: any) => console.error("Could not persist fail state", e));
     }
 }
 
+
 // Status check handler
-async function handleStatusCheck(req: VercelRequest, res: VercelResponse, jobId: string) {
+async function handleStatusCheck(jobId: string) {
     const supabase = createClient(
         process.env.VITE_SUPABASE_URL!,
         process.env.SUPABASE_SECRET_KEY!
@@ -448,7 +502,7 @@ async function handleStatusCheck(req: VercelRequest, res: VercelResponse, jobId:
         .single();
 
     if (error || !job) {
-        return res.status(404).json({ error: 'Job not found' });
+        return new Response(JSON.stringify({ error: 'Job not found' }), { status: 404 });
     }
 
     let asset = null;
@@ -472,7 +526,7 @@ async function handleStatusCheck(req: VercelRequest, res: VercelResponse, jobId:
         }
     }
 
-    return res.json({
+    return new Response(JSON.stringify({
         id: job.id,
         status: job.status,
         errorMessage: job.error_message,
@@ -480,11 +534,11 @@ async function handleStatusCheck(req: VercelRequest, res: VercelResponse, jobId:
         asset,
         createdAt: job.created_at,
         updatedAt: job.updated_at
-    });
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 }
 
 // Pending jobs handler
-async function handlePendingJobs(req: VercelRequest, res: VercelResponse, businessId: string) {
+async function handlePendingJobs(businessId: string) {
     const supabase = createClient(
         process.env.VITE_SUPABASE_URL!,
         process.env.SUPABASE_SECRET_KEY!
@@ -498,8 +552,11 @@ async function handlePendingJobs(req: VercelRequest, res: VercelResponse, busine
         .order('created_at', { ascending: false });
 
     if (error) {
-        return res.status(500).json({ error: 'Failed to fetch jobs' });
+        return new Response(JSON.stringify({ error: 'Failed to fetch jobs' }), { status: 500 });
     }
 
-    return res.json({ jobs: jobs || [] });
+    return new Response(JSON.stringify({ jobs: jobs || [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+    });
 }
