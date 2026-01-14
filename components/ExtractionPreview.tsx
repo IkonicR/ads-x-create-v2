@@ -198,7 +198,6 @@ export const ExtractionPreview: React.FC<ExtractionPreviewProps> = ({
                             Description
                         </label>
                         <NeuTextArea
-                            expandable
                             value={editedData.description || ''}
                             onChange={e => updateField('description', e.target.value)}
                             placeholder="Brief description of your business"

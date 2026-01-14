@@ -1,52 +1,41 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { NeuCard, NeuButton, NeuInput, useThemeStyles } from '../components/NeuComponents';
 import { GalaxyHeading } from '../components/GalaxyHeading';
 import { GalaxyCanvas } from '../components/GalaxyCanvas';
 import { useAuth } from '../context/AuthContext';
-import { Chrome, User, Zap, Mail, Lock, Loader2, Ticket, CheckCircle2, XCircle, ArrowRight } from 'lucide-react';
+import { Chrome, User, Loader2, Ticket, CheckCircle2, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const Login: React.FC = () => {
   const { styles } = useThemeStyles();
-  const { signInWithGoogle, signInWithEmail } = useAuth();
+  const { signInWithGoogle } = useAuth();
   const location = useLocation();
 
-  // Check if coming from team invite flow (bypass invite code requirement)
+  // Check if coming from team invite flow
   const returnTo = (location.state as any)?.returnTo || '';
   const isFromTeamInvite = returnTo.startsWith('/invite/');
 
-  // Invite code state
+  // Invite code state (optional pre-auth entry)
+  const [showCodeInput, setShowCodeInput] = useState(false);
   const [inviteCode, setInviteCode] = useState('');
   const [codeValidating, setCodeValidating] = useState(false);
-  const [codeValid, setCodeValid] = useState<boolean | null>(isFromTeamInvite ? true : null);
+  const [codeValid, setCodeValid] = useState<boolean | null>(null);
   const [codeError, setCodeError] = useState('');
 
-  // Email login state
-  const [showEmailForm, setShowEmailForm] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  // Auto-format invite code input (uppercase, add dash after prefix)
+  // Auto-format invite code input
   const handleCodeChange = (value: string) => {
-    // Remove any non-alphanumeric chars except dash
     let cleaned = value.toUpperCase().replace(/[^A-Z0-9\-]/g, '');
-
-    // Auto-insert dash after 4+ chars if not present
     if (cleaned.length > 4 && !cleaned.includes('-')) {
       cleaned = cleaned.slice(0, 4) + '-' + cleaned.slice(4);
     }
-
-    // Limit to format: XXXX-XXXX (9 chars max)
     cleaned = cleaned.slice(0, 9);
-
     setInviteCode(cleaned);
     setCodeValid(null);
     setCodeError('');
   };
 
-  // Validate invite code
+  // Validate and store invite code (optional, for pre-auth)
   const validateCode = async () => {
     if (!inviteCode || inviteCode.length < 6) {
       setCodeError('Please enter a valid invite code');
@@ -65,7 +54,10 @@ const Login: React.FC = () => {
 
       const data = await response.json();
 
-      if (data.valid) {
+      if (response.status === 429) {
+        setCodeValid(false);
+        setCodeError('Too many attempts. Please wait a minute and try again.');
+      } else if (data.valid) {
         setCodeValid(true);
         // Store code for use after OAuth
         localStorage.setItem('pending_invite_code', inviteCode);
@@ -81,35 +73,18 @@ const Login: React.FC = () => {
     }
   };
 
-  // Handle OAuth click
+  // Handle OAuth click - always available now
   const handleGoogleSignIn = async () => {
-    // Store code for consumption after OAuth callback
+    // Store code for consumption after OAuth callback (if validated)
     if (inviteCode && codeValid) {
       localStorage.setItem('pending_invite_code', inviteCode);
     }
+    // Store returnTo for redirect after OAuth
+    if (returnTo) {
+      localStorage.setItem('auth_return_to', returnTo);
+    }
     await signInWithGoogle();
   };
-
-  const handleEmailLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email.trim() || !password) {
-      setError('Please enter email and password');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-
-    const result = await signInWithEmail(email.trim(), password);
-
-    if (result.error) {
-      setError(result.error);
-    }
-    setLoading(false);
-  };
-
-  // Can proceed with auth?
-  const canProceed = isFromTeamInvite || codeValid === true;
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 animate-fade-in relative overflow-hidden">
@@ -150,162 +125,100 @@ const Login: React.FC = () => {
 
         <div className="text-center">
           <h3 className={`text-xl font-bold text-white`}>
-            {isFromTeamInvite ? 'Accept Invitation' : canProceed ? 'Welcome Back' : 'Invite Required'}
+            {isFromTeamInvite ? 'Accept Invitation' : 'Welcome'}
           </h3>
           <p className={`text-sm text-gray-400 mt-1`}>
             {isFromTeamInvite
               ? 'Sign in to join the workspace'
-              : canProceed
-                ? 'Sign in to access your workspace'
-                : 'Enter your invite code to continue'
+              : 'Sign in to access your workspace'
             }
           </p>
         </div>
 
-        {/* Invite Code Input (hidden if from team invite or already validated) */}
-        {!isFromTeamInvite && !canProceed && (
-          <div className="w-full space-y-3">
-            <div className="relative">
-              <Ticket className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-              <NeuInput
-                value={inviteCode}
-                onChange={(e) => handleCodeChange(e.target.value)}
-                placeholder="BETA-XXXX"
-                className="pl-10 w-full text-center font-mono tracking-widest uppercase"
-                forceTheme="dark"
-                onKeyDown={(e) => e.key === 'Enter' && validateCode()}
-              />
-              {/* Validation status indicator */}
-              {codeValid !== null && (
-                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                  {codeValid ? (
-                    <CheckCircle2 size={18} className="text-green-400" />
-                  ) : (
-                    <XCircle size={18} className="text-red-400" />
-                  )}
-                </div>
-              )}
-            </div>
+        {/* Primary Action: Sign In Button (always visible) */}
+        <NeuButton
+          onClick={handleGoogleSignIn}
+          className="w-full flex items-center justify-center gap-3 py-4 text-base font-bold"
+          forceTheme="dark"
+        >
+          <Chrome size={20} /> Continue with Google
+        </NeuButton>
 
-            {codeError && (
-              <p className="text-red-400 text-xs text-center">{codeError}</p>
-            )}
-
-            <NeuButton
-              onClick={validateCode}
-              disabled={codeValidating || inviteCode.length < 6}
-              className="w-full flex items-center justify-center gap-3 py-4 text-base font-bold"
-              forceTheme="dark"
+        {/* Collapsible invite code section (for new users who have a code) */}
+        {!isFromTeamInvite && (
+          <div className="w-full">
+            <button
+              onClick={() => setShowCodeInput(!showCodeInput)}
+              className="w-full flex items-center justify-center gap-2 text-sm text-gray-500 hover:text-gray-300 transition-colors py-2"
             >
-              {codeValidating ? (
-                <>
-                  <Loader2 size={20} className="animate-spin" /> Validating...
-                </>
-              ) : (
-                <>
-                  Validate Code <ArrowRight size={18} />
-                </>
+              {showCodeInput ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              {showCodeInput ? 'Hide invite code' : 'I have an invite code'}
+            </button>
+
+            <AnimatePresence>
+              {showCodeInput && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <div className="pt-3 space-y-3">
+                    <div className="relative">
+                      <Ticket className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                      <NeuInput
+                        value={inviteCode}
+                        onChange={(e) => handleCodeChange(e.target.value)}
+                        placeholder="BETA-XXXX"
+                        className="pl-10 w-full text-center font-mono tracking-widest uppercase"
+                        forceTheme="dark"
+                        onKeyDown={(e) => e.key === 'Enter' && validateCode()}
+                      />
+                      {codeValid !== null && (
+                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                          {codeValid ? (
+                            <CheckCircle2 size={18} className="text-green-400" />
+                          ) : (
+                            <XCircle size={18} className="text-red-400" />
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {codeError && (
+                      <p className="text-red-400 text-xs text-center">{codeError}</p>
+                    )}
+
+                    <NeuButton
+                      onClick={validateCode}
+                      disabled={codeValidating || inviteCode.length < 6}
+                      className="w-full flex items-center justify-center gap-3 py-3 text-sm"
+                      forceTheme="dark"
+                    >
+                      {codeValidating ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin" /> Validating...
+                        </>
+                      ) : codeValid ? (
+                        <>
+                          <CheckCircle2 size={16} /> Code Validated!
+                        </>
+                      ) : (
+                        'Validate Code'
+                      )}
+                    </NeuButton>
+
+                    {codeValid && (
+                      <p className="text-green-400 text-xs text-center">
+                        ✓ Code saved. Click "Continue with Google" to proceed.
+                      </p>
+                    )}
+                  </div>
+                </motion.div>
               )}
-            </NeuButton>
-
-            <p className="text-center text-xs text-gray-500">
-              Don't have an invite code? Contact us for access.
-            </p>
+            </AnimatePresence>
           </div>
-        )}
-
-        {/* Auth Options (shown only after code validated or team invite) */}
-        {canProceed && (
-          <>
-            {!showEmailForm ? (
-              <>
-                <NeuButton
-                  onClick={handleGoogleSignIn}
-                  className="w-full flex items-center justify-center gap-3 py-4 text-base font-bold"
-                  forceTheme="dark"
-                >
-                  <Chrome size={20} /> Continue with Google
-                </NeuButton>
-
-                <div className="relative w-full">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-600"></div>
-                  </div>
-                  <div className="relative flex justify-center">
-                    <span className="px-3 text-xs uppercase text-gray-400 bg-[#1a1d23]">Or</span>
-                  </div>
-                </div>
-
-                <NeuButton
-                  onClick={() => setShowEmailForm(true)}
-                  className="w-full flex items-center justify-center gap-3 py-4 text-base font-bold"
-                  forceTheme="dark"
-                >
-                  <Mail size={20} /> Continue with Email
-                </NeuButton>
-              </>
-            ) : (
-              <form onSubmit={handleEmailLogin} className="w-full space-y-4">
-                <div className="space-y-3">
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-                    <NeuInput
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="Email address"
-                      className="pl-10 w-full"
-                      forceTheme="dark"
-                    />
-                  </div>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-                    <NeuInput
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Password"
-                      className="pl-10 w-full"
-                      forceTheme="dark"
-                    />
-                  </div>
-                </div>
-
-                {error && (
-                  <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
-                    <p className="text-red-400 text-xs font-bold">{error}</p>
-                  </div>
-                )}
-
-                <NeuButton
-                  type="submit"
-                  variant="primary"
-                  disabled={loading}
-                  className="w-full flex items-center justify-center gap-3 py-4 text-base font-bold"
-                  forceTheme="dark"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 size={20} className="animate-spin" /> Signing in...
-                    </>
-                  ) : (
-                    'Sign In'
-                  )}
-                </NeuButton>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowEmailForm(false);
-                    setError('');
-                  }}
-                  className="w-full text-sm text-gray-400 hover:text-white transition-colors"
-                >
-                  ← Back to other options
-                </button>
-              </form>
-            )}
-          </>
         )}
 
         <div className="text-center space-y-2">

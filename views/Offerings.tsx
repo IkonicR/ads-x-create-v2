@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { Business, Offering, TeamMember, BusinessImage } from '../types';
-import { NeuCard, NeuInput, NeuButton, NeuTextArea, NeuDropdown, useThemeStyles, NeuBadge, NeuListBuilder } from '../components/NeuComponents';
+import { NeuCard, NeuInput, NeuButton, NeuTextArea, NeuDropdown, useThemeStyles, NeuBadge, NeuListBuilder, NeuCloseButton } from '../components/NeuComponents';
 import { NeuImageUploader } from '../components/NeuImageUploader';
-import { ShoppingBag, Plus, Trash2, DollarSign, Tag, Edit2, X, Sparkles, Target, List, Gift, Users, Briefcase, ImageIcon } from 'lucide-react';
+import { ShoppingBag, Plus, Trash2, DollarSign, Tag, Edit2, Sparkles, Target, List, Gift, Users, Briefcase, ImageIcon } from 'lucide-react';
 import { useNavigation } from '../context/NavigationContext';
 import { useNotification } from '../context/NotificationContext';
 import { GalaxyHeading } from '../components/GalaxyHeading';
@@ -443,9 +443,7 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
                     </p>
                   </div>
                 </div>
-                <button onClick={resetForm} className="p-2 hover:bg-black/5 rounded-full transition-colors">
-                  <X size={20} className={styles.textSub} />
-                </button>
+                <NeuCloseButton onClick={resetForm} />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-8 mb-6">
@@ -600,7 +598,6 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
                         placeholder="Describe the outcome and experience..."
                         value={formState.description}
                         onChange={e => setFormState(prev => ({ ...prev, description: e.target.value }))}
-                        expandable
                         collapsedHeightMobile="80px"
                         collapsedHeightDesktop="80px"
                         expandedHeightMobile="160px"
@@ -632,7 +629,6 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
                           placeholder="Specific T&Cs for this offering (e.g. Subject to availability)"
                           value={formState.termsAndConditions}
                           onChange={e => setFormState(prev => ({ ...prev, termsAndConditions: e.target.value }))}
-                          expandable
                           collapsedHeightMobile="60px"
                           collapsedHeightDesktop="60px"
                           expandedHeightMobile="120px"
@@ -792,9 +788,7 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
                     </p>
                   </div>
                 </div>
-                <button onClick={resetTeamForm} className="p-2 hover:bg-black/5 rounded-full transition-colors">
-                  <X size={20} className={styles.textSub} />
-                </button>
+                <NeuCloseButton onClick={resetTeamForm} />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-8 mb-6">
@@ -904,9 +898,7 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
                     </p>
                   </div>
                 </div>
-                <button onClick={resetGalleryForm} className="p-2 hover:bg-black/5 rounded-full transition-colors">
-                  <X size={20} className={styles.textSub} />
-                </button>
+                <NeuCloseButton onClick={resetGalleryForm} />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-8 mb-6">
@@ -965,7 +957,6 @@ const Offerings: React.FC<OfferingsProps> = ({ business, updateBusiness }) => {
                       placeholder="Describe what this image shows, for AI context..."
                       value={galleryFormState.description}
                       onChange={e => setGalleryFormState(prev => ({ ...prev, description: e.target.value }))}
-                      expandable
                       className="min-h-[100px]"
                     />
                   </div>

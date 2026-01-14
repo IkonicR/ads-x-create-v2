@@ -16,6 +16,8 @@ import {
 } from '../../components/NeuComponents';
 import { Zap, Check, X, RefreshCw } from 'lucide-react';
 import { Dithering, LiquidMetal } from '@paper-design/shaders-react';
+import { GalaxyCanvas } from '../../components/GalaxyCanvas';
+import { LiquidMetalHeading } from '../../components/LiquidMetalHeading';
 
 // --- LAZY LOADING INFRASTRUCTURE ---
 // Only mount shaders when they scroll into view to avoid WebGL context overload
@@ -721,6 +723,78 @@ export const DesignLabTab: React.FC<DesignLabTabProps> = ({ styles }) => {
             });
         }
     };
+
+    // --- LIQUIDMETAL TEXT MASK STATE ---
+    const LIQUID_METAL_DEFAULTS = {
+        colorTint: '#94ca42',
+        shape: 'none' as 'none' | 'circle' | 'daisy' | 'diamond' | 'metaballs',
+        image: '' as string, // URL or empty for shape mode
+        repetition: 1.55,
+        softness: 0.45,
+        shiftRed: 0.57,
+        shiftBlue: 0.47,
+        distortion: 0.97,
+        contour: 0.0,
+        angle: 90,
+        speed: 0.36,
+        scale: 0.6,
+    };
+
+    // Hover boost for slider preview
+    const HOVER_BOOST = {
+        repetition: 0.5,
+        shiftRed: 0.2,
+        shiftBlue: 0.2,
+        speed: 0.4,
+        scale: 0.3,
+    };
+
+    const [liquidMetalConfig, setLiquidMetalConfig] = useState(LIQUID_METAL_DEFAULTS);
+    const sliderPreviewHoverRef = useRef(false);
+
+    // Animated shader values (lerped)
+    const [animatedShader, setAnimatedShader] = useState({
+        repetition: LIQUID_METAL_DEFAULTS.repetition,
+        shiftRed: LIQUID_METAL_DEFAULTS.shiftRed,
+        shiftBlue: LIQUID_METAL_DEFAULTS.shiftBlue,
+        speed: LIQUID_METAL_DEFAULTS.speed,
+        scale: LIQUID_METAL_DEFAULTS.scale,
+    });
+
+    const updateLiquidMetal = (key: keyof typeof liquidMetalConfig, value: number | string) => {
+        setLiquidMetalConfig(prev => ({ ...prev, [key]: value }));
+    };
+
+    const resetLiquidMetal = () => setLiquidMetalConfig(LIQUID_METAL_DEFAULTS);
+
+    // Lerp helper
+    const lerp = (current: number, target: number, factor: number) => {
+        const diff = target - current;
+        return Math.abs(diff) < 0.001 ? target : current + diff * factor;
+    };
+
+    // 60fps animation loop for smooth hover transitions
+    useEffect(() => {
+        let rafId: number;
+
+        const tick = () => {
+            const isHover = sliderPreviewHoverRef.current;
+            const hovFactor = isHover ? 1 : 0;
+
+            setAnimatedShader(prev => ({
+                repetition: lerp(prev.repetition, liquidMetalConfig.repetition + (hovFactor * HOVER_BOOST.repetition), 0.08),
+                shiftRed: lerp(prev.shiftRed, liquidMetalConfig.shiftRed + (hovFactor * HOVER_BOOST.shiftRed), 0.08),
+                shiftBlue: lerp(prev.shiftBlue, liquidMetalConfig.shiftBlue + (hovFactor * HOVER_BOOST.shiftBlue), 0.08),
+                speed: lerp(prev.speed, liquidMetalConfig.speed + (hovFactor * HOVER_BOOST.speed), 0.08),
+                scale: lerp(prev.scale, liquidMetalConfig.scale + (hovFactor * HOVER_BOOST.scale), 0.08),
+            }));
+
+            rafId = requestAnimationFrame(tick);
+        };
+
+        rafId = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(rafId);
+    }, [liquidMetalConfig]);
 
     return (
         <div className="space-y-12">
@@ -1975,6 +2049,361 @@ export const DesignLabTab: React.FC<DesignLabTabProps> = ({ styles }) => {
                         </div>
                         <p className="text-[10px] text-white/40 text-center">Wordmark with flowing metal texture.</p>
                     </div>
+                </div>
+            </section>
+
+            {/* --- 13. LIQUIDMETAL SHADER LAB --- */}
+            <section className="space-y-8 pt-12 border-t border-black/10 dark:border-white/10">
+                <div>
+                    <h2 className="text-2xl font-bold text-brand">13. LiquidMetal Shader Lab</h2>
+                    <p className="opacity-70 mt-1">Experiment with shader parameters. Text masks render directly on the page canvas.</p>
+                </div>
+
+                {/* TEXT MASK PREVIEWS */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Preview 1: Main Text */}
+                    <div
+                        className="relative h-28 cursor-pointer flex items-center justify-center rounded-2xl border border-black/5 dark:border-white/5"
+                        onMouseEnter={() => { sliderPreviewHoverRef.current = true; }}
+                        onMouseLeave={() => { sliderPreviewHoverRef.current = false; }}
+                    >
+                        <svg className="w-full h-full" viewBox="0 0 500 80" preserveAspectRatio="xMidYMid meet">
+                            <defs>
+                                <clipPath id="liquid-text-mask-1">
+                                    <text
+                                        x="50%"
+                                        y="50%"
+                                        dominantBaseline="middle"
+                                        textAnchor="middle"
+                                        fontSize="56"
+                                        fontWeight="800"
+                                        fontFamily="system-ui, -apple-system, sans-serif"
+                                    >
+                                        DESIGN SYSTEM
+                                    </text>
+                                </clipPath>
+                            </defs>
+                            <foreignObject x="0" y="0" width="100%" height="100%" clipPath="url(#liquid-text-mask-1)">
+                                <div style={{ width: '100%', height: '100%' }}>
+                                    <LiquidMetal
+                                        colorBack={isDark ? '#0F1115' : '#F9FAFB'}
+                                        colorTint={liquidMetalConfig.colorTint}
+                                        shape="none"
+                                        repetition={animatedShader.repetition}
+                                        softness={liquidMetalConfig.softness}
+                                        shiftRed={animatedShader.shiftRed}
+                                        shiftBlue={animatedShader.shiftBlue}
+                                        distortion={liquidMetalConfig.distortion}
+                                        contour={liquidMetalConfig.contour}
+                                        angle={liquidMetalConfig.angle}
+                                        speed={animatedShader.speed}
+                                        scale={animatedShader.scale}
+                                        style={{ width: '100%', height: '100%' }}
+                                    />
+                                </div>
+                            </foreignObject>
+                        </svg>
+                    </div>
+
+                    {/* Preview 2: Secondary Text */}
+                    <div className="relative h-28 cursor-pointer flex items-center justify-center rounded-2xl border border-black/5 dark:border-white/5">
+                        <svg className="w-full h-full" viewBox="0 0 400 80" preserveAspectRatio="xMidYMid meet">
+                            <defs>
+                                <clipPath id="liquid-text-mask-2">
+                                    <text
+                                        x="50%"
+                                        y="50%"
+                                        dominantBaseline="middle"
+                                        textAnchor="middle"
+                                        fontSize="52"
+                                        fontWeight="800"
+                                        fontFamily="system-ui, -apple-system, sans-serif"
+                                    >
+                                        OFFERINGS
+                                    </text>
+                                </clipPath>
+                            </defs>
+                            <foreignObject x="0" y="0" width="100%" height="100%" clipPath="url(#liquid-text-mask-2)">
+                                <div style={{ width: '100%', height: '100%' }}>
+                                    <LiquidMetal
+                                        colorBack={isDark ? '#0F1115' : '#F9FAFB'}
+                                        colorTint={liquidMetalConfig.colorTint}
+                                        shape="none"
+                                        repetition={animatedShader.repetition}
+                                        softness={liquidMetalConfig.softness}
+                                        shiftRed={animatedShader.shiftRed}
+                                        shiftBlue={animatedShader.shiftBlue}
+                                        distortion={liquidMetalConfig.distortion}
+                                        contour={liquidMetalConfig.contour}
+                                        angle={liquidMetalConfig.angle}
+                                        speed={animatedShader.speed}
+                                        scale={animatedShader.scale}
+                                        style={{ width: '100%', height: '100%' }}
+                                    />
+                                </div>
+                            </foreignObject>
+                        </svg>
+                    </div>
+                </div>
+
+                {/* SHAPE/IMAGE PREVIEW (Separate from Text Mask Demos) */}
+                <div className="mt-8 p-6 rounded-3xl bg-white/5 dark:bg-black/20 border border-black/10 dark:border-white/10">
+                    <div className="flex items-center gap-2 mb-4">
+                        <NeuBadge>Preview</NeuBadge>
+                        <h4 className="font-bold text-sm">Shape / Image Mode</h4>
+                    </div>
+                    <div className="relative h-64 rounded-2xl overflow-hidden">
+                        <LiquidMetal
+                            colorBack={isDark ? '#0F1115' : '#F9FAFB'}
+                            colorTint={liquidMetalConfig.colorTint}
+                            shape={liquidMetalConfig.image ? 'none' : liquidMetalConfig.shape}
+                            image={liquidMetalConfig.image || undefined}
+                            repetition={animatedShader.repetition}
+                            softness={liquidMetalConfig.softness}
+                            shiftRed={animatedShader.shiftRed}
+                            shiftBlue={animatedShader.shiftBlue}
+                            distortion={liquidMetalConfig.distortion}
+                            contour={liquidMetalConfig.contour}
+                            angle={liquidMetalConfig.angle}
+                            speed={animatedShader.speed}
+                            scale={animatedShader.scale}
+                            style={{ width: '100%', height: '100%' }}
+                        />
+                    </div>
+                    <p className="text-xs text-center opacity-50 mt-2">
+                        {liquidMetalConfig.image ? 'Image mode — shader applied to custom image' : `Shape: ${liquidMetalConfig.shape}`}
+                    </p>
+                </div>
+
+                {/* SHADER CONTROLS (Full Width, Below Grid) */}
+                <div className="mt-8 p-6 rounded-3xl bg-white/5 dark:bg-black/20 border border-black/10 dark:border-white/10 space-y-6">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="text-lg font-bold text-brand">LiquidMetal Shader Controls</h3>
+                            <p className="text-xs opacity-60">Tweak these values to find your ideal configuration.</p>
+                        </div>
+                        <button
+                            onClick={resetLiquidMetal}
+                            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 transition-colors"
+                        >
+                            Reset to Defaults
+                        </button>
+                    </div>
+
+                    {/* SOURCE CONTROLS */}
+                    <div className="space-y-3">
+                        <h4 className="text-xs font-bold uppercase tracking-widest opacity-40">Source</h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            {/* Shape Selector */}
+                            <div className="flex flex-col gap-1">
+                                <label className="text-xs opacity-60">shape</label>
+                                <select
+                                    value={liquidMetalConfig.shape}
+                                    onChange={(e) => updateLiquidMetal('shape', e.target.value)}
+                                    className="w-full h-9 rounded-lg px-2 text-sm bg-white/10 dark:bg-black/30 border border-white/10 cursor-pointer"
+                                >
+                                    <option value="none">none (full fill)</option>
+                                    <option value="circle">circle</option>
+                                    <option value="daisy">daisy</option>
+                                    <option value="diamond">diamond</option>
+                                    <option value="metaballs">metaballs</option>
+                                </select>
+                            </div>
+
+                            {/* Color Tint */}
+                            <div className="flex flex-col gap-1">
+                                <label className="text-xs opacity-60">colorTint</label>
+                                <input
+                                    type="color"
+                                    value={liquidMetalConfig.colorTint}
+                                    onChange={(e) => updateLiquidMetal('colorTint', e.target.value)}
+                                    className="w-full h-9 rounded-lg cursor-pointer"
+                                />
+                            </div>
+
+                            {/* Image URL */}
+                            <div className="flex flex-col gap-1 col-span-2">
+                                <label className="text-xs opacity-60">image URL <span className="opacity-40">(overrides shape)</span></label>
+                                <input
+                                    type="text"
+                                    value={liquidMetalConfig.image}
+                                    onChange={(e) => updateLiquidMetal('image', e.target.value)}
+                                    placeholder="https://... or leave empty"
+                                    className="w-full h-9 rounded-lg px-3 text-sm bg-white/10 dark:bg-black/30 border border-white/10"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* PATTERN CONTROLS */}
+                    <div className="space-y-3 pt-4 border-t border-white/5">
+                        <h4 className="text-xs font-bold uppercase tracking-widest opacity-40">Pattern</h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            {/* Repetition */}
+                            <div className="flex flex-col gap-1">
+                                <div className="flex justify-between">
+                                    <label className="text-xs opacity-60">repetition</label>
+                                    <span className="text-xs font-mono opacity-40">{liquidMetalConfig.repetition.toFixed(2)}</span>
+                                </div>
+                                <input
+                                    type="range" min="1" max="10" step="0.01"
+                                    value={liquidMetalConfig.repetition}
+                                    onChange={(e) => updateLiquidMetal('repetition', parseFloat(e.target.value))}
+                                    className="w-full accent-brand"
+                                />
+                                <div className="flex justify-between text-[10px] opacity-30"><span>1</span><span>10</span></div>
+                            </div>
+
+                            {/* Softness */}
+                            <div className="flex flex-col gap-1">
+                                <div className="flex justify-between">
+                                    <label className="text-xs opacity-60">softness</label>
+                                    <span className="text-xs font-mono opacity-40">{liquidMetalConfig.softness.toFixed(2)}</span>
+                                </div>
+                                <input
+                                    type="range" min="0" max="1" step="0.01"
+                                    value={liquidMetalConfig.softness}
+                                    onChange={(e) => updateLiquidMetal('softness', parseFloat(e.target.value))}
+                                    className="w-full accent-brand"
+                                />
+                                <div className="flex justify-between text-[10px] opacity-30"><span>0</span><span>1</span></div>
+                            </div>
+
+                            {/* Distortion */}
+                            <div className="flex flex-col gap-1">
+                                <div className="flex justify-between">
+                                    <label className="text-xs opacity-60">distortion</label>
+                                    <span className="text-xs font-mono opacity-40">{liquidMetalConfig.distortion.toFixed(2)}</span>
+                                </div>
+                                <input
+                                    type="range" min="0" max="1" step="0.01"
+                                    value={liquidMetalConfig.distortion}
+                                    onChange={(e) => updateLiquidMetal('distortion', parseFloat(e.target.value))}
+                                    className="w-full accent-brand"
+                                />
+                                <div className="flex justify-between text-[10px] opacity-30"><span>0</span><span>1</span></div>
+                            </div>
+
+                            {/* Contour */}
+                            <div className="flex flex-col gap-1">
+                                <div className="flex justify-between">
+                                    <label className="text-xs opacity-60">contour</label>
+                                    <span className="text-xs font-mono opacity-40">{liquidMetalConfig.contour.toFixed(2)}</span>
+                                </div>
+                                <input
+                                    type="range" min="0" max="1" step="0.01"
+                                    value={liquidMetalConfig.contour}
+                                    onChange={(e) => updateLiquidMetal('contour', parseFloat(e.target.value))}
+                                    className="w-full accent-brand"
+                                />
+                                <div className="flex justify-between text-[10px] opacity-30"><span>0</span><span>1</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* COLOR SHIFT & MOTION */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-white/5">
+                        {/* Color Shift */}
+                        <div className="space-y-3">
+                            <h4 className="text-xs font-bold uppercase tracking-widest opacity-40">Color Shift</h4>
+                            <div className="grid grid-cols-2 gap-4">
+                                {/* Shift Red */}
+                                <div className="flex flex-col gap-1">
+                                    <div className="flex justify-between">
+                                        <label className="text-xs opacity-60">shiftRed</label>
+                                        <span className="text-xs font-mono opacity-40">{liquidMetalConfig.shiftRed.toFixed(2)}</span>
+                                    </div>
+                                    <input
+                                        type="range" min="-1" max="1" step="0.01"
+                                        value={liquidMetalConfig.shiftRed}
+                                        onChange={(e) => updateLiquidMetal('shiftRed', parseFloat(e.target.value))}
+                                        className="w-full accent-red-500"
+                                    />
+                                    <div className="flex justify-between text-[10px] opacity-30"><span>-1</span><span>1</span></div>
+                                </div>
+
+                                {/* Shift Blue */}
+                                <div className="flex flex-col gap-1">
+                                    <div className="flex justify-between">
+                                        <label className="text-xs opacity-60">shiftBlue</label>
+                                        <span className="text-xs font-mono opacity-40">{liquidMetalConfig.shiftBlue.toFixed(2)}</span>
+                                    </div>
+                                    <input
+                                        type="range" min="-1" max="1" step="0.01"
+                                        value={liquidMetalConfig.shiftBlue}
+                                        onChange={(e) => updateLiquidMetal('shiftBlue', parseFloat(e.target.value))}
+                                        className="w-full accent-blue-500"
+                                    />
+                                    <div className="flex justify-between text-[10px] opacity-30"><span>-1</span><span>1</span></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Motion / Transform */}
+                        <div className="space-y-3">
+                            <h4 className="text-xs font-bold uppercase tracking-widest opacity-40">Motion & Transform</h4>
+                            <div className="grid grid-cols-3 gap-4">
+                                {/* Angle */}
+                                <div className="flex flex-col gap-1">
+                                    <div className="flex justify-between">
+                                        <label className="text-xs opacity-60">angle</label>
+                                        <span className="text-xs font-mono opacity-40">{liquidMetalConfig.angle.toFixed(0)}°</span>
+                                    </div>
+                                    <input
+                                        type="range" min="0" max="360" step="1"
+                                        value={liquidMetalConfig.angle}
+                                        onChange={(e) => updateLiquidMetal('angle', parseFloat(e.target.value))}
+                                        className="w-full accent-brand"
+                                    />
+                                </div>
+
+                                {/* Speed */}
+                                <div className="flex flex-col gap-1">
+                                    <div className="flex justify-between">
+                                        <label className="text-xs opacity-60">speed</label>
+                                        <span className="text-xs font-mono opacity-40">{liquidMetalConfig.speed.toFixed(2)}</span>
+                                    </div>
+                                    <input
+                                        type="range" min="0" max="3" step="0.01"
+                                        value={liquidMetalConfig.speed}
+                                        onChange={(e) => updateLiquidMetal('speed', parseFloat(e.target.value))}
+                                        className="w-full accent-brand"
+                                    />
+                                </div>
+
+                                {/* Scale */}
+                                <div className="flex flex-col gap-1">
+                                    <div className="flex justify-between">
+                                        <label className="text-xs opacity-60">scale</label>
+                                        <span className="text-xs font-mono opacity-40">{liquidMetalConfig.scale.toFixed(2)}</span>
+                                    </div>
+                                    <input
+                                        type="range" min="0.1" max="4" step="0.01"
+                                        value={liquidMetalConfig.scale}
+                                        onChange={(e) => updateLiquidMetal('scale', parseFloat(e.target.value))}
+                                        className="w-full accent-brand"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Current Config Display */}
+                    <pre className="text-[10px] p-3 rounded-lg bg-black/30 border border-white/5 overflow-x-auto font-mono">
+                        {`<LiquidMetal
+  shape="${liquidMetalConfig.shape}"${liquidMetalConfig.image ? `\n  image="${liquidMetalConfig.image}"` : ''}
+  colorTint="${liquidMetalConfig.colorTint}"
+  repetition={${liquidMetalConfig.repetition.toFixed(2)}}
+  softness={${liquidMetalConfig.softness.toFixed(2)}}
+  shiftRed={${liquidMetalConfig.shiftRed.toFixed(2)}}
+  shiftBlue={${liquidMetalConfig.shiftBlue.toFixed(2)}}
+  distortion={${liquidMetalConfig.distortion.toFixed(2)}}
+  contour={${liquidMetalConfig.contour.toFixed(2)}}
+  angle={${liquidMetalConfig.angle.toFixed(0)}}
+  speed={${liquidMetalConfig.speed.toFixed(2)}}
+  scale={${liquidMetalConfig.scale.toFixed(2)}}
+/>`}
+                    </pre>
                 </div>
             </section>
         </div >

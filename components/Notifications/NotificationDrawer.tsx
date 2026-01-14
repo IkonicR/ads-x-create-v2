@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, CheckCheck, Trash2 } from 'lucide-react';
+import { CheckCheck, Trash2 } from 'lucide-react';
 import { useNotification } from '../../context/NotificationContext';
 import { useTheme } from '../../context/ThemeContext';
 import { NotificationItem } from './NotificationItem';
-import { NeuTabs } from '../NeuComponents';
+import { NeuTabs, NeuCloseButton } from '../NeuComponents';
 
 interface NotificationDrawerProps {
     isOpen: boolean;
@@ -82,12 +82,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
                                     >
                                         <Trash2 size={18} />
                                     </button>
-                                    <button
-                                        onClick={onClose}
-                                        className={`p-2 rounded-full hover:bg-black/5 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-black'}`}
-                                    >
-                                        <X size={20} />
-                                    </button>
+                                    <NeuCloseButton onClick={onClose} />
                                 </div>
                             </div>
 

@@ -152,10 +152,30 @@ const TeamSettings: React.FC<TeamSettingsProps> = ({
     };
 
     const handleCopyLink = async (token: string) => {
-        const link = `${window.location.origin}/invite/${token}`;
+        // Always use production URL for invite links
+        const link = `https://app.xcreate.io/invite/${token}`;
         await navigator.clipboard.writeText(link);
         setCopiedToken(token);
         setTimeout(() => setCopiedToken(null), 2000);
+    };
+
+    const handleRevokeInvitation = async (inviteId: string) => {
+        if (!confirm('Revoke this invitation? The link will no longer work.')) return;
+
+        const success = await TeamService.revokeInvitation(inviteId);
+        if (success) {
+            setInvitations(prev => prev.filter(inv => inv.id !== inviteId));
+        }
+    };
+
+    const getDaysRemaining = (expiresAt: string) => {
+        const now = new Date();
+        const expires = new Date(expiresAt);
+        const diffMs = expires.getTime() - now.getTime();
+        const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        if (days <= 0) return { text: 'Expired', isExpired: true };
+        if (days === 1) return { text: '1 day left', isExpired: false };
+        return { text: `${days} days left`, isExpired: false };
     };
 
     const toggleMemberExpanded = (userId: string) => {
@@ -386,23 +406,37 @@ const TeamSettings: React.FC<TeamSettingsProps> = ({
                                                     {invite.businessName}
                                                 </span>
                                             )}
-                                            <span className={`text-xs ${styles.textSub}`}>
-                                                • Expires {new Date(invite.expiresAt).toLocaleDateString()}
-                                            </span>
+                                            {(() => {
+                                                const { text, isExpired } = getDaysRemaining(invite.expiresAt);
+                                                return (
+                                                    <span className={`text-xs px-2 py-0.5 rounded-full ${isExpired ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20'}`}>
+                                                        {text}
+                                                    </span>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 </div>
 
-                                <button
-                                    onClick={() => handleCopyLink(invite.token)}
-                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors ${copiedToken === invite.token
-                                        ? 'bg-green-500/10 text-green-500'
-                                        : `${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'} ${styles.textSub}`
-                                        }`}
-                                >
-                                    {copiedToken === invite.token ? <Check size={14} /> : <Copy size={14} />}
-                                    {copiedToken === invite.token ? 'Copied!' : 'Copy Link'}
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => handleCopyLink(invite.token)}
+                                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors ${copiedToken === invite.token
+                                            ? 'bg-green-500/10 text-green-500'
+                                            : `${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'} ${styles.textSub}`
+                                            }`}
+                                    >
+                                        {copiedToken === invite.token ? <Check size={14} /> : <Copy size={14} />}
+                                        {copiedToken === invite.token ? 'Copied!' : 'Copy Link'}
+                                    </button>
+                                    <button
+                                        onClick={() => handleRevokeInvitation(invite.id)}
+                                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors"
+                                        title="Revoke invitation"
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                </div>
                             </div>
                         ))}
                     </NeuCard>

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useThemeStyles, NeuButton, NeuInput } from './NeuComponents';
-import { X, Copy, Link2, Mail, Check, Trash2, Clock, Download, AlertCircle, Loader2 } from 'lucide-react';
+import { useThemeStyles, NeuButton, NeuInput, NeuCloseButton } from './NeuComponents';
+import { Copy, Link2, Mail, Check, Trash2, Clock, Download, AlertCircle, Loader2 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 
 // ============================================================================
@@ -218,12 +218,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                         <h3 className={`text-lg font-bold ${styles.textMain}`}>
                             Share to Printer
                         </h3>
-                        <button
-                            onClick={onClose}
-                            className={`p-2 rounded-xl ${styles.shadowOut} ${styles.textSub} hover:${styles.textMain}`}
-                        >
-                            <X size={18} />
-                        </button>
+                        <NeuCloseButton onClick={onClose} />
                     </div>
 
                     {/* Error */}

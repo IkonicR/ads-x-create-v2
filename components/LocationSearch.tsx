@@ -214,8 +214,8 @@ export const LocationSearch: React.FC<LocationSearchProps> = ({ value, onChange,
           onBlur={handleBlur}
           placeholder={placeholder || "Search Google Maps..."}
           className="pl-10"
-          // Visual cue if we are resolving the address
-          style={isResolving ? { opacity: 0.7 } : {}}
+          // Visual cue if we are resolving the address, and taller to show full address
+          style={{ minHeight: '3rem', ...(isResolving ? { opacity: 0.7 } : {}) }}
         />
         <div className={`absolute left-3 top-3.5 ${styles.textSub}`}>
           {isResolving ? <Loader2 size={18} className="animate-spin text-brand" /> : <MapPin size={18} />}

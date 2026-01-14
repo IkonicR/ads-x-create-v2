@@ -298,7 +298,6 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
                 placeholder="Why does your company exist? What drives you?"
                 value={localBusiness.description}
                 onChange={(e) => updateLocal({ description: e.target.value })}
-                expandable
                 className="min-h-[100px]"
               />
             </div>
@@ -802,7 +801,6 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
                 placeholder="e.g. Urban professionals, 25-40, who value sustainability and quality coffee..."
                 value={localBusiness.coreCustomerProfile?.demographics || ''}
                 onChange={(e) => updateLocal({ coreCustomerProfile: { ...localBusiness.coreCustomerProfile!, demographics: e.target.value } })}
-                expandable
                 className="min-h-[80px]"
               />
             </div>
@@ -817,7 +815,6 @@ const BrandKit: React.FC<BrandKitProps> = ({ business, updateBusiness }) => {
                 placeholder="e.g. They care about ethical sourcing, morning rituals, and supporting local businesses..."
                 value={localBusiness.coreCustomerProfile?.psychographics || ''}
                 onChange={(e) => updateLocal({ coreCustomerProfile: { ...localBusiness.coreCustomerProfile!, psychographics: e.target.value } })}
-                expandable
                 className="min-h-[80px]"
               />
             </div>

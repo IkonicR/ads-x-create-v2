@@ -94,25 +94,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .then(async (p) => {
             setProfile(p);
             setProfileChecked(true);
-
-            // NEW: Consume pending invite code if exists (for new signups)
-            const pendingCode = localStorage.getItem('pending_invite_code');
-            if (pendingCode && session?.access_token) {
-              console.log('[Auth] Consuming invite code:', pendingCode);
-              try {
-                await fetch('/api/invite/use', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${session.access_token}`
-                  },
-                  body: JSON.stringify({ code: pendingCode })
-                });
-                localStorage.removeItem('pending_invite_code');
-              } catch (e) {
-                console.error('[Auth] Failed to consume invite code:', e);
-              }
-            }
+            // NOTE: Invite code consumption is now handled by AccessGate component
+            // This allows for proper UI feedback when codes are invalid
           })
           .catch(e => {
             console.error("Auth: Profile Fetch Error", e);

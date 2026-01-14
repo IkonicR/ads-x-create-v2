@@ -302,12 +302,43 @@ export interface Offering {
   termsAndConditions?: string;   // NEW: Per-offering T&Cs
 }
 
+// Subtask (Checkpoint) within a Task
+export interface Subtask {
+  id: string;
+  title: string;
+  done: boolean;
+}
+
+// Task Categories for filtering
+export type TaskCategory = 'content' | 'ads' | 'social' | 'email' | 'analytics' | 'other';
+
+// Task Attachment for files and linked assets
+export interface TaskAttachment {
+  id: string;
+  type: 'file' | 'asset';
+  name: string;
+  url: string;
+  mimeType?: string;
+  size?: number;
+  assetId?: string;      // For linked assets from Creative Engine
+  thumbnailUrl?: string; // For image previews
+  createdAt: string;
+}
+
 export interface Task {
   id: string;
   title: string;
-  status: 'To Do' | 'In Progress' | 'Done';
-  priority: 'Low' | 'Medium' | 'High';
-  dueDate: string;
+  description?: string;
+  status: 'To Do' | 'In Progress' | 'Done' | 'Blocked';
+  priority: 'Low' | 'Medium' | 'High' | 'Urgent';
+  dueDate?: string;                   // Optional, ISO string
+  createdAt: string;
+  updatedAt: string;
+  category?: TaskCategory;
+  labels?: string[];                  // Free-form tags
+  subtasks?: Subtask[];               // Checkpoints
+  attachments?: TaskAttachment[];     // Files and linked assets
+  sortOrder: number;                  // For drag-drop ordering
 }
 
 export interface Asset {

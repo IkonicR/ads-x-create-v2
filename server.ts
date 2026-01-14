@@ -2,11 +2,20 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
+import multer from 'multer';
 import { gateway } from '@ai-sdk/gateway';
 import { generateText } from 'ai';
 import { GoogleGenAI } from '@google/genai';
 import sharp from 'sharp';
 import bodyParser from 'body-parser';
+import {
+    inviteValidateRateLimiter,
+    inviteUseRateLimiter,
+    getClientIP,
+    checkRateLimit,
+    setRateLimitHeaders,
+    isUpstashConfigured
+} from './lib/ratelimit';
 // Note: PromptFactory is imported dynamically in generateImage route to avoid
 // supabase client initialization before dotenv.config() runs
 
@@ -276,11 +285,8 @@ app.post('/api/share/send-email', async (req, res) => {
             return res.status(404).json({ error: 'Share not found' });
         }
 
-        // Build share URL
-        const baseUrl = process.env.NODE_ENV === 'production'
-            ? 'https://app.xcreate.io'
-            : 'http://localhost:5173';
-        const shareUrl = `${baseUrl}/print/${share.token}`;
+        // ALWAYS use production URL for share links - recipients click from external email clients
+        const shareUrl = `https://app.xcreate.io/print/${share.token}`;
 
         // Send email using Resend
         const { Resend } = await import('resend');
@@ -288,13 +294,11 @@ app.post('/api/share/send-email', async (req, res) => {
 
         const businessName = share.businesses?.name || 'a business';
 
-        const emailHtml = await render(
-            React.createElement(ShareAssetEmail, {
-                businessName,
-                shareUrl,
-                expiresAt: share.expires_at
-            })
-        );
+        const emailHtml = generateShareAssetEmailHtml({
+            businessName,
+            shareUrl,
+            expiresAt: share.expires_at
+        });
 
         const response = await resend.emails.send({
             from: 'Ads x Create <team@mail.xcreate.io>',
@@ -2110,6 +2114,17 @@ app.put('/api/social/post', async (req, res) => {
 app.post('/api/invite/validate', async (req, res) => {
     console.log('[Invite] Validate Request');
 
+    // Rate limiting by IP
+    const clientIP = getClientIP(req);
+    const rateLimit = await checkRateLimit(inviteValidateRateLimiter, clientIP);
+    setRateLimitHeaders(res, rateLimit);
+
+    if (!rateLimit.allowed) {
+        console.log('[Invite] Rate limit exceeded for IP:', clientIP);
+        res.status(429).json({ valid: false, error: 'Too many requests. Please try again later.' });
+        return;
+    }
+
     const { code } = req.body;
     if (!code) {
         res.status(400).json({ valid: false, error: 'Code is required' });
@@ -2172,6 +2187,16 @@ app.post('/api/invite/use', async (req, res) => {
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) {
         res.status(401).json({ error: 'Invalid token' });
+        return;
+    }
+
+    // Rate limiting by user ID
+    const rateLimit = await checkRateLimit(inviteUseRateLimiter, user.id);
+    setRateLimitHeaders(res, rateLimit);
+
+    if (!rateLimit.allowed) {
+        console.log('[Invite] Rate limit exceeded for user:', user.id);
+        res.status(429).json({ error: 'Too many requests. Please try again later.' });
         return;
     }
 
@@ -2384,10 +2409,10 @@ app.post('/api/invite/deactivate', async (req, res) => {
 
 // --- TEAM API ROUTES ---
 import { Resend } from 'resend';
-import { render } from '@react-email/render';
-import { InviteEmail } from './emails/InviteEmail';
-import { ShareAssetEmail } from './emails/ShareAssetEmail';
-import React from 'react';
+// NOTE: Using pure TypeScript email templates instead of React Email components
+// because TSX can't be dynamically processed at runtime in Express/Node.
+import { generateInviteEmailHtml } from './api/team/inviteEmailTemplate';
+import { generateShareAssetEmailHtml } from './api/team/shareAssetEmailTemplate';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -2506,21 +2531,17 @@ app.post('/api/team/invite', async (req, res) => {
             return;
         }
 
-        const baseUrl = process.env.NODE_ENV === 'production'
-            ? 'https://app.xcreate.io'
-            : 'http://localhost:5173';
-        const inviteLink = `${baseUrl}/invite/${sharedToken}`;
+        // ALWAYS use production URL for invite links - recipients click from external email clients
+        const inviteLink = `https://app.xcreate.io/invite/${sharedToken}`;
 
         // Send email if requested
         if (sendEmail && email && process.env.RESEND_API_KEY) {
             try {
-                const emailHtml = await render(
-                    React.createElement(InviteEmail, {
-                        businessName: businessNames,
-                        role,
-                        inviteLink
-                    })
-                );
+                const emailHtml = generateInviteEmailHtml({
+                    businessName: businessNames,
+                    role,
+                    inviteLink
+                });
 
                 // Smart Subject Line
                 let subject = 'You\'ve been invited to join the team';
@@ -2684,6 +2705,9 @@ app.post('/api/team/accept', async (req, res) => {
             .update({ accepted_at: new Date().toISOString() })
             .in('id', invitations.map(inv => inv.id));
 
+        // NOTE: Do NOT auto-complete onboarding here. Invited users should still
+        // go through UserOnboarding to fill in their profile (name, role, etc.)
+
         // Notify the inviter
         if (primaryInvite.invited_by) {
             await supabase.from('notifications').insert({
@@ -2812,22 +2836,18 @@ app.post('/api/admin/test-email', async (req, res) => {
 
         if (type === 'invite') {
             subject = 'Test: You\'re Invited!';
-            emailHtml = await render(
-                React.createElement(InviteEmail, {
-                    businessName: 'Acme Corp (Test)',
-                    role: 'Admin',
-                    inviteLink: 'https://app.xcreate.io/test-invite'
-                })
-            );
+            emailHtml = generateInviteEmailHtml({
+                businessName: 'Acme Corp (Test)',
+                role: 'Admin',
+                inviteLink: 'https://app.xcreate.io/test-invite'
+            });
         } else if (type === 'share') {
             subject = 'Test: Asset Shared';
-            emailHtml = await render(
-                React.createElement(ShareAssetEmail, {
-                    businessName: 'Acme Corp (Test)',
-                    shareUrl: 'https://app.xcreate.io/test-share',
-                    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-                })
-            );
+            emailHtml = generateShareAssetEmailHtml({
+                businessName: 'Acme Corp (Test)',
+                shareUrl: 'https://app.xcreate.io/test-share',
+                expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+            });
         } else {
             res.status(400).json({ error: 'Invalid email type' });
             return;
@@ -3063,6 +3083,11 @@ app.post('/api/generate-image', async (req, res) => {
 
                 console.log('[Generate] Final prompt length:', finalPrompt.length);
 
+                // Log full prompt for debugging
+                console.log('[Generate] === PROMPT ===');
+                console.log(finalPrompt);
+                console.log('[Generate] === END PROMPT ===');
+
                 // DEBUG BYPASS
                 if (prompt.toLowerCase().startsWith('debug:')) {
                     // LOG THE FULL PROMPT - This is the whole point of debug mode!
@@ -3123,15 +3148,29 @@ app.post('/api/generate-image', async (req, res) => {
                     if (subjectResult) {
                         contentParts.push({ type: 'image', image: `data:${subjectResult.mimeType};base64,${subjectResult.base64}` });
                         contentParts.push({ type: 'text', text: ' [REFERENCE IMAGE 1: MAIN PRODUCT] ' });
+                        console.log('[Generate] ✓ Subject image loaded');
+                    } else {
+                        console.error('[Generate] ✗ Subject image FAILED');
                     }
                 }
 
-                // Add logo if available
+                // Add logo if available (with retry)
                 if (mappedBusiness.logoUrl) {
-                    const logoResult = await urlToBase64WithMime(mappedBusiness.logoUrl);
+                    let logoResult = await urlToBase64WithMime(mappedBusiness.logoUrl);
+
+                    // Retry once if failed
+                    if (!logoResult) {
+                        console.log('[Generate] ⚠️ Logo fetch failed, retrying...');
+                        await new Promise(r => setTimeout(r, 500));
+                        logoResult = await urlToBase64WithMime(mappedBusiness.logoUrl);
+                    }
+
                     if (logoResult) {
                         contentParts.push({ type: 'image', image: `data:${logoResult.mimeType};base64,${logoResult.base64}` });
                         contentParts.push({ type: 'text', text: ' [REFERENCE IMAGE: BUSINESS LOGO — PRESERVE ALL TEXT/LETTERING EXACTLY] ' });
+                        console.log('[Generate] ✓ Logo loaded');
+                    } else {
+                        console.error('[Generate] ✗ Logo fetch FAILED after retry');
                     }
                 }
 
@@ -3159,6 +3198,9 @@ app.post('/api/generate-image', async (req, res) => {
                             refCount++;
                             contentParts.push({ type: 'image', image: `data:${styleResult.mimeType};base64,${styleResult.base64}` });
                             contentParts.push({ type: 'text', text: ` [REFERENCE IMAGE ${refCount}: STYLE] ` });
+                            console.log(`[Generate] ✓ Style ref ${refCount} loaded`);
+                        } else {
+                            console.error(`[Generate] ✗ Style ref FAILED: ${url.substring(0, 50)}...`);
                         }
                     }
                     console.log('[Generate] Successfully loaded', refCount, 'style reference images');
@@ -3167,7 +3209,9 @@ app.post('/api/generate-image', async (req, res) => {
                     if (styleResult) {
                         contentParts.push({ type: 'image', image: `data:${styleResult.mimeType};base64,${styleResult.base64}` });
                         contentParts.push({ type: 'text', text: ' [REFERENCE IMAGE: STYLE] ' });
-                        console.log('[Generate] Using single style imageUrl');
+                        console.log('[Generate] ✓ Style image loaded');
+                    } else {
+                        console.error('[Generate] ✗ Style image FAILED');
                     }
                 }
 
@@ -3399,6 +3443,77 @@ app.delete('/api/generate-image/job/:jobId', async (req, res) => {
     res.json({ success: true });
 });
 
+// ============================================================================
+// TASK ATTACHMENTS API
+// ============================================================================
+
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+    fileFilter: (_req, file, cb) => {
+        const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf', 'text/plain'];
+        if (allowed.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new Error('File type not allowed'));
+        }
+    }
+});
+
+app.post('/api/tasks/upload', upload.single('file'), async (req, res) => {
+    console.log('[Tasks] Upload Request Received');
+
+    const { taskId, businessId } = req.body;
+    const file = req.file;
+
+    if (!taskId || !businessId || !file) {
+        res.status(400).json({ error: 'taskId, businessId, and file are required' });
+        return;
+    }
+
+    const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+
+    try {
+        const timestamp = Date.now();
+        const safeName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+        const storagePath = `tasks/${businessId}/${taskId}/${timestamp}_${safeName}`;
+
+        const { error: uploadError } = await supabase.storage
+            .from('attachments')
+            .upload(storagePath, file.buffer, {
+                contentType: file.mimetype,
+                upsert: false,
+            });
+
+        if (uploadError) {
+            console.error('[Tasks] Upload error:', uploadError);
+            res.status(500).json({ error: 'Failed to upload file', details: uploadError.message });
+            return;
+        }
+
+        const { data: urlData } = supabase.storage
+            .from('attachments')
+            .getPublicUrl(storagePath);
+
+        const attachment = {
+            id: `att_${timestamp}_${Math.random().toString(36).slice(2, 6)}`,
+            type: 'file' as const,
+            name: file.originalname,
+            url: urlData.publicUrl,
+            mimeType: file.mimetype,
+            size: file.size,
+            createdAt: new Date().toISOString(),
+        };
+
+        console.log('[Tasks] ✓ File uploaded:', attachment.name);
+        res.json({ success: true, attachment });
+
+    } catch (error) {
+        console.error('[Tasks] Upload handler error:', error);
+        res.status(500).json({ error: 'Upload failed', details: String(error) });
+    }
+});
+
 // Start Server
 app.listen(port, () => {
     console.log(`✅ Local API Server running at http://localhost:${port}`);
@@ -3410,6 +3525,7 @@ app.listen(port, () => {
     console.log(`   - POST /api/export-print`);
     console.log(`   - SOCIAL: /api/social/* (install, callback, accounts, post, sync)`);
     console.log(`   - TEAM: /api/team/* (invite, accept, revoke)`);
+    console.log(`   - POST /api/tasks/upload`);
 });
 
 // ============================================================================

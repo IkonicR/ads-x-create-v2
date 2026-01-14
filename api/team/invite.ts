@@ -16,9 +16,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { randomUUID } from 'crypto';
-import React from 'react';
-import { render } from '@react-email/render';
-import { InviteEmail } from '../../emails/InviteEmail';
+import { generateInviteEmailHtml } from './inviteEmailTemplate';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -79,7 +77,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .in('id', businessIds);
 
         const businessNames = businesses?.map(b => b.name).join(', ') || 'your businesses';
-        const primaryBusiness = businesses?.[0];
 
         const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
@@ -127,13 +124,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Send email if requested
         if (sendEmail && email && process.env.RESEND_API_KEY) {
             try {
-                const emailHtml = await render(
-                    React.createElement(InviteEmail, {
-                        businessName: businessNames,
-                        role,
-                        inviteLink
-                    })
-                );
+                const emailHtml = generateInviteEmailHtml({
+                    businessName: businessNames,
+                    role,
+                    inviteLink
+                });
 
                 // Smart Subject Line
                 let subject = 'You\'ve been invited to join the team';

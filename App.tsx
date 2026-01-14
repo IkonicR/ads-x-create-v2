@@ -29,6 +29,7 @@ import UserProfile from './views/UserProfile';
 import DesignLab from './views/DesignLab';
 import BusinessManager from './views/BusinessManager';
 import AcceptInvite from './views/AcceptInvite';
+import AccessGate from './views/AccessGate';
 import TeamSettings from './views/TeamSettings';
 
 import SocialSettings from './views/SocialSettings';
@@ -144,13 +145,22 @@ const AppContent: React.FC = () => {
           setBusinessId(targetBusinessId);
           setSubscriptionBusinessId(targetBusinessId);
 
-          // Redirect logic: If we are at root '/', go to Dashboard or Onboarding
-          if (location.pathname === '/') {
+          // Redirect logic: Check for OAuth returnTo first, then default to Dashboard
+          const authReturnTo = localStorage.getItem('auth_return_to');
+          if (authReturnTo) {
+            localStorage.removeItem('auth_return_to');
+            navigate(authReturnTo);
+          } else if (location.pathname === '/') {
             navigate('/dashboard');
           }
 
         } else {
-          // Only if we are SURE there are 0 businesses do we redirect
+          // User has 0 businesses - check if coming from OAuth with returnTo
+          const authReturnTo = localStorage.getItem('auth_return_to');
+          if (authReturnTo) {
+            localStorage.removeItem('auth_return_to');
+            navigate(authReturnTo);
+          }
         }
       } catch (error) {
         console.error("Failed to load initial data", error);
@@ -286,12 +296,41 @@ const AppContent: React.FC = () => {
     return (
       <Routes>
         <Route path="/login" element={<Login />} />
+        {/* Allow invite page for non-auth users - they'll see invite preview with sign-in prompt */}
+        <Route path="/invite/:token" element={<AcceptInvite />} />
         <Route path="*" element={<LandingPage />} />
       </Routes>
     );
   }
-  // If user exists but has no profile (or onboarding not done), force onboarding
-  if (user && (!profile || !profile.onboarding_completed)) return <UserOnboarding />;
+  // If user exists but has no profile (or onboarding not done), check access
+  // EXCEPTION: /invite/:token routes bypass - team invites have their own flow
+  if (user && (!profile || !profile.onboarding_completed)) {
+    // Allow team invite routes to bypass access gate
+    if (location.pathname.startsWith('/invite/')) {
+      return (
+        <Routes>
+          <Route path="/invite/:token" element={<AcceptInvite />} />
+        </Routes>
+      );
+    }
+
+    // Check if returning from OAuth with a pending redirect (e.g., /invite/{token})
+    const authReturnTo = localStorage.getItem('auth_return_to');
+    if (authReturnTo) {
+      localStorage.removeItem('auth_return_to');
+      // Use window.location to force a full navigation since we're in early render
+      window.location.href = authReturnTo;
+      return <GlobalLoader />; // Show loader while redirecting
+    }
+
+    // EXISTING user who started onboarding but didn't finish → continue onboarding
+    if (profile && !profile.onboarding_completed) {
+      return <UserOnboarding />;
+    }
+
+    // NEW user (no profile yet) → AccessGate checks for invite code / team invites
+    return <AccessGate />;
+  }
 
   // Compute activeBusiness - if user has businesses but this is null, they need to go to onboarding
   const activeBusiness = businesses.find(b => b.id === activeBusinessId) || null;
@@ -485,8 +524,7 @@ const AppContent: React.FC = () => {
               } />
               <Route path="/tasks" element={
                 <Tasks
-                  tasks={tasks}
-                  setTasks={setTasksWrapper}
+                  businessId={activeBusiness.id}
                   businessDesc={activeBusiness.description}
                 />
               } />

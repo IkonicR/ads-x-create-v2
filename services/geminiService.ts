@@ -67,29 +67,8 @@ export const generateAdCopy = async (
   }
 };
 
-
-
-export const generateTaskSuggestions = async (businessDescription: string): Promise<string[]> => {
-  const ai = getAiClient();
-  if (!ai) {
-    return ["Review Q3 Marketing Plan", "Update Social Media Assets", "Launch New Product Campaign"];
-  }
-
-  try {
-    const prompt = await PromptFactory.createTaskSuggestionPrompt(businessDescription);
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: { responseMimeType: 'application/json' }
-    });
-
-    return JSON.parse(response.text || "[]");
-  } catch (e) {
-    console.error(e);
-    return ["Check Analytics", "Draft Newsletter"];
-  }
-}
+// NOTE: generateTaskSuggestions was removed - Tasks page now uses manual task management.
+// AI task suggestions are handled by the Chat CMO assistant if needed.
 
 export const generateImage = async (
   prompt: string,

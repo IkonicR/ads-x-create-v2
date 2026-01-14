@@ -1,172 +1,128 @@
-import React, { useRef } from 'react';
-import { motion, useScroll, useTransform, useSpring } from 'framer-motion';
-import { ArrowRight, Play, Sparkles } from 'lucide-react';
-import { useMousePosition } from '../../hooks/useMousePosition';
-import { NeuButton } from '../NeuComponents';
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
+import HeroBadge from './HeroBadge';
+import LandingButton from './LandingButton';
+import SocialProof from './SocialProof';
+import MarqueeColumn from './MarqueeColumn';
+
+// Real generated assets from the x Create library
+// Fetched via SQL: SELECT content FROM assets WHERE type = 'image' ORDER BY created_at DESC;
+const LIBRARY_ASSETS_LEFT = [
+    'https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/ag54vxxn0/generated/1768404384127_vn0sfd.png',
+    'https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/ag54vxxn0/generated/1768403761870_uq0ri.png',
+    'https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/ag54vxxn0/generated/1768403406934_7kzlb.png',
+    'https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/ag54vxxn0/generated/1768403221434_yi0uu.png',
+    'https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/ag54vxxn0/generated/1768403161876_mzmmsn.png',
+    'https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/ag54vxxn0/generated/1768403085814_shjnrg.png',
+    'https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/ag54vxxn0/generated/1768403068220_u9cul.png',
+];
+
+const LIBRARY_ASSETS_RIGHT = [
+    'https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/yxup0oddz/generated/1768382125482_h0riin.png',
+    'https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/yxup0oddz/generated/1768382050296_6ew52j.png',
+    'https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/yxup0oddz/generated/1768381887659_wnfm3s.png',
+    'https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/yxup0oddz/generated/1768381862830_e8hnw.png',
+    'https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/yxup0oddz/generated/1768381488849_uh6u84.png',
+    'https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/yxup0oddz/generated/1768380680481_5q6ggn.png',
+    'https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/yxup0oddz/generated/1768380677030_efg73l.png',
+];
 
 interface HeroSectionProps {
-    onGetStarted: () => void;
-    setWarp: (value: number) => void;
+    leftColumnImages?: string[];
+    rightColumnImages?: string[];
 }
 
-const HeroSection: React.FC<HeroSectionProps> = ({ onGetStarted, setWarp }) => {
-    // Mouse Parallax Logic
-    const mousePos = useMousePosition();
+/**
+ * HeroSection - Main landing page hero
+ * 
+ * LATEST FIXES:
+ * - Removed center vertical border (`lg:border-r` deleted)
+ * - Swapped placeholders for high-quality product photography
+ */
+const HeroSection: React.FC<HeroSectionProps> = ({
+    leftColumnImages = LIBRARY_ASSETS_LEFT,
+    rightColumnImages = LIBRARY_ASSETS_RIGHT,
+}) => {
+    const navigate = useNavigate();
 
-    // Smooth out the raw mouse values
-    const smoothX = useSpring(0, { damping: 15, stiffness: 100 });
-    const smoothY = useSpring(0, { damping: 15, stiffness: 100 });
+    const handleSignIn = () => {
+        navigate('/login');
+    };
 
-    // Update springs when mouse moves
-    React.useEffect(() => {
-        smoothX.set(mousePos.x);
-        smoothY.set(mousePos.y);
-    }, [mousePos, smoothX, smoothY]);
-
-    // 3D Transform values based on mouse position
-    const rotateX = useTransform(smoothY, [-1, 1], [5, -5]); // Inverted for natural feel
-    const rotateY = useTransform(smoothX, [-1, 1], [-5, 5]);
-
-    // Parallax layers
-    const layer1X = useTransform(smoothX, [-1, 1], [-20, 20]);
-    const layer1Y = useTransform(smoothY, [-1, 1], [-20, 20]);
-
-    const layer2X = useTransform(smoothX, [-1, 1], [-40, 40]);
-    const layer2Y = useTransform(smoothY, [-1, 1], [-40, 40]);
+    const handleRequestAccess = () => {
+        navigate('/login');
+    };
 
     return (
-        <section className="relative min-h-screen flex items-center justify-center px-6 pt-24 pb-16 overflow-hidden perspective-2000">
-            {/* Ambient Fog */}
-            {/* Ambient Fog REMOVED */}{/* No overlay */}
+        // Border bottom creates the horizontal grid line separator
+        <section className="relative border-b border-gray-200 bg-white">
 
-            <div className="max-w-5xl mx-auto text-center relative z-10">
-                {/* Magnetic Badge */}
-                <motion.div
-                    style={{ x: layer1X, y: layer1Y }}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2, duration: 0.6 }}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 backdrop-blur-md border border-white/10 mb-8 cursor-default hover:bg-white/10 transition-colors"
-                >
-                    <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-brand"></span>
-                    </span>
-                    <span className="text-sm text-neu-text-sub-dark tracking-wide font-medium">
-                        THE BUSINESS OPERATING SYSTEM
-                    </span>
-                </motion.div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 min-h-[90vh]">
 
-                {/* Main Headline with Parallax */}
-                <motion.div style={{ x: layer1X, y: layer1Y }}>
-                    <motion.h1
-                        initial={{ opacity: 0, y: 30 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.3, duration: 0.7 }}
-                        className="text-5xl md:text-8xl font-black tracking-tight mb-6 leading-tight"
-                    >
-                        <span className="text-white drop-shadow-xl">Stop Re-Explaining</span>
-                        <br />
-                        <span className="text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.4)]">
-                            Your Business to AI.
-                        </span>
-                    </motion.h1>
-                </motion.div>
+                {/* Left Column: Content */}
+                {/* REMOVED lg:border-r to remove the center vertical line */}
+                <div className="flex flex-col justify-center px-8 md:px-16 py-20">
+                    <div className="flex flex-col gap-10 max-w-xl">
 
-                {/* Subheadline */}
-                <motion.p
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.5, duration: 0.6 }}
-                    className="text-lg md:text-2xl text-neu-text-sub-dark max-w-2xl mx-auto mb-12 leading-relaxed font-light"
-                >
-                    The first creative suite with a persistent{' '}
-                    <span className="text-brand font-bold glow-text">Brand Memory</span>.
-                </motion.p>
+                        <div className="flex flex-col gap-6">
+                            {/* Badge */}
+                            <div>
+                                <HeroBadge>Invite Only</HeroBadge>
+                            </div>
 
-                {/* Kinetic CTAs */}
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.7, duration: 0.6 }}
-                    className="flex flex-col sm:flex-row items-center justify-center gap-6"
-                >
-                    {/* Primary CTA - TACTILE SWITCH */}
-                    <motion.button
-                        onClick={onGetStarted}
-                        onHoverStart={() => setWarp(1)}
-                        onHoverEnd={() => setWarp(0)}
-                        whileHover={{ scale: 1.02, y: -2 }}
-                        whileTap={{ scale: 0.95, y: 2 }}
-                        className="group relative flex items-center gap-4 px-10 py-5 rounded-full bg-brand font-black text-white text-xl shadow-[0_10px_0_#4c1d95,0_15px_20px_rgba(0,0,0,0.4)] active:shadow-[0_0_0_#4c1d95,0_0_0_rgba(0,0,0,0)] active:translate-y-[10px] transition-all"
-                    >
-                        <span className="relative z-10 flex items-center gap-2">
-                            INITIALIZE BRAND KIT <ArrowRight className="w-6 h-6" />
-                        </span>
-                        {/* Shimmer Effect */}
-                        <div className="absolute inset-0 rounded-full overflow-hidden">
-                            <div className="absolute top-0 left-0 w-2/3 h-full bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-shimmer" />
+                            {/* Headline */}
+                            <h1 className="text-5xl md:text-6xl lg:text-[4rem] font-bold text-gray-900 leading-[1.1] tracking-tight">
+                                What Agencies Charge Thousands For.{' '}
+                                <span className="text-brand block mt-2">You Get Instantly.</span>
+                            </h1>
+
+                            {/* Subtitle */}
+                            <p className="text-xl text-gray-600 leading-relaxed font-medium">
+                                Professional ads for growing businesses.
+                                <br className="hidden md:block" />
+                                AI-powered, brand-aware, and ready to convert.
+                            </p>
                         </div>
-                    </motion.button>
 
-                    {/* Secondary CTA - Glass */}
-                    <NeuButton
-                        className="!rounded-2xl !px-8 !py-4 !bg-white/5 !border-white/10 text-white font-medium hover:!bg-white/10 shadow-lg"
-                        forceTheme="dark"
-                    >
-                        <Play className="w-5 h-5 fill-white" />
-                        Watch Demo
-                    </NeuButton>
-                </motion.div>
+                        {/* CTAs */}
+                        <div className="flex flex-col sm:flex-row gap-4">
+                            <LandingButton
+                                variant="primary"
+                                onClick={handleSignIn}
+                                className="justify-center sm:justify-start"
+                            >
+                                Sign In
+                            </LandingButton>
+                            <LandingButton
+                                variant="secondary"
+                                onClick={handleRequestAccess}
+                                className="justify-center sm:justify-start"
+                            >
+                                Request Access
+                            </LandingButton>
+                        </div>
 
-                {/* 3D Mockup Container */}
-                <motion.div
-                    style={{
-                        rotateX,
-                        rotateY,
-                        perspective: 1000
-                    }}
-                    initial={{ opacity: 0, y: 100, rotateX: 20 }}
-                    animate={{ opacity: 1, y: 0, rotateX: 0 }}
-                    transition={{ delay: 0.8, duration: 1.2, type: "spring", bounce: 0.2 }}
-                    className="mt-20 md:mt-32 relative z-20"
-                >
-                    <div className="relative mx-auto max-w-5xl">
-                        {/* Glow Behind */}
-                        <div className="absolute -inset-10 bg-brand/20 blur-[100px] rounded-full opacity-50 animate-pulse" />
-
-                        {/* The Card Itself */}
-                        <div className="relative rounded-2xl overflow-hidden border border-white/10 bg-[#0F1115]/80 backdrop-blur-xl shadow-2xl shadow-black ring-1 ring-white/5">
-                            {/* Window Controls */}
-                            <div className="h-8 border-b border-white/5 bg-white/5 flex items-center px-4 gap-2">
-                                <div className="w-3 h-3 rounded-full bg-red-500/50" />
-                                <div className="w-3 h-3 rounded-full bg-yellow-500/50" />
-                                <div className="w-3 h-3 rounded-full bg-green-500/50" />
-                            </div>
-
-                            {/* Content Placeholder */}
-                            <div className="aspect-[16/10] bg-gradient-to-br from-[#0F1115] to-[#1a1d24] relative overflow-hidden group">
-                                {/* Grid Line Overlay */}
-                                <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay" />
-
-                                <div className="absolute inset-0 flex items-center justify-center">
-                                    <div className="text-center transform transition-transform duration-700 group-hover:scale-105">
-                                        <div className="w-20 h-20 mx-auto mb-6 rounded-3xl bg-brand/10 border border-brand/20 flex items-center justify-center shadow-[0_0_30px_-5px_rgba(109,93,252,0.3)]">
-                                            <Sparkles className="w-10 h-10 text-brand" />
-                                        </div>
-                                        <p className="text-neu-text-sub-dark font-mono text-sm tracking-wider uppercase">
-                                            System Ready
-                                        </p>
-                                        <div className="mt-4 flex items-center justify-center gap-2">
-                                            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                                            <span className="text-white font-medium">Waiting for Input...</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                        {/* Social Proof */}
+                        <div className="pt-4 border-t border-gray-100">
+                            <SocialProof />
                         </div>
                     </div>
-                </motion.div>
+                </div>
+
+                {/* Right Column: Marquee Grid - No padding, images go edge-to-edge */}
+                <div className="hidden lg:grid grid-cols-2 gap-2 h-full max-h-[90vh] overflow-hidden">
+                    <MarqueeColumn
+                        images={leftColumnImages}
+                        direction="down"
+                        speed={35}
+                    />
+                    <MarqueeColumn
+                        images={rightColumnImages}
+                        direction="up"
+                        speed={40}
+                    />
+                </div>
+
             </div>
         </section>
     );

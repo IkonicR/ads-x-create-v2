@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Business } from '../types';
 import { NeuCard, NeuInput, NeuButton, NeuDropdown, NeuTextArea, useThemeStyles, NeuTabs, NeuCombobox } from '../components/NeuComponents';
 import { LocationSearch } from '../components/LocationSearch';
+import { GoogleMapsImport, GoogleMapsImportData } from '../components/GoogleMapsImport';
 import { Save, AlertCircle, Plus, Trash2, Globe, Sparkles, Image as ImageIcon, Phone, Mail, MapPin, Clock, LayoutTemplate, MessageCircle, Calendar, Target, AlertTriangle, Megaphone, Settings, Copy, Pencil, Users } from 'lucide-react';
 import { formatBusinessHours } from '../utils/formatters';
 import { useNavigation } from '../context/NavigationContext';
@@ -196,8 +197,91 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
     }
   };
 
+  // Handler for Google Maps import
+  const handleGoogleMapsImport = (data: GoogleMapsImportData) => {
+    const updates: Partial<typeof localBusiness.profile> = {};
+    let businessUpdates: Partial<typeof localBusiness> = {};
+
+    // Update business name
+    if (data.name) {
+      businessUpdates.name = data.name;
+    }
+
+    // Update industry (from category)
+    if (data.category) {
+      businessUpdates.industry = data.category;
+    }
+
+    // Update address
+    if (data.address) {
+      updates.address = data.address;
+    }
+
+    // Update compact address (publicLocationLabel)
+    if (data.compactAddress) {
+      updates.publicLocationLabel = data.compactAddress;
+    }
+
+    // Update hours
+    if (data.hours) {
+      updates.hours = data.hours;
+    }
+
+    // Add phone to Contact Hub
+    if (data.phone) {
+      const existingContacts = localBusiness.profile.contacts || [];
+      const hasPhone = existingContacts.some(c => c.type === 'phone');
+      if (!hasPhone) {
+        updates.contacts = [
+          ...existingContacts,
+          { id: `google_phone_${Date.now()}`, type: 'phone', value: data.phone, label: 'Main Phone', isPrimary: true }
+        ];
+      }
+    }
+
+    // Add website to Contact Hub
+    if (data.website) {
+      const existingContacts = updates.contacts || localBusiness.profile.contacts || [];
+      const hasWebsite = existingContacts.some(c => c.type === 'website');
+      if (!hasWebsite) {
+        updates.contacts = [
+          ...existingContacts,
+          { id: `google_website_${Date.now()}`, type: 'website', value: data.website, label: 'Website', isPrimary: true }
+        ];
+      }
+    }
+
+    // Apply profile updates
+    if (Object.keys(updates).length > 0) {
+      updateProfile(updates);
+    }
+
+    // Apply business-level updates (name, industry)
+    if (Object.keys(businessUpdates).length > 0) {
+      setLocalBusiness(prev => ({ ...prev, ...businessUpdates }));
+    }
+
+    toast({ title: 'Imported from Google Maps', type: 'success', message: 'Business details updated.' });
+  };
+
   const renderProfileTab = () => (
     <div className="space-y-8 animate-fade-in">
+
+      {/* 0. QUICK SETUP FROM GOOGLE MAPS */}
+      <GoogleMapsImport
+        currentData={{
+          name: localBusiness.name,
+          address: localBusiness.profile.address,
+          phone: (localBusiness.profile.contacts || []).find(c => c.type === 'phone')?.value,
+          website: (localBusiness.profile.contacts || []).find(c => c.type === 'website')?.value,
+          hours: localBusiness.profile.hours,
+          allContacts: (localBusiness.profile.contacts || []).map(c => ({ type: c.type, value: c.value, label: c.label })),
+          industry: localBusiness.industry,
+          publicLocationLabel: localBusiness.profile.publicLocationLabel,
+        }}
+        onImport={handleGoogleMapsImport}
+        defaultExpanded={!localBusiness.name || localBusiness.name === 'New Business'}
+      />
 
       {/* 1. OPERATING MODEL SELECTOR */}
       <section>
@@ -259,6 +343,16 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
                     onChange={(addr, label) => updateProfile({ address: addr, publicLocationLabel: label })}
                     placeholder="Search Google Maps..."
                   />
+
+                  {/* Compact Address Display */}
+                  {localBusiness.profile.publicLocationLabel && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className={`text-xs ${styles.textSub}`}>Compact:</span>
+                      <span className={`text-xs font-medium ${styles.textMain}`}>
+                        {localBusiness.profile.publicLocationLabel}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Hours Section for Storefront */}
                   <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
@@ -850,35 +944,24 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
                   {/* Step 2: Value */}
                   <div className="mb-4">
                     <NeuInput
-                      placeholder={newContact.type === 'email' ? 'hello@example.com' : '+1 555...'}
+                      placeholder={newContact.type === 'email' ? 'hello@example.com' : newContact.type === 'website' ? 'https://example.com' : '+1 555...'}
                       value={newContact.value || ''}
                       onChange={(e) => setNewContact({ ...newContact, value: e.target.value })}
                       className="text-lg"
                     />
                   </div>
 
-                  {/* Step 3: Visual Style (Cards) */}
+                  {/* Step 3: Label (Optional) */}
                   <div className="mb-4">
-                    <label className={`block text-xs font-bold ${styles.textSub} mb-2`}>How should this look?</label>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                      {[
-                        { id: 'value_only', label: 'Simple', preview: newContact.value || '+1 555...' },
-                        { id: 'standard', label: 'Labeled', preview: `${newContact.type === 'email' ? 'Email' : 'Phone'}: ${newContact.value || '...'}` },
-                        { id: 'action', label: 'Action Button', preview: `[Call Now]` }
-                      ].map(style => (
-                        <button
-                          key={style.id}
-                          onClick={() => setNewContact({ ...newContact, displayStyle: style.id as any })}
-                          className={`p-3 rounded-lg border text-left transition-all ${(newContact.displayStyle || 'standard') === style.id
-                            ? 'border-brand bg-brand/5 ring-1 ring-brand'
-                            : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
-                            }`}
-                        >
-                          <div className="text-[10px] font-bold text-gray-400 mb-1 uppercase">{style.label}</div>
-                          <div className={`text-xs ${styles.textMain} truncate`}>{style.preview}</div>
-                        </button>
-                      ))}
-                    </div>
+                    <label className={`block text-xs font-bold ${styles.textSub} mb-2`}>Label (Optional)</label>
+                    <NeuInput
+                      placeholder={newContact.type === 'phone' ? 'e.g., Sales, Support' : newContact.type === 'email' ? 'e.g., Inquiries' : 'e.g., Book Now'}
+                      value={newContact.label || ''}
+                      onChange={(e) => setNewContact({ ...newContact, label: e.target.value })}
+                    />
+                    <span className={`text-[10px] ${styles.textSub} mt-1 block`}>
+                      How this contact will be labeled in your ads
+                    </span>
                   </div>
 
                   <div className="flex justify-end gap-2">
@@ -1205,7 +1288,7 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
             <div className="space-y-2">
               {[
                 { id: 'full_address', label: 'Full Address' },
-                { id: 'city_state', label: 'City & State Only' },
+                { id: 'city_state', label: 'Compact Address' },
                 { id: 'online_only', label: 'Online / Global' },
                 { id: 'custom_text', label: 'Custom Text' },
                 { id: 'hidden', label: 'Hidden' }

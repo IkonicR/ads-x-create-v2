@@ -356,7 +356,6 @@ const BusinessManager: React.FC = () => {
                                     onChange={(e) => setEditForm(prev => ({ ...prev, description: e.target.value }))}
                                     placeholder="Short description of what you do..."
                                     rows={3}
-                                    expandable={false}
                                 />
                             </div>
                         </div>

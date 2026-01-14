@@ -2,8 +2,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useThemeStyles, NeuButton } from './NeuComponents';
-import { X, AlertTriangle, Info, CheckCircle, AlertCircle } from 'lucide-react';
+import { useThemeStyles, NeuButton, NeuCloseButton } from './NeuComponents';
+import { AlertTriangle, Info, CheckCircle, AlertCircle, X } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -71,12 +71,7 @@ export const NeuModal: React.FC<NeuModalProps & { className?: string }> = ({
             >
               <div className="flex justify-between items-start mb-6 px-1">
                 <h3 className={`text-2xl font-bold ${styles.textMain}`}>{title}</h3>
-                <button
-                  onClick={onClose}
-                  className={`p-2 rounded-full ${styles.bg} ${styles.shadowOut} hover:${styles.shadowIn} transition-all ${styles.textSub}`}
-                >
-                  <X size={20} />
-                </button>
+                <NeuCloseButton onClick={onClose} />
               </div>
 
               <div className={`mb-8 ${styles.textSub} text-sm leading-relaxed`}>

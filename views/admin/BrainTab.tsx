@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { SystemPrompts } from '../../types';
 import { NeuButton, NeuTextArea } from '../../components/NeuComponents';
-import { Image as ImageIcon, MessageSquare, ListTodo, Terminal, ArrowRight, Eye, Save } from 'lucide-react';
-import { DEFAULT_IMAGE_PROMPT, DEFAULT_CHAT_PROMPT, DEFAULT_TASK_PROMPT } from '../../services/prompts';
+import { Image as ImageIcon, MessageSquare, Terminal, ArrowRight, Eye, Save } from 'lucide-react';
+import { DEFAULT_IMAGE_PROMPT, DEFAULT_CHAT_PROMPT } from '../../services/prompts';
 import { VariableReferenceList } from '../../components/VariableReferenceList';
 
 interface BrainTabProps {
@@ -13,30 +13,26 @@ interface BrainTabProps {
 }
 
 export const BrainTab: React.FC<BrainTabProps> = ({ prompts, setPrompts, handleSavePrompts, styles }) => {
-    const [brainTab, setBrainTab] = useState<'image' | 'chat' | 'tasks'>('image');
+    const [brainTab, setBrainTab] = useState<'image' | 'chat'>('image');
 
     const loadDefaultPrompt = () => {
         if (brainTab === 'image') setPrompts({ ...prompts, imageGenRules: DEFAULT_IMAGE_PROMPT });
         if (brainTab === 'chat') setPrompts({ ...prompts, chatPersona: DEFAULT_CHAT_PROMPT });
-        if (brainTab === 'tasks') setPrompts({ ...prompts, taskGenRules: DEFAULT_TASK_PROMPT });
     };
 
     const getCurrentDefault = () => {
         if (brainTab === 'image') return DEFAULT_IMAGE_PROMPT;
-        if (brainTab === 'chat') return DEFAULT_CHAT_PROMPT;
-        return DEFAULT_TASK_PROMPT;
+        return DEFAULT_CHAT_PROMPT;
     };
 
     const getCurrentValue = () => {
         if (brainTab === 'image') return prompts.imageGenRules;
-        if (brainTab === 'chat') return prompts.chatPersona;
-        return prompts.taskGenRules;
+        return prompts.chatPersona;
     };
 
     const handlePromptChange = (val: string) => {
         if (brainTab === 'image') setPrompts({ ...prompts, imageGenRules: val });
         if (brainTab === 'chat') setPrompts({ ...prompts, chatPersona: val });
-        if (brainTab === 'tasks') setPrompts({ ...prompts, taskGenRules: val });
     };
 
     const handleResetToDefault = () => {
@@ -70,7 +66,6 @@ export const BrainTab: React.FC<BrainTabProps> = ({ prompts, setPrompts, handleS
                 {[
                     { id: 'image', label: 'Image Generator', icon: ImageIcon },
                     { id: 'chat', label: 'Chat Persona', icon: MessageSquare },
-                    { id: 'tasks', label: 'Task Engine', icon: ListTodo },
                 ].map(tab => (
                     <button
                         key={tab.id}

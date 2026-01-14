@@ -6,8 +6,8 @@
 
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, X } from 'lucide-react';
-import { NeuButton, NeuCard, useThemeStyles } from './NeuComponents';
+import { AlertTriangle } from 'lucide-react';
+import { NeuButton, NeuCard, NeuCloseButton, useThemeStyles } from './NeuComponents';
 
 interface ConfirmModalProps {
     isOpen: boolean;
@@ -55,17 +55,12 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                     >
                         <NeuCard className="w-full max-w-md relative">
                             {/* Close button */}
-                            <button
-                                onClick={onCancel}
-                                className={`absolute top-4 right-4 p-2 rounded-xl ${styles.textSub} hover:${styles.textMain} transition-colors`}
-                            >
-                                <X size={20} />
-                            </button>
+                            <NeuCloseButton onClick={onCancel} className="absolute top-4 right-4" />
 
                             {/* Icon */}
                             <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 ${variant === 'danger'
-                                    ? 'bg-red-500/10 text-red-500'
-                                    : 'bg-brand/10 text-brand'
+                                ? 'bg-red-500/10 text-red-500'
+                                : 'bg-brand/10 text-brand'
                                 }`}>
                                 <AlertTriangle size={24} />
                             </div>

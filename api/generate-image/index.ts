@@ -329,6 +329,10 @@ ${styleInstructions ? `=== STYLE INSTRUCTIONS ===\n${styleInstructions}` : ''}
 - Aspect ratio: ${aspectRatio}
         `.trim();
 
+        // Log full prompt for debugging
+        console.log('[Generate] === PROMPT ===');
+        console.log(finalPrompt);
+        console.log('[Generate] === END PROMPT ===');
 
         await supabase.from('generation_jobs').update({ error_message: 'Fetching images...' }).eq('id', jobId);
 
@@ -368,15 +372,29 @@ ${styleInstructions ? `=== STYLE INSTRUCTIONS ===\n${styleInstructions}` : ''}
             if (subjectResult) {
                 contentParts.push({ type: 'image', image: `data:${subjectResult.mimeType};base64,${subjectResult.base64}` });
                 contentParts.push({ type: 'text', text: ' [REFERENCE IMAGE 1: MAIN PRODUCT] ' });
+                console.log('[Generate] ✓ Subject image loaded');
+            } else {
+                console.error('[Generate] ✗ Subject image FAILED');
             }
         }
 
-        // Add logo
+        // Add logo (with retry)
         if (mappedBusiness.logoUrl) {
-            const logoResult = await urlToBase64WithMime(mappedBusiness.logoUrl, host);
+            let logoResult = await urlToBase64WithMime(mappedBusiness.logoUrl, host);
+
+            // Retry once if failed
+            if (!logoResult) {
+                console.log('[Generate] ⚠️ Logo fetch failed, retrying...');
+                await new Promise(r => setTimeout(r, 500));
+                logoResult = await urlToBase64WithMime(mappedBusiness.logoUrl, host);
+            }
+
             if (logoResult) {
                 contentParts.push({ type: 'image', image: `data:${logoResult.mimeType};base64,${logoResult.base64}` });
-                contentParts.push({ type: 'text', text: ' [REFERENCE IMAGE: BUSINESS LOGO \u2014 PRESERVE ALL TEXT/LETTERING EXACTLY] ' });
+                contentParts.push({ type: 'text', text: ' [REFERENCE IMAGE: BUSINESS LOGO — PRESERVE ALL TEXT/LETTERING EXACTLY] ' });
+                console.log('[Generate] ✓ Logo loaded');
+            } else {
+                console.error('[Generate] ✗ Logo fetch FAILED after retry');
             }
         }
 
@@ -389,17 +407,25 @@ ${styleInstructions ? `=== STYLE INSTRUCTIONS ===\n${styleInstructions}` : ''}
                 return typeof r === 'string';
             });
 
+            let styleRefCount = 0;
             for (const ref of activeRefs) {
                 const url = typeof ref === 'string' ? ref : (ref.url || ref);
                 const styleResult = await urlToBase64WithMime(url, host);
                 if (styleResult) {
                     contentParts.push({ type: 'image', image: `data:${styleResult.mimeType};base64,${styleResult.base64}` });
+                    styleRefCount++;
+                    console.log(`[Generate] ✓ Style ref ${styleRefCount} loaded`);
+                } else {
+                    console.error(`[Generate] ✗ Style ref FAILED: ${url.substring(0, 50)}...`);
                 }
             }
         } else if (stylePreset?.imageUrl) {
             const styleResult = await urlToBase64WithMime(stylePreset.imageUrl, host);
             if (styleResult) {
                 contentParts.push({ type: 'image', image: `data:${styleResult.mimeType};base64,${styleResult.base64}` });
+                console.log('[Generate] ✓ Style image loaded');
+            } else {
+                console.error('[Generate] ✗ Style image FAILED');
             }
         }
 

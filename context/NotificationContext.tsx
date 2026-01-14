@@ -26,9 +26,26 @@ interface NotificationContextType {
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
+// Defensive fallback for HMR edge cases where context may be temporarily unavailable
+const noopFallback: NotificationContextType = {
+  toast: () => { },
+  notify: () => { },
+  notifications: [],
+  unreadCount: 0,
+  markAsRead: async () => { },
+  markAllAsRead: async () => { },
+  clearAllNotifications: async () => { },
+  deleteNotification: async () => { },
+  loading: false
+};
+
 export const useNotification = () => {
   const context = useContext(NotificationContext);
-  if (!context) throw new Error('useNotification must be used within a NotificationProvider');
+  // Return no-op fallback instead of crashing during HMR/partial reloads
+  if (!context) {
+    console.warn('[NotificationContext] Context unavailable - using no-op fallback (HMR edge case)');
+    return noopFallback;
+  }
   return context;
 };
 

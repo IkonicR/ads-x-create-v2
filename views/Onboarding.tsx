@@ -540,7 +540,6 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
               <div>
                 <label className={`block text-xs font-bold mb-2 ml-1 ${styles.textSub} uppercase tracking-wider`}>Short Description</label>
                 <NeuTextArea
-                  expandable
                   placeholder={selectedType === 'Retail'
                     ? "Describe your store, location, and what makes you unique to locals..."
                     : "Describe your brand, what you sell, and your mission..."}

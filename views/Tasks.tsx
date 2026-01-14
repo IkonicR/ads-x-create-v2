@@ -1,101 +1,367 @@
-
-import React, { useState } from 'react';
-import { Task } from '../types';
-import { NeuCard, NeuButton, NeuBadge, useThemeStyles } from '../components/NeuComponents';
-import { CheckCircle2, Clock, AlertCircle, Plus, MoreVertical, Calendar, MoreHorizontal } from 'lucide-react';
-import { generateTaskSuggestions } from '../services/geminiService';
+import React, { useState, useMemo, useEffect } from 'react';
+import {
+  DndContext,
+  DragOverlay,
+  closestCorners,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  useDroppable,
+  DragStartEvent,
+  DragEndEvent,
+  DragOverEvent
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy
+} from '@dnd-kit/sortable';
+import { Task, TaskCategory } from '../types';
+import { NeuCard, NeuButton, useThemeStyles } from '../components/NeuComponents';
+import { TaskCard, TaskDetailPanel, TaskFiltersBar } from '../components/tasks';
 import { GalaxyHeading } from '../components/GalaxyHeading';
+import { Plus, Undo2, AlertTriangle } from 'lucide-react';
+import { useTaskContext, TaskProvider } from '../context/TaskContext';
+import { motion, AnimatePresence } from 'framer-motion';
 
-interface TasksProps {
-  tasks: Task[];
+// ============================================================================
+// TASKS VIEW (MARKETING COMMAND CENTER)
+// ============================================================================
+
+interface TasksInnerProps {
   businessDesc: string;
-  setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
 }
 
-const Tasks: React.FC<TasksProps> = ({ tasks, businessDesc, setTasks }) => {
-  const [loadingAi, setLoadingAi] = useState(false);
-  const { styles } = useThemeStyles();
+const COLUMNS: { id: Task['status']; label: string; warnAt: number }[] = [
+  { id: 'To Do', label: 'To Do', warnAt: 10 },
+  { id: 'In Progress', label: 'In Progress', warnAt: 5 },
+  { id: 'Blocked', label: 'Blocked', warnAt: 3 },
+  { id: 'Done', label: 'Done', warnAt: 999 }
+];
 
-  const handleAiSuggest = async () => {
-    setLoadingAi(true);
-    try {
-      const titles = await generateTaskSuggestions(businessDesc);
-      const newTasks: Task[] = titles.map(title => ({
-        id: Math.random().toString(),
-        title,
-        status: 'To Do',
-        priority: 'Medium',
-        dueDate: new Date().toISOString()
-      }));
-      setTasks(prev => [...prev, ...newTasks]);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoadingAi(false);
+// Droppable wrapper for each column
+interface DroppableColumnProps {
+  id: string;
+  children: React.ReactNode;
+  className?: string;
+}
+
+const DroppableColumn: React.FC<DroppableColumnProps> = ({ id, children, className }) => {
+  const { setNodeRef, isOver } = useDroppable({ id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`${className} ${isOver ? 'ring-2 ring-brand/30 bg-brand/5' : ''} transition-all duration-200`}
+    >
+      {children}
+    </div>
+  );
+};
+
+const TasksInner: React.FC<TasksInnerProps> = ({ businessDesc }) => {
+  const { styles } = useThemeStyles();
+  const {
+    tasks,
+    isLoading,
+    businessId,
+    addTask,
+    updateTask,
+    deleteTask,
+    reorderTasks,
+    commitReorder,
+    canUndo,
+    undo,
+    filters,
+    setFilters,
+    filteredTasks
+  } = useTaskContext();
+
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [isNewTask, setIsNewTask] = useState(false);
+
+  // Keyboard shortcut for undo
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && canUndo) {
+        e.preventDefault();
+        undo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [canUndo, undo]);
+
+  // Sensors for drag
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  // Group tasks by status
+  const tasksByColumn = useMemo(() => {
+    const grouped: Record<Task['status'], Task[]> = {
+      'To Do': [],
+      'In Progress': [],
+      'Blocked': [],
+      'Done': []
+    };
+    filteredTasks.forEach(task => {
+      grouped[task.status]?.push(task);
+    });
+    // Sort each column by sortOrder
+    Object.keys(grouped).forEach(key => {
+      grouped[key as Task['status']].sort((a, b) => a.sortOrder - b.sortOrder);
+    });
+    return grouped;
+  }, [filteredTasks]);
+
+  // Get active task for overlay
+  const activeTask = activeId ? tasks.find(t => t.id === activeId) : null;
+
+  // Drag handlers
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  };
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event;
+    if (!over) return;
+
+    const activeTask = tasks.find(t => t.id === active.id);
+    if (!activeTask) return;
+
+    // Check if dropped over a column header (status)
+    if (COLUMNS.some(c => c.id === over.id)) {
+      const newStatus = over.id as Task['status'];
+      if (activeTask.status !== newStatus) {
+        reorderTasks(activeTask.id, '', newStatus);
+      }
     }
   };
 
-  const moveTask = (taskId: string, newStatus: Task['status']) => {
-    setTasks(tasks.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveId(null);
+
+    if (!over) return;
+
+    const activeTaskId = active.id as string;
+    const activeTask = tasks.find(t => t.id === activeTaskId);
+    if (!activeTask) return;
+
+    // Check if dropped on column header
+    if (COLUMNS.some(c => c.id === over.id)) {
+      const newStatus = over.id as Task['status'];
+      if (activeTask.status !== newStatus) {
+        reorderTasks(activeTaskId, '', newStatus);
+      }
+    } else {
+      // Dropped on another task
+      const overTaskId = over.id as string;
+      const overTask = tasks.find(t => t.id === overTaskId);
+      if (overTask && overTask.id !== activeTaskId) {
+        reorderTasks(activeTaskId, overTaskId, overTask.status);
+      }
+    }
+
+    // Commit to DB
+    commitReorder();
   };
 
-  const Column = ({ status }: { status: Task['status'] }) => (
-    <div className="flex-1 min-w-[300px]">
-      <div className="flex justify-between items-center mb-4 px-2">
-        <h3 className={`font-bold ${styles.textSub} uppercase text-sm tracking-wider`}>{status}</h3>
-        <span className={`${styles.bgAccent} ${styles.textSub} text-xs font-bold px-2 py-1 rounded-full`}>
-          {tasks.filter(t => t.status === status).length}
-        </span>
-      </div>
+  // Create new task
+  const handleNewTask = () => {
+    const newTask: Task = {
+      id: '',
+      title: '',
+      status: 'To Do',
+      priority: 'Medium',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      sortOrder: 0
+    };
+    setEditingTask(newTask);
+    setIsNewTask(true);
+  };
 
-      <div className="space-y-4 min-h-[200px]">
-        {tasks.filter(t => t.status === status).map(task => (
-          <NeuCard key={task.id} className="p-4 group hover:scale-[1.02] cursor-grab active:cursor-grabbing">
-            <div className="flex justify-between items-start mb-2">
-              <div className={`w-2 h-2 rounded-full mt-1.5 ${task.priority === 'High' ? 'bg-red-400' : task.priority === 'Medium' ? 'bg-yellow-400' : 'bg-green-400'}`} />
-              <button className={`${styles.textSub} hover:${styles.textMain}`}><MoreHorizontal size={16} /></button>
-            </div>
-            <p className={`${styles.textMain} font-bold mb-3`}>{task.title}</p>
-            <div className="flex justify-between items-center mt-2">
-              <span className={`text-xs ${styles.textSub}`}>{new Date(task.dueDate).toLocaleDateString()}</span>
-              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                {status !== 'To Do' && <button onClick={() => moveTask(task.id, 'To Do')} className={`p-1 text-xs ${styles.bgAccent} rounded hover:opacity-80`}>&lt;</button>}
-                {status !== 'Done' && <button onClick={() => moveTask(task.id, status === 'To Do' ? 'In Progress' : 'Done')} className={`p-1 text-xs ${styles.bgAccent} rounded hover:opacity-80`}>&gt;</button>}
-              </div>
-            </div>
-          </NeuCard>
-        ))}
+  const handleSaveTask = async (task: Task) => {
+    if (isNewTask) {
+      await addTask(task);
+      // Only close after creating a new task
+      setEditingTask(null);
+      setIsNewTask(false);
+    } else {
+      // For updates, just save - don't close the panel
+      await updateTask(task);
+    }
+  };
 
-        <NeuButton className={`w-full border-2 border-dashed ${styles.border} shadow-none bg-transparent ${styles.textSub} hover:border-brand hover:text-brand`}>
-          <Plus size={16} /> Add Task
-        </NeuButton>
+  const handleEditTask = (task: Task) => {
+    setEditingTask(task);
+    setIsNewTask(false);
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    await deleteTask(taskId);
+    setEditingTask(null);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className={`text-lg ${styles.textSub}`}>Loading tasks...</div>
       </div>
-    </div>
-  );
+    );
+  }
 
   return (
-    <div className="pb-8 h-full flex flex-col">
-      <header className="flex justify-between items-center mb-8">
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
         <div>
           <GalaxyHeading
             text="Marketing Board"
-            className="text-4xl md:text-5xl font-extrabold tracking-tight mb-1 pb-2"
+            className="text-3xl md:text-4xl font-extrabold tracking-tight mb-1"
           />
+          <p className={`text-sm ${styles.textSub}`}>
+            Drag tasks between columns to update status
+          </p>
         </div>
-        <div className="flex gap-4">
-          <NeuButton onClick={handleAiSuggest} disabled={loadingAi}>
-            {loadingAi ? 'Generating...' : '✨ AI Suggest Tasks'}
+        <div className="flex gap-2">
+          <NeuButton onClick={handleNewTask} variant="primary">
+            <Plus size={16} /> New Task
           </NeuButton>
-          <NeuButton variant="primary"><Plus size={18} /> New Task</NeuButton>
         </div>
       </header>
 
-      <div className="flex overflow-x-auto gap-6 pb-4 flex-1">
-        <Column status="To Do" />
-        <Column status="In Progress" />
-        <Column status="Done" />
+      {/* Filters */}
+      <div className="mb-4">
+        <TaskFiltersBar
+          filters={filters}
+          onChange={setFilters}
+          taskCount={tasks.length}
+          filteredCount={filteredTasks.length}
+        />
       </div>
+
+      {/* Kanban Board */}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCorners}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="flex-1 flex gap-4 overflow-x-auto pb-4">
+          {COLUMNS.map(column => {
+            const columnTasks = tasksByColumn[column.id];
+            const isOverWip = columnTasks.length >= column.warnAt;
+
+            return (
+              <div
+                key={column.id}
+                className="flex-1 min-w-[280px] max-w-[350px] flex flex-col"
+              >
+                {/* Column Header */}
+                <div
+                  className={`flex items-center justify-between mb-3 px-2 py-2 rounded-lg ${styles.bgAccent}`}
+                  data-column={column.id}
+                >
+                  <h3 className={`font-bold ${styles.textMain} text-sm uppercase tracking-wider`}>
+                    {column.label}
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    {isOverWip && column.id !== 'Done' && (
+                      <AlertTriangle size={14} className="text-orange-400" title="High WIP" />
+                    )}
+                    <span className={`${styles.bgAccent} ${styles.textSub} text-xs font-bold px-2 py-0.5 rounded-full`}>
+                      {columnTasks.length}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Tasks - wrapped in droppable zone */}
+                <DroppableColumn id={column.id} className="flex-1 min-h-[200px] rounded-xl p-1">
+                  <SortableContext
+                    items={columnTasks.map(t => t.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="space-y-3">
+                      <AnimatePresence mode="popLayout">
+                        {columnTasks.map(task => (
+                          <motion.div
+                            key={task.id}
+                            layout
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                          >
+                            <TaskCard
+                              task={task}
+                              onEdit={handleEditTask}
+                              onDelete={handleDeleteTask}
+                            />
+                          </motion.div>
+                        ))}
+                      </AnimatePresence>
+
+                      {/* Empty state */}
+                      {columnTasks.length === 0 && (
+                        <div className={`text-center py-8 text-xs ${styles.textSub} border-2 border-dashed ${styles.border} rounded-xl`}>
+                          {column.id === 'To Do' ? 'Add your first task' : 'Drag tasks here'}
+                        </div>
+                      )}
+                    </div>
+                  </SortableContext>
+                </DroppableColumn>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Drag Overlay */}
+        <DragOverlay>
+          {activeTask && (
+            <TaskCard
+              task={activeTask}
+              onEdit={() => { }}
+              onDelete={() => { }}
+              isDragging
+            />
+          )}
+        </DragOverlay>
+      </DndContext>
+
+      {/* Task Detail Panel (slides from right) */}
+      <TaskDetailPanel
+        task={editingTask}
+        isOpen={!!editingTask}
+        onClose={() => { setEditingTask(null); setIsNewTask(false); }}
+        onSave={handleSaveTask}
+        onDelete={handleDeleteTask}
+        isNew={isNewTask}
+        businessId={businessId}
+      />
     </div>
+  );
+};
+
+// ============================================================================
+// WRAPPER WITH PROVIDER
+// ============================================================================
+
+interface TasksProps {
+  businessId: string;
+  businessDesc: string;
+}
+
+const Tasks: React.FC<TasksProps> = ({ businessId, businessDesc }) => {
+  return (
+    <TaskProvider businessId={businessId}>
+      <TasksInner businessDesc={businessDesc} />
+    </TaskProvider>
   );
 };
 

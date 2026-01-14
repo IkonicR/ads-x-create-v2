@@ -364,6 +364,7 @@ export const TeamService = {
 
     /**
      * Get ALL pending invitations across ALL businesses
+     * Groups invitations by token (so multi-business invites appear as ONE row)
      */
     async getAllPendingInvitations(businessIds: string[]): Promise<Invitation[]> {
         if (businessIds.length === 0) return [];
@@ -381,6 +382,8 @@ export const TeamService = {
             return [];
         }
 
+        if (!data || data.length === 0) return [];
+
         // Get business names
         const { data: businesses } = await supabase
             .from('businesses')
@@ -389,18 +392,66 @@ export const TeamService = {
 
         const businessMap = new Map(businesses?.map(b => [b.id, b.name]) || []);
 
-        return (data || []).map((row: any) => ({
-            id: row.id,
-            businessId: row.business_id,
-            email: row.email,
-            role: row.role,
-            token: row.token,
-            invitedBy: row.invited_by,
-            expiresAt: row.expires_at,
-            acceptedAt: row.accepted_at,
-            createdAt: row.created_at,
-            businessName: businessMap.get(row.business_id),
-            accessScope: row.access_scope === 'all' ? 'all' : 'single'
+        // Group invitations by token (multi-business invites share the same token)
+        const tokenMap = new Map<string, {
+            primary: any;
+            businessNames: string[];
+            businessIds: string[];
+        }>();
+
+        for (const row of data) {
+            const existing = tokenMap.get(row.token);
+            const bizName = businessMap.get(row.business_id) || 'Unknown';
+
+            if (existing) {
+                // Add this business to the existing group
+                if (!existing.businessIds.includes(row.business_id)) {
+                    existing.businessIds.push(row.business_id);
+                    existing.businessNames.push(bizName);
+                }
+            } else {
+                // First invitation with this token
+                tokenMap.set(row.token, {
+                    primary: row,
+                    businessNames: [bizName],
+                    businessIds: [row.business_id]
+                });
+            }
+        }
+
+        // Convert to Invitation[] with grouped business names
+        return Array.from(tokenMap.values()).map(({ primary, businessNames, businessIds }) => ({
+            id: primary.id,
+            businessId: primary.business_id,
+            email: primary.email,
+            role: primary.role,
+            token: primary.token,
+            invitedBy: primary.invited_by,
+            expiresAt: primary.expires_at,
+            acceptedAt: primary.accepted_at,
+            createdAt: primary.created_at,
+            // Show all business names for multi-business invites
+            businessName: businessNames.length > 1
+                ? `${businessNames.length} businesses`
+                : businessNames[0],
+            // If there's only one business but same token, or access_scope is set
+            accessScope: (businessIds.length > 1 || primary.access_scope === 'all') ? 'all' : 'single'
         }));
+    },
+
+    /**
+     * Revoke (delete) an invitation by ID
+     */
+    async revokeInvitation(invitationId: string): Promise<boolean> {
+        const { error } = await supabase
+            .from('invitations')
+            .delete()
+            .eq('id', invitationId);
+
+        if (error) {
+            console.error('[TeamService] Error revoking invitation:', error);
+            return false;
+        }
+        return true;
     }
 };

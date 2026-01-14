@@ -202,3 +202,43 @@ body {
 .animate-scan {
   animation: scanline 4s linear infinite;
 }
+
+/* ==============================================
+   LANDING PAGE MARQUEE SYSTEM
+   - Infinite scroll for image columns
+   - GPU-accelerated with translateY
+   ============================================== */
+
+@keyframes marquee-down {
+  from {
+    transform: translateY(0);
+  }
+
+  to {
+    transform: translateY(-50%);
+  }
+}
+
+@keyframes marquee-up {
+  from {
+    transform: translateY(-50%);
+  }
+
+  to {
+    transform: translateY(0);
+  }
+}
+
+.animate-marquee-down {
+  animation: marquee-down var(--marquee-duration, 30s) linear infinite;
+}
+
+.animate-marquee-up {
+  animation: marquee-up var(--marquee-duration, 30s) linear infinite;
+}
+
+/* Pause on hover */
+.marquee-container:hover .animate-marquee-down,
+.marquee-container:hover .animate-marquee-up {
+  animation-play-state: paused;
+}

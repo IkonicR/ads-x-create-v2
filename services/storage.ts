@@ -82,8 +82,17 @@ const DEFAULT_BUSINESS: Business = {
 };
 
 const DEFAULT_TASKS: Task[] = [
-  { id: 't1', title: 'Approve Winter Campaign', status: 'To Do', priority: 'High', dueDate: '2023-11-01' },
-  { id: 't2', title: 'Update Store Hours', status: 'Done', priority: 'Low', dueDate: '2023-10-15' }
+  {
+    id: 't1',
+    title: 'Create your first marketing task',
+    description: 'Click the + button to add tasks to your marketing board.',
+    status: 'To Do',
+    priority: 'Medium',
+    category: 'other',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    sortOrder: 0
+  }
 ];
 
 // Helper to map DB Business to App Business
@@ -535,46 +544,92 @@ export const StorageService = {
   },
 
   getTasks: async (businessId: string): Promise<Task[]> => {
-
     const { data, error } = await supabase
       .from('tasks')
       .select('*')
-      .eq('business_id', businessId);
+      .eq('business_id', businessId)
+      .order('sort_order', { ascending: true });
 
     if (error) {
       console.error('[Storage] Error fetching tasks:', error);
       return DEFAULT_TASKS;
     }
 
-
     if (!data || data.length === 0) {
-      // Return default tasks immediately (Do not seed DB to avoid blocking load)
       return DEFAULT_TASKS;
     }
 
     return data.map((row: any) => ({
       id: row.id,
       title: row.title,
+      description: row.description || undefined,
       status: row.status,
       priority: row.priority,
-      dueDate: row.due_date
+      dueDate: row.due_date || undefined,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at || row.created_at,
+      category: row.category || undefined,
+      labels: row.labels || [],
+      subtasks: row.subtasks || [],
+      sortOrder: row.sort_order ?? 0
     }));
   },
 
   saveTasks: async (tasks: Task[], businessId: string): Promise<void> => {
-    // We need businessId to save tasks correctly.
     const payloads = tasks.map(t => ({
       id: t.id,
       business_id: businessId,
       title: t.title,
+      description: t.description || null,
       status: t.status,
       priority: t.priority,
-      due_date: t.dueDate
+      due_date: t.dueDate || null,
+      category: t.category || null,
+      labels: t.labels || [],
+      subtasks: t.subtasks || [],
+      sort_order: t.sortOrder ?? 0,
+      updated_at: new Date().toISOString()
     }));
 
-    // Using upsert with onConflict on 'id' to handle duplicates gracefully
     const { error } = await supabase.from('tasks').upsert(payloads, { onConflict: 'id' });
     if (error) console.error('Error saving tasks:', error);
+  },
+
+  saveTask: async (task: Task, businessId: string): Promise<void> => {
+    const payload = {
+      id: task.id,
+      business_id: businessId,
+      title: task.title,
+      description: task.description || null,
+      status: task.status,
+      priority: task.priority,
+      due_date: task.dueDate || null,
+      category: task.category || null,
+      labels: task.labels || [],
+      subtasks: task.subtasks || [],
+      sort_order: task.sortOrder ?? 0,
+      updated_at: new Date().toISOString()
+    };
+
+    const { error } = await supabase.from('tasks').upsert(payload, { onConflict: 'id' });
+    if (error) console.error('Error saving task:', error);
+  },
+
+  deleteTask: async (taskId: string): Promise<void> => {
+    const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+    if (error) console.error('Error deleting task:', error);
+  },
+
+  updateTaskOrder: async (taskUpdates: { id: string; sortOrder: number; status: string }[], businessId: string): Promise<void> => {
+    // Batch update for drag-drop reordering
+    const updates = taskUpdates.map(t =>
+      supabase.from('tasks')
+        .update({ sort_order: t.sortOrder, status: t.status, updated_at: new Date().toISOString() })
+        .eq('id', t.id)
+        .eq('business_id', businessId)
+    );
+
+    await Promise.all(updates);
   },
 
   getAdminNotes: async (): Promise<AdminNote[]> => {

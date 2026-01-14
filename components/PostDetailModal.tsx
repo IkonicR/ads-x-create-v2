@@ -15,9 +15,9 @@
 import React, { useState, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useThemeStyles, NeuButton } from './NeuComponents';
+import { useThemeStyles, NeuButton, NeuCloseButton } from './NeuComponents';
 import {
-    X, Trash2, Save,
+    Trash2, Save,
     AlertCircle, Check, ChevronLeft, ChevronRight,
     Image as ImageIcon, Hash, Clock, Calendar,
     Instagram, Facebook, Linkedin, MapPin, MessageCircle
@@ -256,12 +256,7 @@ export const PostDetailModal: React.FC<PostDetailModalProps> = ({
                         className={`relative w-full max-w-4xl my-8 rounded-3xl overflow-hidden ${styles.bg} ${styles.shadowOut}`}
                     >
                         {/* Close button */}
-                        <button
-                            onClick={handleClose}
-                            className={`absolute top-4 right-4 z-20 p-2.5 rounded-full ${styles.bg} ${styles.shadowOut} ${styles.textSub} hover:text-red-500 transition-colors`}
-                        >
-                            <X size={18} />
-                        </button>
+                        <NeuCloseButton onClick={handleClose} className="absolute top-4 right-4 z-20" />
 
                         {/* Main content */}
                         <div className="flex flex-col md:flex-row">

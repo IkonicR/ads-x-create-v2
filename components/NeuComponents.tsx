@@ -1,7 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useId } from 'react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { motion, HTMLMotionProps, AnimatePresence } from 'framer-motion';
+import { motion, HTMLMotionProps, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { useTheme } from '../context/ThemeContext';
 import { X, Plus, ChevronDown } from 'lucide-react';
 
@@ -238,10 +238,49 @@ export const NeuIconButton: React.FC<NeuIconButtonProps> = ({
     >
       {children}
     </motion.button>
+  )
+};
+
+// --- NeuCloseButton (Rotating X Close Button) ---
+
+interface NeuCloseButtonProps {
+  onClick: () => void;
+  size?: 'sm' | 'md';
+  className?: string;
+}
+
+/**
+ * Standard close button with rotating X icon on hover.
+ * Use this for all modals, panels, and drawers.
+ */
+export const NeuCloseButton: React.FC<NeuCloseButtonProps> = ({
+  onClick,
+  size = 'md',
+  className = ''
+}) => {
+  const { theme } = useTheme();
+  const styles = THEMES[theme];
+  const iconSize = size === 'sm' ? 16 : 20;
+
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "p-2 rounded-full transition-transform active:scale-95 group",
+        styles.bg,
+        styles.shadowOut,
+        styles.textSub,
+        "hover:text-red-500",
+        className
+      )}
+    >
+      <X size={iconSize} className="transition-transform duration-300 group-hover:rotate-90" />
+    </button>
   );
 };
 
 interface NeuInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+
   forceTheme?: 'light' | 'dark';
 }
 
@@ -253,7 +292,7 @@ export const NeuInput: React.FC<NeuInputProps> = ({ className, forceTheme, ...pr
   return (
     <input
       className={cn(
-        "w-full rounded-xl px-4 py-3 outline-none transition-all",
+        "w-full rounded-xl px-6 py-3 outline-none transition-all",
         styles.bg,
         styles.shadowIn,
         styles.textMain,
@@ -267,9 +306,7 @@ export const NeuInput: React.FC<NeuInputProps> = ({ className, forceTheme, ...pr
 };
 
 interface NeuTextAreaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
-  /** Enables the expand/collapse feature */
-  expandable?: boolean;
-  /** Character count to trigger show of expand icon (default: 150) */
+  /** Character count to trigger auto-expand (default: 150) */
   expandThreshold?: number;
   /** Height when collapsed - mobile (default: 100px) */
   collapsedHeightMobile?: string;
@@ -283,18 +320,20 @@ interface NeuTextAreaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElem
 
 export const NeuTextArea: React.FC<NeuTextAreaProps> = ({
   className,
-  expandable = false,
   expandThreshold = 150,
   collapsedHeightMobile = '100px',
   collapsedHeightDesktop = '120px',
   expandedHeightMobile = '200px',
   expandedHeightDesktop = '280px',
   value,
+  // @deprecated - kept for backwards compatibility (prevents DOM leak)
+  expandable: _expandable,
   ...props
 }) => {
   const { theme } = useTheme();
   const styles = THEMES[theme];
   const [isExpanded, setIsExpanded] = useState(false);
+  const [manualCollapse, setManualCollapse] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
   // Detect mobile breakpoint
@@ -305,35 +344,40 @@ export const NeuTextArea: React.FC<NeuTextAreaProps> = ({
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Calculate if we should show the expand button
+  // Calculate if content exceeds threshold
   const charCount = value?.toString().length ?? 0;
-  const showExpandButton = expandable && charCount > expandThreshold;
+  const exceedsThreshold = charCount > expandThreshold;
+
+  // Auto-expand when content exceeds threshold (unless manually collapsed)
+  useEffect(() => {
+    if (exceedsThreshold && !manualCollapse) {
+      setIsExpanded(true);
+    } else if (!exceedsThreshold) {
+      // Reset manual collapse when content is reduced
+      setManualCollapse(false);
+      setIsExpanded(false);
+    }
+  }, [exceedsThreshold, manualCollapse]);
+
+  // Handle manual collapse toggle
+  const handleCollapseToggle = () => {
+    if (isExpanded) {
+      setIsExpanded(false);
+      setManualCollapse(true);
+    } else {
+      setIsExpanded(true);
+      setManualCollapse(false);
+    }
+  };
 
   // Get responsive heights
   const collapsedHeight = isMobile ? collapsedHeightMobile : collapsedHeightDesktop;
   const expandedHeight = isMobile ? expandedHeightMobile : expandedHeightDesktop;
   const currentHeight = isExpanded ? expandedHeight : collapsedHeight;
 
-  // If not expandable, render the simple version
-  if (!expandable) {
-    return (
-      <textarea
-        className={cn(
-          "w-full rounded-xl px-4 py-3 outline-none transition-all min-h-[100px]",
-          styles.bg,
-          styles.shadowIn,
-          styles.textMain,
-          styles.inputPlaceholder,
-          "focus:ring-2 focus:ring-brand/20",
-          className
-        )}
-        value={value}
-        {...props}
-      />
-    );
-  }
+  // Show collapse button when expanded OR when threshold exceeded but manually collapsed
+  const showCollapseButton = exceedsThreshold;
 
-  // Expandable version
   return (
     <div className="relative">
       <motion.div
@@ -348,11 +392,11 @@ export const NeuTextArea: React.FC<NeuTextAreaProps> = ({
       >
         <textarea
           className={cn(
-            "w-full h-full px-4 py-3 outline-none resize-none bg-transparent",
+            "w-full h-full px-6 py-3 outline-none resize-none bg-transparent",
             styles.textMain,
             styles.inputPlaceholder,
-            // Extra padding at bottom-right for the expand button
-            showExpandButton && "pb-10",
+            // Extra padding at bottom-right for the collapse button
+            showCollapseButton && "pb-10",
             className
           )}
           value={value}
@@ -360,16 +404,16 @@ export const NeuTextArea: React.FC<NeuTextAreaProps> = ({
         />
       </motion.div>
 
-      {/* Expand/Collapse Button */}
+      {/* Collapse/Expand Button */}
       <AnimatePresence>
-        {showExpandButton && (
+        {showCollapseButton && (
           <motion.button
             type="button"
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
             transition={{ duration: 0.15 }}
-            onClick={() => setIsExpanded(!isExpanded)}
+            onClick={handleCollapseToggle}
             className={cn(
               "absolute bottom-2 right-2 p-2 rounded-xl",
               styles.bg,
@@ -390,6 +434,7 @@ export const NeuTextArea: React.FC<NeuTextAreaProps> = ({
     </div>
   );
 };
+
 
 // --- NeuExpandableText (Read-Only Expandable Display) ---
 
@@ -565,6 +610,7 @@ export const NeuSelect: React.FC<NeuSelectProps> = ({ className, children, ...pr
 interface NeuDropdownOption {
   label: string;
   value: string;
+  icon?: React.ReactNode;
 }
 
 interface NeuDropdownProps {
@@ -574,6 +620,8 @@ interface NeuDropdownProps {
   placeholder?: string;
   className?: string;
   label?: string;
+  /** If true, dropdown options overlay instead of pushing content down */
+  overlay?: boolean;
 }
 
 export const NeuDropdown: React.FC<NeuDropdownProps> = ({
@@ -582,7 +630,8 @@ export const NeuDropdown: React.FC<NeuDropdownProps> = ({
   onChange,
   placeholder = "Select an option",
   className,
-  label
+  label,
+  overlay = false
 }) => {
   const { theme } = useTheme();
   const styles = THEMES[theme];
@@ -639,53 +688,62 @@ export const NeuDropdown: React.FC<NeuDropdownProps> = ({
         </label>
       )}
 
-      <motion.div
-        layout
-        className={cn(
-          "relative overflow-hidden rounded-xl transition-all duration-300",
-          styles.bg,
-          isOpen ? styles.shadowIn : styles.shadowOut // Inset when open (tray effect)
-        )}
-      >
-        {/* Trigger */}
-        <button
-          onClick={() => setIsOpen(!isOpen)}
+      <div className="relative">
+        {/* Trigger button with neumorphic styling */}
+        <motion.div
           className={cn(
-            "w-full flex items-center justify-between px-4 py-3 outline-none text-left",
-            styles.textMain
+            "rounded-xl transition-all duration-300",
+            styles.bg,
+            isOpen ? styles.shadowIn : styles.shadowOut
           )}
         >
-          <span className={!selectedOption ? "opacity-50" : ""}>
-            {selectedOption ? selectedOption.label : placeholder}
-          </span>
-          <motion.div
-            animate={{ rotate: isOpen ? 180 : 0 }}
-            transition={{ duration: 0.2 }}
+          <button
+            onClick={() => setIsOpen(!isOpen)}
+            className={cn(
+              "w-full flex items-center justify-between px-4 py-3 outline-none text-left",
+              styles.textMain
+            )}
           >
-            <ChevronDown size={18} className="opacity-50" />
-          </motion.div>
-        </button>
+            <span className={cn("flex items-center gap-2", !selectedOption && "opacity-50")}>
+              {selectedOption?.icon}
+              {selectedOption ? selectedOption.label : placeholder}
+            </span>
+            <motion.div
+              animate={{ rotate: isOpen ? 180 : 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <ChevronDown size={18} className="opacity-50" />
+            </motion.div>
+          </button>
+        </motion.div>
 
-        {/* Dropdown Content (Push Down + Staggered) */}
+        {/* Dropdown Content - overlay or push-down based on prop */}
         <AnimatePresence>
           {isOpen && (
             <motion.div
-              variants={containerVariants}
-              initial="hidden"
-              animate="visible"
-              exit="hidden"
-              className="border-t border-black/5 dark:border-white/5"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.15 }}
+              onClick={(e) => e.stopPropagation()}
+              className={cn(
+                "mt-2 rounded-xl border border-black/5 dark:border-white/5",
+                styles.bg,
+                styles.shadowOut,
+                overlay && "absolute top-full left-0 right-0 z-50"
+              )}
             >
               <div className="p-2 space-y-1">
                 {options.map((option) => (
                   <motion.button
                     key={option.value}
                     variants={itemVariants}
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       onChange(option.value);
                       setIsOpen(false);
                     }}
-                    whileTap={{ scale: 0.98, x: 5 }} // "Selection Physics"
+                    whileTap={{ scale: 0.98, x: 5 }}
                     className={cn(
                       "w-full text-left px-3 py-2 rounded-lg text-sm transition-colors",
                       option.value === value
@@ -693,14 +751,17 @@ export const NeuDropdown: React.FC<NeuDropdownProps> = ({
                         : `hover:bg-black/5 dark:hover:bg-white/5 ${styles.textMain}`
                     )}
                   >
-                    {option.label}
+                    <span className="flex items-center gap-2">
+                      {option.icon}
+                      {option.label}
+                    </span>
                   </motion.button>
                 ))}
               </div>
             </motion.div>
           )}
         </AnimatePresence>
-      </motion.div>
+      </div>
     </div>
   );
 };

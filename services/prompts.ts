@@ -184,27 +184,31 @@ function buildMandatoryElementsBlock(
 ): string {
   const lines: string[] = [];
 
-  // Helper to get prominence hint
-  const getHint = (level: string) => {
-    if (level === 'prominent') return ' (featured)';
-    if (level === 'subtle') return ' (secondary)';
-    return '';
+  // Visual directive builders based on prominence level
+  const getDirective = (level: string) => {
+    if (level === 'prominent') return ' — large text, header/central placement, high contrast, major visual element';
+    if (level === 'subtle') return ' — small text, corner/footer placement, unobtrusive';
+    return ''; // standard = normal placement, no special instruction
   };
 
   if (slogan) {
     lines.push(`    *   ${slogan}`);
   }
   if (locationLabel && prominence.location !== 'hidden') {
-    lines.push(`    *   **Location${getHint(prominence.location)}:** ${locationLabel}`);
+    const directive = getDirective(prominence.location);
+    lines.push(`    *   **Location${prominence.location === 'prominent' ? ' (PROMINENT)' : ''}:** "${locationLabel}"${directive}`);
   }
   if (hoursLabel && prominence.hours !== 'hidden') {
-    lines.push(`    *   **Hours${getHint(prominence.hours)}:** ${hoursLabel}`);
+    const directive = getDirective(prominence.hours);
+    lines.push(`    *   **Hours${prominence.hours === 'prominent' ? ' (PROMINENT)' : ''}:** "${hoursLabel}"${directive}`);
   }
   if (contactValue && prominence.contact !== 'hidden') {
-    lines.push(`    *   **Contact${getHint(prominence.contact)}:** ${contactValue}`);
+    const directive = getDirective(prominence.contact);
+    lines.push(`    *   **Contact${prominence.contact === 'prominent' ? ' (PROMINENT)' : ''}:** "${contactValue}"${directive}`);
   }
   if (showBusinessName && prominence.businessName !== 'hidden') {
-    lines.push(`    *   **Branding${getHint(prominence.businessName)}:** Include "${business.name}"`);
+    const directive = getDirective(prominence.businessName);
+    lines.push(`    *   **Branding${prominence.businessName === 'prominent' ? ' (PROMINENT)' : ''}:** Include "${business.name}"${directive}`);
   }
 
   return lines.join('\n');
@@ -645,9 +649,9 @@ export const PromptFactory = {
     let sloganInstruction = "";
     if (sloganProminence !== 'hidden' && business.voice.slogan) {
       if (sloganProminence === 'prominent') {
-        sloganInstruction = `Brand Slogan (featured): "${business.voice.slogan}"`;
+        sloganInstruction = `Brand Slogan (PROMINENT): "${business.voice.slogan}" — large text, header placement, high contrast, featured`;
       } else if (sloganProminence === 'subtle') {
-        sloganInstruction = `Brand Slogan (secondary): "${business.voice.slogan}"`;
+        sloganInstruction = `Brand Slogan (subtle): "${business.voice.slogan}" — small text, footer/corner, unobtrusive`;
       } else {
         sloganInstruction = `Brand Slogan: "${business.voice.slogan}"`;
       }
