@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NeuCard, NeuButton, NeuInput, useThemeStyles, NeuDropdown } from '../../components/NeuComponents';
-import { Ticket, Plus, RefreshCw, Copy, Check, XCircle, Loader2, Calendar, Hash, User } from 'lucide-react';
+import { Ticket, Plus, RefreshCw, Copy, Check, XCircle, Loader2, Calendar, Hash, User, Trash2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../services/supabase';
 
@@ -14,6 +14,9 @@ interface InviteCode {
     is_active: boolean;
     note: string | null;
     created_at: string;
+    // Beta package fields
+    credits_granted: number | null;
+    max_businesses: number | null;
 }
 
 interface InvitesTabProps {
@@ -33,6 +36,9 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ styles }) => {
     const [newMaxUses, setNewMaxUses] = useState('1');
     const [newExpiresInDays, setNewExpiresInDays] = useState('');
     const [newNote, setNewNote] = useState('');
+    // Beta package config
+    const [newCreditsGranted, setNewCreditsGranted] = useState('25');
+    const [newMaxBusinesses, setNewMaxBusinesses] = useState('1');
 
     const fetchCodes = async () => {
         if (!session?.access_token) return;
@@ -68,7 +74,10 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ styles }) => {
                     prefix: newPrefix,
                     maxUses: parseInt(newMaxUses) || 1,
                     expiresInDays: newExpiresInDays ? parseInt(newExpiresInDays) : undefined,
-                    note: newNote || undefined
+                    note: newNote || undefined,
+                    // Beta package config
+                    creditsGranted: parseInt(newCreditsGranted) || 25,
+                    maxBusinesses: parseInt(newMaxBusinesses) || 1
                 })
             });
             const data = await res.json();
@@ -79,6 +88,8 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ styles }) => {
                 setNewMaxUses('1');
                 setNewExpiresInDays('');
                 setNewNote('');
+                setNewCreditsGranted('25');
+                setNewMaxBusinesses('1');
             }
         } catch (e) {
             console.error('Failed to create code:', e);
@@ -101,6 +112,25 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ styles }) => {
             setCodes(prev => prev.map(c => c.id === codeId ? { ...c, is_active: false } : c));
         } catch (e) {
             console.error('Failed to deactivate code:', e);
+        }
+    };
+
+    const handleDelete = async (codeId: string) => {
+        if (!session?.access_token) return;
+        if (!confirm('Delete this invite code permanently? This cannot be undone.')) return;
+
+        try {
+            await fetch('/api/invite/delete', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.access_token}`
+                },
+                body: JSON.stringify({ codeId })
+            });
+            setCodes(prev => prev.filter(c => c.id !== codeId));
+        } catch (e) {
+            console.error('Failed to delete code:', e);
         }
     };
 
@@ -170,6 +200,33 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ styles }) => {
                         </div>
                     </div>
 
+                    {/* Beta Package Config */}
+                    <div className="pt-4 border-t border-gray-800">
+                        <h5 className="text-sm font-bold text-brand mb-3">Beta Package</h5>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-bold mb-2 text-gray-500 uppercase">Credits to Grant</label>
+                                <NeuInput
+                                    type="number"
+                                    value={newCreditsGranted}
+                                    onChange={(e) => setNewCreditsGranted(e.target.value)}
+                                    placeholder="25"
+                                />
+                                <p className="text-xs text-gray-600 mt-1">One-time credit allocation</p>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold mb-2 text-gray-500 uppercase">Max Businesses</label>
+                                <NeuInput
+                                    type="number"
+                                    value={newMaxBusinesses}
+                                    onChange={(e) => setNewMaxBusinesses(e.target.value)}
+                                    placeholder="1"
+                                />
+                                <p className="text-xs text-gray-600 mt-1">How many workspaces they can create</p>
+                            </div>
+                        </div>
+                    </div>
+
                     <div className="flex justify-end gap-3">
                         <NeuButton onClick={() => setShowCreateForm(false)}>Cancel</NeuButton>
                         <NeuButton variant="primary" onClick={handleCreate} disabled={creating}>
@@ -231,6 +288,12 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ styles }) => {
                                             <Calendar size={12} />
                                             {code.expires_at ? formatDate(code.expires_at) : 'Never expires'}
                                         </span>
+                                        <span className="flex items-center gap-1 text-brand">
+                                            🎟️ {code.credits_granted ?? 25} credits
+                                        </span>
+                                        <span className="flex items-center gap-1 text-purple-400">
+                                            🏢 {code.max_businesses ?? 1} business{(code.max_businesses ?? 1) > 1 ? 'es' : ''}
+                                        </span>
                                         {code.note && (
                                             <span className="truncate max-w-[200px]" title={code.note}>
                                                 📝 {code.note}
@@ -240,14 +303,22 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ styles }) => {
                                 </div>
                             </div>
 
-                            {code.is_active && (
+                            <div className="flex gap-2">
+                                {code.is_active && (
+                                    <NeuButton
+                                        onClick={() => handleDeactivate(code.id)}
+                                        className="text-yellow-500 hover:text-yellow-400"
+                                    >
+                                        <XCircle size={16} /> Revoke
+                                    </NeuButton>
+                                )}
                                 <NeuButton
-                                    onClick={() => handleDeactivate(code.id)}
+                                    onClick={() => handleDelete(code.id)}
                                     className="text-red-400 hover:text-red-300"
                                 >
-                                    <XCircle size={16} /> Revoke
+                                    <Trash2 size={16} /> {!code.is_active && 'Delete'}
                                 </NeuButton>
-                            )}
+                            </div>
                         </NeuCard>
                     ))}
                 </div>

@@ -108,8 +108,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .update({ invite_code_used: code.toUpperCase().trim() })
             .eq('id', user.id);
 
+        // Auto-provision subscription with beta package credits
+        const creditsToGrant = invite.credits_granted ?? 25;
+        const maxBusinesses = invite.max_businesses ?? 1;
+
+        const { error: subError } = await supabase
+            .from('subscriptions')
+            .upsert({
+                user_id: user.id,
+                plan_id: 'beta',
+                status: 'active',
+                credits_remaining: creditsToGrant,
+                extra_businesses: Math.max(0, maxBusinesses - 1), // base plan allows 1, extra on top
+                period_start: new Date().toISOString(),
+                period_end: null // once-off, no renewal
+            }, { onConflict: 'user_id' });
+
+        if (subError) {
+            console.error('[Invite] Subscription provision error:', subError);
+        } else {
+            console.log('[Invite] Provisioned beta subscription:', creditsToGrant, 'credits,', maxBusinesses, 'businesses');
+        }
+
         console.log('[Invite] Code used by:', user.email, 'Code:', code);
-        return res.json({ success: true });
+        return res.json({ success: true, creditsGranted: creditsToGrant, maxBusinesses });
 
     } catch (error) {
         console.error('[Invite] Use error:', error);

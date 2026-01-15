@@ -95,6 +95,28 @@ export const PLANS = {
             dedicatedManager: true,
         },
     },
+    beta: {
+        id: 'beta',
+        name: 'Beta Tester',
+        description: 'Limited beta access via invite code',
+        monthlyPrice: 0,
+        annualPrice: 0,
+        features: {
+            businesses: 1,        // Base, extra_businesses adds more
+            maxBusinesses: 10,    // Hard cap for safety
+            creditsPerMonth: 0,   // Credits come from invite code, not recurring
+            extraBusinessPrice: null,
+            extraBusinessCredits: null,
+            socialScheduling: true,
+            customStyles: true,
+            teamSeats: 0,         // No team for beta testers
+            whiteLabel: false,
+            earlyAccess: true,
+            betaFeatures: true,
+            prioritySupport: false,
+            dedicatedManager: false,
+        },
+    },
 } as const;
 
 export type PlanId = keyof typeof PLANS;

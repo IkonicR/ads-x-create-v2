@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { NeuCard, NeuInput, NeuButton, useThemeStyles } from '../components/NeuComponents';
+import { motion, AnimatePresence } from 'framer-motion';
+import { NeuCard, NeuInput, NeuButton, useThemeStyles, useNeuAnimations } from '../components/NeuComponents';
 import { GalaxyHeading } from '../components/GalaxyHeading';
 import { useAuth } from '../context/AuthContext';
 import { StorageService } from '../services/storage';
 import {
   ArrowRight, User, Globe, Sparkles, Building2, Briefcase,
-  Target, Rocket, Heart, Palette, Code, CheckCircle2, ChevronLeft
+  Target, Rocket, Heart, Palette, CheckCircle2, ChevronLeft
 } from 'lucide-react';
 
 // --- Types ---
@@ -52,51 +53,73 @@ interface SelectionCardProps {
 
 const SelectionCard: React.FC<SelectionCardProps> = ({ icon, title, description, selected, onClick }) => {
   const { styles } = useThemeStyles();
+  const variants = useNeuAnimations();
+
   return (
-    <button
+    <motion.button
       onClick={onClick}
-      className={`w-full p-4 rounded-xl border text-left transition-all duration-200 group relative overflow-hidden
+      variants={selected ? undefined : variants}
+      initial="initial"
+      whileHover={selected ? undefined : "hover"}
+      whileTap={selected ? undefined : "pressed"}
+      className={`w-full p-4 rounded-2xl text-left transition-colors duration-200 group relative
         ${selected
-          ? 'border-brand bg-brand/10 shadow-glow-sm scale-[1.02]'
-          : 'border-gray-700 bg-black/20 hover:border-gray-500 hover:bg-black/40'
+          ? `${styles.bg} ${styles.shadowIn} ring-2 ring-brand/50`
+          : `${styles.bg}`
         }
       `}
+      style={!selected ? {
+        boxShadow: styles.shadowOutValue || undefined
+      } : undefined}
     >
-      <div className="flex items-start gap-4 relative z-10">
-        <div className={`p-3 rounded-lg transition-colors ${selected ? 'bg-brand text-white' : 'bg-gray-800 text-gray-400 group-hover:text-gray-300'}`}>
+      <div className="flex items-start gap-4">
+        <div className={`p-3 rounded-xl transition-all ${selected
+          ? 'bg-brand text-white shadow-lg'
+          : `${styles.bgSubtle} ${styles.textSub} group-hover:text-brand`}`}
+        >
           {icon}
         </div>
-        <div>
-          <h4 className={`font-bold mb-1 ${selected ? 'text-white' : 'text-gray-200'}`}>{title}</h4>
-          <p className="text-xs text-gray-500">{description}</p>
+        <div className="flex-1">
+          <h4 className={`font-bold mb-1 ${selected ? 'text-brand' : styles.textMain}`}>{title}</h4>
+          <p className={`text-xs ${styles.textSub}`}>{description}</p>
         </div>
         {selected && (
-          <div className="absolute top-4 right-4 text-brand">
-            <CheckCircle2 size={20} fill="currentColor" className="text-white" />
+          <div className="text-brand">
+            <CheckCircle2 size={22} />
           </div>
         )}
       </div>
-    </button>
+    </motion.button>
   );
 };
 
 const PillSelect: React.FC<{ options: string[]; value: string; onChange: (val: string) => void }> = ({ options, value, onChange }) => {
+  const { styles } = useThemeStyles();
+  const variants = useNeuAnimations();
+
   return (
-    <div className="flex flex-wrap gap-2">
-      {options.map((opt) => (
-        <button
-          key={opt}
-          onClick={() => onChange(opt)}
-          className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 border
-            ${value === opt
-              ? 'bg-brand border-brand text-white shadow-glow-sm'
-              : 'bg-black/20 border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200'
-            }
-          `}
-        >
-          {opt}
-        </button>
-      ))}
+    <div className="flex flex-wrap gap-3">
+      {options.map((opt) => {
+        const isSelected = value === opt;
+        return (
+          <motion.button
+            key={opt}
+            onClick={() => onChange(opt)}
+            variants={isSelected ? undefined : variants}
+            initial="initial"
+            whileHover={isSelected ? undefined : "hover"}
+            whileTap={isSelected ? undefined : "pressed"}
+            className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-colors duration-200
+              ${isSelected
+                ? `${styles.bg} ${styles.shadowIn} text-brand ring-2 ring-brand/40`
+                : `${styles.bg} ${styles.textSub} hover:text-brand`
+              }
+            `}
+          >
+            {opt}
+          </motion.button>
+        );
+      })}
     </div>
   );
 };
@@ -105,9 +128,12 @@ const PillSelect: React.FC<{ options: string[]; value: string; onChange: (val: s
 
 const UserOnboarding: React.FC = () => {
   const { styles } = useThemeStyles();
+  const variants = useNeuAnimations(); // For referral buttons
   const { user, profile, refreshProfile } = useAuth();
   const [currentStep, setCurrentStep] = useState<Step>('welcome');
+  const [direction, setDirection] = useState(1); // 1 = forward, -1 = back
   const [loading, setLoading] = useState(false);
+  const [showError, setShowError] = useState(false);
 
   const [formData, setFormData] = useState<OnboardingData>({
     full_name: '',
@@ -130,6 +156,20 @@ const UserOnboarding: React.FC = () => {
   }, [profile]);
 
   const goToNext = () => {
+    // Validate current step
+    const canProceed =
+      (currentStep === 'welcome' && formData.full_name) ||
+      (currentStep === 'role' && formData.role) ||
+      (currentStep === 'company' && formData.company_size && formData.primary_goal);
+
+    if (!canProceed) {
+      setShowError(true);
+      setTimeout(() => setShowError(false), 2000);
+      return;
+    }
+
+    setShowError(false);
+    setDirection(1);
     switch (currentStep) {
       case 'welcome': setCurrentStep('role'); break;
       case 'role': setCurrentStep('company'); break;
@@ -138,6 +178,7 @@ const UserOnboarding: React.FC = () => {
   };
 
   const goBack = () => {
+    setDirection(-1);
     switch (currentStep) {
       case 'role': setCurrentStep('welcome'); break;
       case 'company': setCurrentStep('role'); break;
@@ -191,151 +232,186 @@ const UserOnboarding: React.FC = () => {
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 flex flex-col justify-start overflow-y-auto custom-scrollbar px-1">
+        <div className="flex-1 flex flex-col justify-start overflow-hidden px-1">
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={currentStep}
+              initial={{ opacity: 0, x: direction * 50 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: direction * -50 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              className="h-full overflow-y-auto custom-scrollbar"
+            >
 
-          {/* STEP 1: WELCOME (Name/Website) */}
-          {currentStep === 'welcome' && (
-            <div className="space-y-6 animate-fade-in-up">
-              <div className="flex justify-center mb-6">
-                <div className={`w-24 h-24 rounded-full ${styles.bg} ${styles.shadowOut} flex items-center justify-center text-brand relative`}>
-                  <Sparkles size={32} className="opacity-80" />
-                  {profile?.avatar_url && (
-                    <img
-                      src={profile.avatar_url}
-                      className="absolute inset-0 w-full h-full object-cover rounded-full opacity-60"
-                      alt="Avatar"
+              {/* STEP 1: WELCOME (Name/Website) */}
+              {currentStep === 'welcome' && (
+                <div className="space-y-6 p-4">
+                  <div className="space-y-6">
+                    <div className="flex justify-center mb-6">
+                      <div className={`w-24 h-24 rounded-full ${styles.bg} ${styles.shadowOut} flex items-center justify-center text-brand relative`}>
+                        <Sparkles size={32} className="opacity-80" />
+                        {profile?.avatar_url && (
+                          <img
+                            src={profile.avatar_url}
+                            className="absolute inset-0 w-full h-full object-cover rounded-full opacity-60"
+                            alt="Avatar"
+                          />
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold mb-2 ml-1 text-gray-500 uppercase">Your Name</label>
+                      <div className="relative">
+                        <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+                        <NeuInput
+                          className="pl-10"
+                          placeholder="Full Name"
+                          value={formData.full_name}
+                          onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold mb-2 ml-1 text-gray-500 uppercase">Website (Optional)</label>
+                      <div className="relative">
+                        <Globe className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+                        <NeuInput
+                          className="pl-10"
+                          placeholder="https://..."
+                          value={formData.website}
+                          onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 2: ROLE */}
+              {currentStep === 'role' && (
+                <div className="space-y-4 p-4">
+                  <SelectionCard
+                    title="Business Owner / Founder"
+                    description="I run my own business and wear many hats."
+                    icon={<Building2 size={24} />}
+                    selected={formData.role === 'founder'}
+                    onClick={() => setFormData({ ...formData, role: 'founder' })}
+                  />
+                  <SelectionCard
+                    title="Marketer / Growth Lead"
+                    description="I manage campaigns and content strategy."
+                    icon={<Target size={24} />}
+                    selected={formData.role === 'marketer'}
+                    onClick={() => setFormData({ ...formData, role: 'marketer' })}
+                  />
+                  <SelectionCard
+                    title="Agency Professional"
+                    description="I manage multiple client accounts."
+                    icon={<Briefcase size={24} />}
+                    selected={formData.role === 'agency'}
+                    onClick={() => setFormData({ ...formData, role: 'agency' })}
+                  />
+                  <SelectionCard
+                    title="Creative / Designer"
+                    description="I create assets and visual identity."
+                    icon={<Palette size={24} />}
+                    selected={formData.role === 'creative'}
+                    onClick={() => setFormData({ ...formData, role: 'creative' })}
+                  />
+                </div>
+              )}
+
+              {/* STEP 3: COMPANY & GOALS */}
+              {currentStep === 'company' && (
+                <div className="space-y-8 p-4">
+
+                  <div>
+                    <label className="block text-xs font-bold mb-3 ml-1 text-gray-500 uppercase">Company Size</label>
+                    <PillSelect
+                      options={['Solo (Just Me)', '2-10 Employees', '11-50 Employees', '50+ Employees']}
+                      value={formData.company_size}
+                      onChange={(val) => setFormData({ ...formData, company_size: val })}
                     />
-                  )}
+                  </div>
+
+                  <div className="space-y-3">
+                    <label className="block text-xs font-bold mb-1 ml-1 text-gray-500 uppercase">Primary Goal</label>
+                    <SelectionCard
+                      title="Generate High-Converting Ads"
+                      description="I need assets for paid social campaigns."
+                      icon={<Rocket size={20} />}
+                      selected={formData.primary_goal === 'generate_ads'}
+                      onClick={() => setFormData({ ...formData, primary_goal: 'generate_ads' })}
+                    />
+                    <SelectionCard
+                      title="Consistent Brand Content"
+                      description="I need daily organic social posts."
+                      icon={<Heart size={20} />}
+                      selected={formData.primary_goal === 'build_brand'}
+                      onClick={() => setFormData({ ...formData, primary_goal: 'build_brand' })}
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
 
-              <div>
-                <label className="block text-xs font-bold mb-2 ml-1 text-gray-500 uppercase">Your Name</label>
-                <div className="relative">
-                  <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-                  <NeuInput
-                    className="pl-10"
-                    placeholder="Full Name"
-                    value={formData.full_name}
-                    onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                  />
+              {currentStep === 'referral' && (
+                <div className="space-y-6 p-4">
+                  <label className={`block text-xs font-bold mb-3 ml-1 uppercase ${styles.textSub}`}>How did you hear about us?</label>
+                  <div className="grid grid-cols-2 gap-4">
+                    {['Google Search', 'Social Media', 'Friend / Colleague', 'YouTube', 'Podcast', 'Other'].map(opt => {
+                      const isSelected = formData.referral_source === opt;
+                      return (
+                        <motion.button
+                          key={opt}
+                          onClick={() => setFormData({ ...formData, referral_source: opt })}
+                          variants={isSelected ? undefined : variants}
+                          initial="initial"
+                          whileHover={isSelected ? undefined : "hover"}
+                          whileTap={isSelected ? undefined : "pressed"}
+                          className={`p-4 rounded-xl text-sm font-bold transition-colors text-center
+                            ${isSelected
+                              ? `${styles.bg} ${styles.shadowIn} text-brand ring-2 ring-brand/40`
+                              : `${styles.bg} ${styles.textSub} hover:text-brand`
+                            }
+                          `}
+                        >
+                          {opt}
+                        </motion.button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              )}
 
-              <div>
-                <label className="block text-xs font-bold mb-2 ml-1 text-gray-500 uppercase">Website (Optional)</label>
-                <div className="relative">
-                  <Globe className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-                  <NeuInput
-                    className="pl-10"
-                    placeholder="https://..."
-                    value={formData.website}
-                    onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 2: ROLE */}
-          {currentStep === 'role' && (
-            <div className="space-y-3 animate-fade-in-up">
-              <SelectionCard
-                title="Business Owner / Founder"
-                description="I run my own business and wear many hats."
-                icon={<Building2 size={24} />}
-                selected={formData.role === 'founder'}
-                onClick={() => setFormData({ ...formData, role: 'founder' })}
-              />
-              <SelectionCard
-                title="Marketer / Growth Lead"
-                description="I manage campaigns and content strategy."
-                icon={<Target size={24} />}
-                selected={formData.role === 'marketer'}
-                onClick={() => setFormData({ ...formData, role: 'marketer' })}
-              />
-              <SelectionCard
-                title="Agency Professional"
-                description="I manage multiple client accounts."
-                icon={<Briefcase size={24} />}
-                selected={formData.role === 'agency'}
-                onClick={() => setFormData({ ...formData, role: 'agency' })}
-              />
-              <SelectionCard
-                title="Creative / Designer"
-                description="I create assets and visual identity."
-                icon={<Palette size={24} />}
-                selected={formData.role === 'creative'}
-                onClick={() => setFormData({ ...formData, role: 'creative' })}
-              />
-            </div>
-          )}
-
-          {/* STEP 3: COMPANY & GOALS */}
-          {currentStep === 'company' && (
-            <div className="space-y-8 animate-fade-in-up">
-
-              <div>
-                <label className="block text-xs font-bold mb-3 ml-1 text-gray-500 uppercase">Company Size</label>
-                <PillSelect
-                  options={['Solo (Just Me)', '2-10 Employees', '11-50 Employees', '50+ Employees']}
-                  value={formData.company_size}
-                  onChange={(val) => setFormData({ ...formData, company_size: val })}
-                />
-              </div>
-
-              <div className="space-y-3">
-                <label className="block text-xs font-bold mb-1 ml-1 text-gray-500 uppercase">Primary Goal</label>
-                <SelectionCard
-                  title="Generate High-Converting Ads"
-                  description="I need assets for paid social campaigns."
-                  icon={<Rocket size={20} />}
-                  selected={formData.primary_goal === 'generate_ads'}
-                  onClick={() => setFormData({ ...formData, primary_goal: 'generate_ads' })}
-                />
-                <SelectionCard
-                  title="Consistent Brand Content"
-                  description="I need daily organic social posts."
-                  icon={<Heart size={20} />}
-                  selected={formData.primary_goal === 'build_brand'}
-                  onClick={() => setFormData({ ...formData, primary_goal: 'build_brand' })}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* STEP 4: REFERRAL */}
-          {currentStep === 'referral' && (
-            <div className="space-y-6 animate-fade-in-up">
-              <label className="block text-xs font-bold mb-3 ml-1 text-gray-500 uppercase">How did you hear about us?</label>
-              <div className="grid grid-cols-2 gap-3">
-                {['Google Search', 'Social Media', 'Friend / Colleague', 'YouTube', 'Podcast', 'Other'].map(opt => (
-                  <button
-                    key={opt}
-                    onClick={() => setFormData({ ...formData, referral_source: opt })}
-                    className={`p-4 rounded-lg text-sm font-medium border transition-all text-center
-                      ${formData.referral_source === opt
-                        ? 'bg-brand/20 border-brand text-white shadow-glow-sm'
-                        : 'bg-black/20 border-gray-700 text-gray-400 hover:bg-black/40'
-                      }
-                    `}
-                  >
-                    {opt}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
+            </motion.div>
+          </AnimatePresence>
         </div>
 
+        {/* Validation Error Message */}
+        <AnimatePresence>
+          {showError && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="text-center py-3"
+            >
+              <p className="text-red-400 text-sm font-medium">
+                Please {currentStep === 'welcome' ? 'enter your name' : 'make a selection'} to continue
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Footer Actions */}
-        <div className="mt-8 pt-6 border-t border-gray-800 flex items-center justify-between">
+        <div className={`mt-4 pt-6 border-t border-gray-800 flex items-center justify-between ${!showError ? 'mt-8' : ''}`}>
 
           {currentStep !== 'welcome' ? (
             <button
               onClick={goBack}
-              className="px-4 py-2 text-gray-500 hover:text-white transition-colors flex items-center gap-2 text-sm font-bold"
+              className={`px-4 py-2 ${styles.textSub} hover:text-brand transition-colors flex items-center gap-2 text-sm font-bold`}
             >
               <ChevronLeft size={16} /> Back
             </button>

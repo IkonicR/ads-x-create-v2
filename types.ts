@@ -339,6 +339,14 @@ export interface Task {
   subtasks?: Subtask[];               // Checkpoints
   attachments?: TaskAttachment[];     // Files and linked assets
   sortOrder: number;                  // For drag-drop ordering
+  businessId?: string;                // Optional: tag to a specific business
+  assigneeId?: string;                // Optional: assigned team member user ID
+  notifyEmail?: boolean;              // Send email on assignment/reminder
+  notifyInApp?: boolean;              // Send in-app notification
+  recurrence?: {                      // Recurring task settings
+    type: 'daily' | 'weekly' | 'monthly';
+    interval?: number;                // Every N days/weeks/months (default 1)
+  };
 }
 
 export interface Asset {

@@ -17,8 +17,6 @@
     "@fullcalendar/core": "^6.1.19",
     "@google/genai": "^1.30.0",
     "@paper-design/shaders-react": "^0.0.69",
-    "@react-email/components": "1.0.3",
-    "@react-email/render": "2.0.1",
     "@react-google-maps/api": "^2.20.7",
     "@supabase/supabase-js": "^2.45.0",
     "@upstash/ratelimit": "^2.0.8",

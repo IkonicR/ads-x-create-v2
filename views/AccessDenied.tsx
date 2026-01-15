@@ -11,7 +11,7 @@ interface AccessDeniedProps {
 
 const AccessDenied: React.FC<AccessDeniedProps> = ({ onAccessGranted }) => {
     const { styles } = useThemeStyles();
-    const { user, session, signOut } = useAuth();
+    const { user, session, signOut, isOrphanedUser } = useAuth();
 
     const [inviteCode, setInviteCode] = useState('');
     const [validating, setValidating] = useState(false);
@@ -141,6 +141,25 @@ const AccessDenied: React.FC<AccessDeniedProps> = ({ onAccessGranted }) => {
                         <p className="text-sm text-white font-medium truncate">{user?.email}</p>
                     </div>
                 </div>
+
+                {/* Orphaned User Warning */}
+                {isOrphanedUser && (
+                    <div className="w-full p-4 rounded-xl bg-red-500/10 border border-red-500/30">
+                        <p className="text-red-400 text-sm font-bold mb-2">Account Issue Detected</p>
+                        <p className="text-red-300 text-xs mb-3">
+                            Your account profile was removed. Please sign out and use an invite code to create a new account.
+                        </p>
+                        <NeuButton
+                            onClick={handleSignOut}
+                            variant="danger"
+                            className="w-full justify-center"
+                            forceTheme="dark"
+                        >
+                            <LogOut size={16} />
+                            Sign Out & Start Fresh
+                        </NeuButton>
+                    </div>
+                )}
 
                 {/* Invite Code Input */}
                 <div className="w-full space-y-3">

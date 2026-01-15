@@ -2236,8 +2236,30 @@ app.post('/api/invite/use', async (req, res) => {
             .update({ invite_code_used: code.toUpperCase().trim() })
             .eq('id', user.id);
 
+        // Auto-provision subscription with beta package credits
+        const creditsToGrant = invite.credits_granted ?? 25;
+        const maxBusinesses = invite.max_businesses ?? 1;
+
+        const { error: subError } = await supabase
+            .from('subscriptions')
+            .upsert({
+                user_id: user.id,
+                plan_id: 'beta',
+                status: 'active',
+                credits_remaining: creditsToGrant,
+                extra_businesses: Math.max(0, maxBusinesses - 1), // base plan allows 1, extra on top
+                period_start: new Date().toISOString(),
+                period_end: null // once-off, no renewal
+            }, { onConflict: 'user_id' });
+
+        if (subError) {
+            console.error('[Invite] Subscription provision error:', subError);
+        } else {
+            console.log('[Invite] Provisioned beta subscription:', creditsToGrant, 'credits,', maxBusinesses, 'businesses');
+        }
+
         console.log('[Invite] Code used by:', user.email, 'Code:', code);
-        res.json({ success: true });
+        res.json({ success: true, creditsGranted: creditsToGrant, maxBusinesses });
 
     } catch (error) {
         console.error('[Invite] Use error:', error);
@@ -2315,7 +2337,15 @@ app.post('/api/invite/create', async (req, res) => {
         return;
     }
 
-    const { prefix = 'BETA', maxUses = 1, expiresInDays, note } = req.body;
+    const {
+        prefix = 'BETA',
+        maxUses = 1,
+        expiresInDays,
+        note,
+        // Beta package configuration
+        creditsGranted = 25,
+        maxBusinesses = 1
+    } = req.body;
 
     // Generate unique code: PREFIX-XXXX (4 alphanumeric)
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Removed confusing chars (0,O,1,I)
@@ -2338,7 +2368,10 @@ app.post('/api/invite/create', async (req, res) => {
                 max_uses: maxUses,
                 expires_at: expiresAt,
                 note,
-                is_active: true
+                is_active: true,
+                // Beta package
+                credits_granted: creditsGranted,
+                max_businesses: maxBusinesses
             })
             .select()
             .single();
@@ -2404,6 +2437,52 @@ app.post('/api/invite/deactivate', async (req, res) => {
         .eq('id', codeId);
 
     console.log('[Invite] Deactivated code:', codeId);
+    res.json({ success: true });
+});
+
+// Admin: Delete an invite code permanently
+app.post('/api/invite/delete', async (req, res) => {
+    console.log('[Invite] Delete Request');
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+
+    const token = authHeader.split(' ')[1];
+    const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+        res.status(401).json({ error: 'Invalid token' });
+        return;
+    }
+
+    // Check admin
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_admin')
+        .eq('id', user.id)
+        .single();
+
+    if (!profile?.is_admin) {
+        res.status(403).json({ error: 'Admin access required' });
+        return;
+    }
+
+    const { codeId } = req.body;
+    if (!codeId) {
+        res.status(400).json({ error: 'codeId is required' });
+        return;
+    }
+
+    await supabase
+        .from('invite_codes')
+        .delete()
+        .eq('id', codeId);
+
+    console.log('[Invite] Deleted code:', codeId);
     res.json({ success: true });
 });
 
@@ -2973,7 +3052,8 @@ app.post('/api/generate-image', async (req, res) => {
         thinkingMode, // 'LOW' | 'HIGH' | undefined (default = no thinkingConfig)
         strategy,
         subjectContext,
-        stylePreset
+        stylePreset,
+        isFreedomMode // NEW: Freedom Mode flag
     } = req.body;
 
     if (!businessId || !prompt) {
@@ -3056,30 +3136,40 @@ app.post('/api/generate-image', async (req, res) => {
                 const { PromptFactory } = await import('./services/prompts.js');
                 // Using Vercel AI Gateway for image generation
 
-                // Build prompt using PromptFactory
-                let visualPrompt = prompt;
-                if (subjectContext) {
-                    visualPrompt += `\nPRIMARY SUBJECT: ${subjectContext.type}. ${subjectContext.preserveLikeness ? 'Maintain strict visual likeness.' : ''}`;
-                }
+                // Build prompt - use Freedom Mode or Standard
+                let finalPrompt: string;
 
-                const finalPrompt = await PromptFactory.createImagePrompt(
-                    mappedBusiness as any,
-                    visualPrompt,
-                    mappedBusiness.voice.keywords || [],
-                    (stylePreset?.avoid || []).join(', '),
-                    undefined,
-                    undefined,
-                    subjectContext?.promotion,
-                    subjectContext?.benefits,
-                    subjectContext?.targetAudience || mappedBusiness.adPreferences?.targetAudience,
-                    subjectContext?.preserveLikeness || false,
-                    stylePreset,
-                    subjectContext?.price,
-                    subjectContext?.name,
-                    strategy,
-                    subjectContext?.isFree,
-                    subjectContext?.termsAndConditions
-                );
+                if (isFreedomMode) {
+                    // FREEDOM MODE: Simplified prompt with brand colors + logo only
+                    const { createFreedomModePrompt } = await import('./services/freedomPrompt.js');
+                    finalPrompt = createFreedomModePrompt(prompt, mappedBusiness as any, aspectRatio);
+                    console.log('[Generate] 🔓 FREEDOM MODE - Using simplified prompt');
+                } else {
+                    // STANDARD MODE: Full business context (existing code)
+                    let visualPrompt = prompt;
+                    if (subjectContext) {
+                        visualPrompt += `\nPRIMARY SUBJECT: ${subjectContext.type}. ${subjectContext.preserveLikeness ? 'Maintain strict visual likeness.' : ''}`;
+                    }
+
+                    finalPrompt = await PromptFactory.createImagePrompt(
+                        mappedBusiness as any,
+                        visualPrompt,
+                        mappedBusiness.voice.keywords || [],
+                        (stylePreset?.avoid || []).join(', '),
+                        undefined,
+                        undefined,
+                        subjectContext?.promotion,
+                        subjectContext?.benefits,
+                        subjectContext?.targetAudience || mappedBusiness.adPreferences?.targetAudience,
+                        subjectContext?.preserveLikeness || false,
+                        stylePreset,
+                        subjectContext?.price,
+                        subjectContext?.name,
+                        strategy,
+                        subjectContext?.isFree,
+                        subjectContext?.termsAndConditions
+                    );
+                }
 
                 console.log('[Generate] Final prompt length:', finalPrompt.length);
 

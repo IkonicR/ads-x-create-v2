@@ -275,13 +275,19 @@ export const StorageService = {
   saveBusiness: async (business: Business, userId?: string): Promise<void> => {
     const payload = mapBusinessToDB(business);
 
-    // Track if this is a new business (no owner_id yet)
-    const isNewBusiness = !payload.owner_id && userId;
-
     // SECURITY: Ensure owner_id is set on creation
-    if (isNewBusiness) {
+    if (!payload.owner_id && userId) {
       payload.owner_id = userId;
     }
+
+    // Check if this business already exists (to determine if we need to create business_members)
+    const { data: existingBusiness } = await supabase
+      .from('businesses')
+      .select('id')
+      .eq('id', business.id)
+      .maybeSingle();
+
+    const isNewBusiness = !existingBusiness && userId;
 
     const { data, error } = await supabase
       .from('businesses')
@@ -302,6 +308,7 @@ export const StorageService = {
     // CRITICAL: For new businesses, create the business_members owner record
     // This is required for subscription lookups via get_business_owner_subscription RPC
     if (isNewBusiness && userId) {
+      console.log('[Storage] Creating owner membership for new business:', business.id);
       const { error: memberError } = await supabase
         .from('business_members')
         .upsert({
@@ -314,6 +321,8 @@ export const StorageService = {
       if (memberError) {
         console.error('[Storage] Warning: Failed to create owner membership:', memberError);
         // Don't throw - business was created, membership is a secondary concern
+      } else {
+        console.log('[Storage] Owner membership created successfully');
       }
     }
   },
@@ -543,12 +552,21 @@ export const StorageService = {
     }
   },
 
-  getTasks: async (businessId: string): Promise<Task[]> => {
-    const { data, error } = await supabase
+  // Fetch tasks for the current user (RLS uses owner_id)
+  // Optional businessId filter for when user wants to see tasks for a specific business
+  getTasks: async (ownerId: string, businessId?: string): Promise<Task[]> => {
+    let query = supabase
       .from('tasks')
       .select('*')
-      .eq('business_id', businessId)
+      .eq('owner_id', ownerId)
       .order('sort_order', { ascending: true });
+
+    // Optional filter by business
+    if (businessId) {
+      query = query.eq('business_id', businessId);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error('[Storage] Error fetching tasks:', error);
@@ -571,14 +589,17 @@ export const StorageService = {
       category: row.category || undefined,
       labels: row.labels || [],
       subtasks: row.subtasks || [],
-      sortOrder: row.sort_order ?? 0
+      sortOrder: row.sort_order ?? 0,
+      attachments: row.attachments || [],
+      businessId: row.business_id || undefined
     }));
   },
 
-  saveTasks: async (tasks: Task[], businessId: string): Promise<void> => {
+  saveTasks: async (tasks: Task[], ownerId: string): Promise<void> => {
     const payloads = tasks.map(t => ({
       id: t.id,
-      business_id: businessId,
+      owner_id: ownerId,
+      business_id: t.businessId || null,
       title: t.title,
       description: t.description || null,
       status: t.status,
@@ -587,6 +608,7 @@ export const StorageService = {
       category: t.category || null,
       labels: t.labels || [],
       subtasks: t.subtasks || [],
+      attachments: t.attachments || [],
       sort_order: t.sortOrder ?? 0,
       updated_at: new Date().toISOString()
     }));
@@ -595,10 +617,11 @@ export const StorageService = {
     if (error) console.error('Error saving tasks:', error);
   },
 
-  saveTask: async (task: Task, businessId: string): Promise<void> => {
+  saveTask: async (task: Task, ownerId: string): Promise<void> => {
     const payload = {
       id: task.id,
-      business_id: businessId,
+      owner_id: ownerId,
+      business_id: task.businessId || null,
       title: task.title,
       description: task.description || null,
       status: task.status,
@@ -607,6 +630,7 @@ export const StorageService = {
       category: task.category || null,
       labels: task.labels || [],
       subtasks: task.subtasks || [],
+      attachments: task.attachments || [],
       sort_order: task.sortOrder ?? 0,
       updated_at: new Date().toISOString()
     };
@@ -620,13 +644,12 @@ export const StorageService = {
     if (error) console.error('Error deleting task:', error);
   },
 
-  updateTaskOrder: async (taskUpdates: { id: string; sortOrder: number; status: string }[], businessId: string): Promise<void> => {
-    // Batch update for drag-drop reordering
+  updateTaskOrder: async (taskUpdates: { id: string; sortOrder: number; status: string }[], ownerId: string): Promise<void> => {
+    // Batch update for drag-drop reordering (RLS handles owner validation)
     const updates = taskUpdates.map(t =>
       supabase.from('tasks')
         .update({ sort_order: t.sortOrder, status: t.status, updated_at: new Date().toISOString() })
         .eq('id', t.id)
-        .eq('business_id', businessId)
     );
 
     await Promise.all(updates);

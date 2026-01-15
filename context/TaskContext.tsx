@@ -10,7 +10,7 @@ import { StorageService } from '../services/storage';
 interface TaskContextValue {
     tasks: Task[];
     isLoading: boolean;
-    businessId: string;
+    userId: string;
 
     // CRUD Operations
     addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'sortOrder'>) => Promise<void>;
@@ -41,13 +41,15 @@ interface TaskFilters {
     category: TaskCategory | 'all';
     priority: Task['priority'] | 'all';
     status: Task['status'] | 'all';
+    businessId: string | 'all';  // Filter by business
 }
 
 const defaultFilters: TaskFilters = {
     search: '',
     category: 'all',
     priority: 'all',
-    status: 'all'
+    status: 'all',
+    businessId: 'all'
 };
 
 const TaskContext = createContext<TaskContextValue | undefined>(undefined);
@@ -62,10 +64,10 @@ export const useTaskContext = () => {
 
 interface TaskProviderProps {
     children: React.ReactNode;
-    businessId: string;
+    userId: string;
 }
 
-export const TaskProvider: React.FC<TaskProviderProps> = ({ children, businessId }) => {
+export const TaskProvider: React.FC<TaskProviderProps> = ({ children, userId }) => {
     const [tasks, setTasks] = useState<Task[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [filters, setFilters] = useState<TaskFilters>(defaultFilters);
@@ -79,12 +81,12 @@ export const TaskProvider: React.FC<TaskProviderProps> = ({ children, businessId
 
     // Load tasks on mount
     useEffect(() => {
-        if (!businessId) return;
+        if (!userId) return;
 
         const loadTasks = async () => {
             setIsLoading(true);
             try {
-                const loaded = await StorageService.getTasks(businessId);
+                const loaded = await StorageService.getTasks(userId);
                 setTasks(loaded);
             } catch (error) {
                 console.error('[TaskContext] Failed to load tasks:', error);
@@ -94,7 +96,7 @@ export const TaskProvider: React.FC<TaskProviderProps> = ({ children, businessId
         };
 
         loadTasks();
-    }, [businessId]);
+    }, [userId]);
 
     // Push to undo stack
     const pushUndo = useCallback((prevState: Task[]) => {
@@ -110,8 +112,8 @@ export const TaskProvider: React.FC<TaskProviderProps> = ({ children, businessId
         setTasks(prevState);
 
         // Persist the undo
-        StorageService.saveTasks(prevState, businessId);
-    }, [undoStack, businessId]);
+        StorageService.saveTasks(prevState, userId);
+    }, [undoStack, userId]);
 
     // Generate unique ID
     const generateId = () => `task_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -132,8 +134,8 @@ export const TaskProvider: React.FC<TaskProviderProps> = ({ children, businessId
         pushUndo(tasks);
         setTasks(prev => [...prev, newTask]);
 
-        await StorageService.saveTask(newTask, businessId);
-    }, [tasks, businessId, pushUndo]);
+        await StorageService.saveTask(newTask, userId);
+    }, [tasks, userId, pushUndo]);
 
     // Update existing task
     const updateTask = useCallback(async (updatedTask: Task) => {
@@ -143,8 +145,58 @@ export const TaskProvider: React.FC<TaskProviderProps> = ({ children, businessId
         pushUndo(tasks);
         setTasks(prev => prev.map(t => t.id === updatedTask.id ? taskWithTimestamp : t));
 
-        await StorageService.saveTask(taskWithTimestamp, businessId);
-    }, [tasks, businessId, pushUndo]);
+        await StorageService.saveTask(taskWithTimestamp, userId);
+
+        // Auto-create next instance for recurring tasks when marked Done
+        const existingTask = tasks.find(t => t.id === updatedTask.id);
+        if (
+            updatedTask.status === 'Done' &&
+            existingTask?.status !== 'Done' &&
+            updatedTask.recurrence?.type &&
+            updatedTask.dueDate
+        ) {
+            // Calculate next due date
+            const currentDue = new Date(updatedTask.dueDate);
+            const interval = updatedTask.recurrence.interval || 1;
+
+            switch (updatedTask.recurrence.type) {
+                case 'daily':
+                    currentDue.setDate(currentDue.getDate() + interval);
+                    break;
+                case 'weekly':
+                    currentDue.setDate(currentDue.getDate() + (7 * interval));
+                    break;
+                case 'monthly':
+                    currentDue.setMonth(currentDue.getMonth() + interval);
+                    break;
+            }
+
+            // Create new task for next occurrence
+            const nextTask: Task = {
+                id: crypto.randomUUID(),
+                title: updatedTask.title,
+                description: updatedTask.description,
+                status: 'To Do',
+                priority: updatedTask.priority,
+                dueDate: currentDue.toISOString(),
+                category: updatedTask.category,
+                labels: updatedTask.labels,
+                businessId: updatedTask.businessId,
+                assigneeId: updatedTask.assigneeId,
+                notifyEmail: updatedTask.notifyEmail,
+                notifyInApp: updatedTask.notifyInApp,
+                recurrence: updatedTask.recurrence,
+                subtasks: [], // Reset subtasks for new instance
+                sortOrder: Date.now(),
+                createdAt: now,
+                updatedAt: now
+            };
+
+            setTasks(prev => [...prev, nextTask]);
+            await StorageService.saveTask(nextTask, userId);
+            console.log('[TaskContext] Created next recurring task:', nextTask.title, 'due:', nextTask.dueDate);
+        }
+    }, [tasks, userId, pushUndo]);
 
     // Delete task
     const deleteTask = useCallback(async (taskId: string) => {
@@ -184,8 +236,8 @@ export const TaskProvider: React.FC<TaskProviderProps> = ({ children, businessId
     // Commit reorder to database
     const commitReorder = useCallback(async () => {
         const updates = tasks.map(t => ({ id: t.id, sortOrder: t.sortOrder, status: t.status }));
-        await StorageService.updateTaskOrder(updates, businessId);
-    }, [tasks, businessId]);
+        await StorageService.updateTaskOrder(updates, userId);
+    }, [tasks, userId]);
 
     // Toggle subtask completion
     const toggleSubtask = useCallback(async (taskId: string, subtaskId: string) => {
@@ -236,6 +288,9 @@ export const TaskProvider: React.FC<TaskProviderProps> = ({ children, businessId
         if (filters.status !== 'all' && task.status !== filters.status) {
             return false;
         }
+        if (filters.businessId !== 'all' && task.businessId !== filters.businessId) {
+            return false;
+        }
         return true;
     });
 
@@ -243,7 +298,7 @@ export const TaskProvider: React.FC<TaskProviderProps> = ({ children, businessId
         <TaskContext.Provider value={{
             tasks,
             isLoading,
-            businessId,
+            userId,
             addTask,
             updateTask,
             deleteTask,

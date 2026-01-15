@@ -16,7 +16,7 @@ import { AdminService, UserWithSubscription } from '../../services/adminService'
 import { useThemeStyles, NeuCard, NeuButton, NeuInput, NeuDropdown, NeuBadge } from '../../components/NeuComponents';
 import {
     Users, CreditCard, Zap, ChevronDown, RefreshCw, Search,
-    Building2, Share2, AlertCircle, Check
+    Building2, Share2, AlertCircle, Check, Trash2
 } from 'lucide-react';
 import { NeuModal } from '../../components/NeuModal';
 import { Business } from '../../types';
@@ -140,6 +140,30 @@ const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({ styles: parentStyle
         }
     };
 
+    // Handle delete user
+    const handleDeleteUser = async (userId: string) => {
+        const user = users.find(u => u.id === userId);
+        if (!user) return;
+
+        // Confirm deletion
+        const confirmed = window.confirm(
+            `⚠️ DESTRUCTIVE ACTION\n\nDelete user "${user.fullName || user.email}"?\n\nThis will permanently remove:\n• Their profile\n• Their subscription\n• All their businesses\n• All their assets\n• All their tasks\n\nThis cannot be undone!`
+        );
+
+        if (!confirmed) return;
+
+        setSavingUserId(userId);
+        try {
+            await AdminService.deleteUser(userId);
+            setUsers(prev => prev.filter(u => u.id !== userId));
+        } catch (err) {
+            console.error('Error deleting user:', err);
+            alert('Failed to delete user. Check console for details.');
+        } finally {
+            setSavingUserId(null);
+        }
+    };
+
     // Toggle expand
     const toggleExpand = (userId: string) => {
         setExpandedUserId(prev => prev === userId ? null : userId);
@@ -225,6 +249,7 @@ const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({ styles: parentStyle
                             onPlanChange={handlePlanChange}
                             onAddCredits={handleAddCredits}
                             onToggleComped={handleToggleComped}
+                            onDeleteUser={handleDeleteUser}
                             onToggleExpand={() => toggleExpand(user.id)}
                             styles={styles}
                             isDark={isDark}
@@ -244,20 +269,21 @@ interface UserSubscriptionRowProps {
     onPlanChange: (userId: string, plan: PlanId) => void;
     onAddCredits: (userId: string, amount: number) => void;
     onToggleComped: (userId: string) => void;
+    onDeleteUser: (userId: string) => void;
     onToggleExpand: () => void;
     styles: any;
     isDark: boolean;
 }
 
 const UserSubscriptionRow: React.FC<UserSubscriptionRowProps> = ({
-    user, isExpanded, isSaving, onPlanChange, onAddCredits, onToggleComped, onToggleExpand, styles, isDark
+    user, isExpanded, isSaving, onPlanChange, onAddCredits, onToggleComped, onDeleteUser, onToggleExpand, styles, isDark
 }) => {
     const plan = AdminService.getPlanInfo(user.subscription?.planId || 'creator');
     const maxBusinesses = plan.features.businesses + (user.subscription?.extraBusinesses || 0);
 
     return (
         <motion.div variants={itemVariants} layout>
-            <NeuCard className="overflow-hidden">
+            <NeuCard className="overflow-visible">
                 {/* Main Row */}
                 <div className="p-4">
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
@@ -283,7 +309,9 @@ const UserSubscriptionRow: React.FC<UserSubscriptionRowProps> = ({
                             <NeuDropdown
                                 value={user.subscription?.planId || 'creator'}
                                 onChange={(val) => onPlanChange(user.id, val as PlanId)}
+                                overlay={true}
                                 options={[
+                                    { label: 'Beta Tester', value: 'beta' },
                                     { label: 'Creator', value: 'creator' },
                                     { label: 'Growth', value: 'growth' },
                                     { label: 'Agency', value: 'agency' },
@@ -344,6 +372,17 @@ const UserSubscriptionRow: React.FC<UserSubscriptionRowProps> = ({
                                 className={`p-2 rounded-lg ${styles.bg} ${styles.shadowOut}`}
                             >
                                 <ChevronDown size={16} />
+                            </motion.button>
+
+                            {/* Delete Button */}
+                            <motion.button
+                                whileTap={{ scale: 0.95 }}
+                                onClick={() => onDeleteUser(user.id)}
+                                disabled={isSaving}
+                                className={`p-2 rounded-lg ${styles.bg} ${styles.shadowOut} text-red-400 hover:text-red-500 hover:bg-red-500/10 transition-colors disabled:opacity-50`}
+                                title="Delete User"
+                            >
+                                <Trash2 size={16} />
                             </motion.button>
                         </div>
                     </div>

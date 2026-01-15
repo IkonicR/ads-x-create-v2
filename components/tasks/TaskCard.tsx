@@ -27,6 +27,7 @@ interface TaskCardProps {
     onEdit: (task: Task) => void;
     onDelete: (taskId: string) => void;
     isDragging?: boolean;
+    businessName?: string;
 }
 
 // Category icons using Lucide
@@ -47,7 +48,7 @@ const PRIORITY_COLORS: Record<Task['priority'], string> = {
     'Urgent': 'bg-red-500'
 };
 
-export const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDelete, isDragging }) => {
+export const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDelete, isDragging, businessName }) => {
     const { styles } = useThemeStyles();
     const [showMenu, setShowMenu] = useState(false);
 
@@ -185,6 +186,11 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDelete, isDr
                 <div className="flex items-center justify-between mt-2 pl-7">
                     {/* Labels */}
                     <div className="flex gap-1 flex-wrap">
+                        {businessName && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-brand/15 text-brand font-medium truncate max-w-[80px]">
+                                {businessName}
+                            </span>
+                        )}
                         {task.labels?.slice(0, 2).map((label, i) => (
                             <span
                                 key={i}

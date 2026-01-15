@@ -207,8 +207,13 @@ function buildMandatoryElementsBlock(
     lines.push(`    *   **Contact${prominence.contact === 'prominent' ? ' (PROMINENT)' : ''}:** "${contactValue}"${directive}`);
   }
   if (showBusinessName && prominence.businessName !== 'hidden') {
-    const directive = getDirective(prominence.businessName);
-    lines.push(`    *   **Branding${prominence.businessName === 'prominent' ? ' (PROMINENT)' : ''}:** Include "${business.name}"${directive}`);
+    if (prominence.businessName === 'prominent') {
+      lines.push(`    *   **Business Name (DISTINCT TEXT):** Render "${business.name}" as SEPARATE typography — large, header/central, high contrast. Do NOT rely on the logo for this.`);
+    } else if (prominence.businessName === 'subtle') {
+      lines.push(`    *   **Business Name (DISTINCT TEXT):** Render "${business.name}" as secondary text — small, corner/footer. IN ADDITION to the logo.`);
+    } else {
+      lines.push(`    *   **Business Name:** Include "${business.name}" as a distinct text element.`);
+    }
   }
 
   return lines.join('\n');
@@ -946,10 +951,10 @@ ${v2ProductionBlock}
 1.  **DIEGETIC TEXT (CRITICAL):**
     *   **Rule:** Text must be PHYSICALLY INTEGRATED. NO flat digital overlays.
     *   **Physics:** Text must cast shadows, reflect scene lighting, and respect perspective.
-2.  **LOGO TEXT FIDELITY (CRITICAL):**
-    *   **Rule:** The logo reference image contains the exact brand name and lettering.
-    *   **Mandate:** Reproduce ALL text from the logo EXACTLY as shown. Do NOT invent, substitute, or modify any words.
-    *   **Allow:** Stylize the logo's material, color, and integration per style rules — but the TEXT must remain identical.
+2.  **LOGO VISUAL FIDELITY:**
+    *   **Rule:** The logo is a GRAPHICAL brand mark.
+    *   **Mandate:** Preserve its appearance exactly — do NOT alter, redraw, or distort.
+    *   **Integration:** Apply style rules (materiality, lighting) but keep the logo recognizable.
 3.  **ASSET HANDLING:**
 ${assetMapping || '    *   No specific assets. Create a relevant scene.'}
 4.  **COMPOSITION:** ${compositionDirective}

@@ -5,10 +5,12 @@ import { NeuCard, NeuButton, NeuBadge, useThemeStyles, BRAND_COLOR } from '../co
 import { TrendingUp, Clock, Zap, Plus } from 'lucide-react';
 import { AreaChart, Area, Tooltip, ResponsiveContainer } from 'recharts';
 import { GalaxyHeading } from '../components/GalaxyHeading';
+import { useAssets } from '../context/AssetContext';
+import { useSubscription } from '../context/SubscriptionContext';
+import { useTaskContext } from '../context/TaskContext';
 
 interface DashboardProps {
   business: Business;
-  tasks: Task[];
   onNavigate: (view: any) => void;
 }
 
@@ -22,13 +24,11 @@ const data = [
   { name: 'Sun', gens: 6 },
 ];
 
-import { useAssets } from '../context/AssetContext';
-import { useSubscription } from '../context/SubscriptionContext';
-
-const Dashboard: React.FC<DashboardProps> = ({ business, tasks, onNavigate }) => {
+const Dashboard: React.FC<DashboardProps> = ({ business, onNavigate }) => {
   const { styles, theme } = useThemeStyles();
   const { assets } = useAssets();
   const { creditsRemaining, planName, loading: subscriptionLoading } = useSubscription();
+  const { tasks, isLoading: tasksLoading } = useTaskContext();
   const recentAssets = assets.slice(0, 4);
   const isDark = theme === 'dark';
 

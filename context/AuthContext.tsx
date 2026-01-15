@@ -11,6 +11,7 @@ interface AuthContextType {
   loading: boolean;
   authChecked: boolean;
   profileChecked: boolean; // True once profile fetch completes (or no user)
+  isOrphanedUser: boolean; // True if authenticated but profile doesn't exist
   signInWithGoogle: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
@@ -26,6 +27,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [authChecked, setAuthChecked] = useState(false);
   const [profileChecked, setProfileChecked] = useState(false);
+  const [isOrphanedUser, setIsOrphanedUser] = useState(false);
 
   const refreshProfile = async () => {
     if (session?.user) {
@@ -55,9 +57,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // AWAIT profile fetch - don't proceed until we know profile state
           try {
             const p = await StorageService.getUserProfile(currentUser.id);
-            setProfile(p);
-          } catch (e) {
+            // getUserProfile returns null if no profile exists (doesn't throw)
+            if (p === null) {
+              console.warn('[Auth] Orphaned user detected - authenticated but no profile');
+              setIsOrphanedUser(true);
+              setProfile(null);
+            } else {
+              setProfile(p);
+              setIsOrphanedUser(false);
+            }
+          } catch (e: any) {
             console.error("Auth: Profile Fetch Error", e);
+            // Treat any error as potentially orphaned
+            setIsOrphanedUser(true);
           } finally {
             setProfileChecked(true);
           }
@@ -92,13 +104,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Fetch profile on auth change
         StorageService.getUserProfile(currentUser.id)
           .then(async (p) => {
-            setProfile(p);
+            // getUserProfile returns null if no profile exists
+            if (p === null) {
+              console.warn('[Auth] Orphaned user detected on auth change - no profile');
+              setIsOrphanedUser(true);
+              setProfile(null);
+            } else {
+              setProfile(p);
+              setIsOrphanedUser(false);
+            }
             setProfileChecked(true);
-            // NOTE: Invite code consumption is now handled by AccessGate component
-            // This allows for proper UI feedback when codes are invalid
           })
-          .catch(e => {
+          .catch((e: any) => {
             console.error("Auth: Profile Fetch Error", e);
+            // Treat any error as potentially orphaned
+            setIsOrphanedUser(true);
             setProfileChecked(true);
           });
       } else {
@@ -151,11 +171,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loading,
     authChecked,
     profileChecked,
+    isOrphanedUser,
     signInWithGoogle,
     signInWithEmail,
     signOut,
     refreshProfile
-  }), [session, user, profile, loading, authChecked, profileChecked]);
+  }), [session, user, profile, loading, authChecked, profileChecked, isOrphanedUser]);
 
   return (
     <AuthContext.Provider value={value}>

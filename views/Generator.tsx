@@ -9,8 +9,8 @@ import { ControlDeck } from '../components/ControlDeck';
 import { useThemeStyles, NeuButton } from '../components/NeuComponents';
 import { Trash2 } from 'lucide-react';
 import { NeuConfirmModal } from '../components/NeuConfirmModal';
-import { Business, Asset, ExtendedAsset, StylePreset, AssetStatus, GenerationStrategy, SubjectType } from '../types';
-import { DEFAULT_STRATEGY } from '../constants/campaignPresets';
+import { Business, Asset, ExtendedAsset, StylePreset, AssetStatus, SubjectType } from '../types';
+// Strategy import removed - Strategy tab removed
 import { generateImage, pollJobStatus, getPendingJobs, killJob } from '../services/geminiService';
 import { StorageService } from '../services/storage';
 import { useAssets } from '../context/AssetContext';
@@ -43,8 +43,7 @@ const Generator: React.FC<GeneratorProps> = ({
   // Track polling intervals by jobId for cleanup
   const pollingIntervalsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
 
-  // Strategy State (managed here, passed to ControlDeck)
-  const [strategy, setStrategy] = useState<GenerationStrategy>(DEFAULT_STRATEGY);
+  // Strategy State removed - Strategy tab removed
   const { assets, addAsset, deleteAsset, loadAssets, hasMore, loading } = useAssets();
   const { creditsRemaining, deductCredits: deductSubscriptionCredits, refundCredits } = useSubscription();
 
@@ -300,7 +299,8 @@ const Generator: React.FC<GeneratorProps> = ({
     styleId: string,
     ratio: string,
     subjectId: string,
-    modelTier: 'flash' | 'pro' | 'ultra'
+    modelTier: 'flash' | 'pro' | 'ultra',
+    isFreedomMode?: boolean
   ) => {
     // RESET PROGRESS SIGNAL IMMEDIATELY
     setFirstJobProgress(0);
@@ -360,7 +360,9 @@ const Generator: React.FC<GeneratorProps> = ({
         } : undefined,
         ratio,
         modelTier === 'flash' ? 'pro' : modelTier,
-        strategy
+        undefined, // strategy - removed
+        undefined, // thinkingMode
+        isFreedomMode // NEW: Pass freedom mode
       );
 
       const { jobId, status: responseStatus, resultAssetId, error } = response as any;
@@ -394,9 +396,11 @@ const Generator: React.FC<GeneratorProps> = ({
       }
 
       // 4. If still processing, start polling (fallback for async mode)
+      let poll404Retries = 0; // Allow a few 404s due to race conditions
       const pollInterval = setInterval(async () => {
         try {
           const status = await pollJobStatus(jobId);
+          poll404Retries = 0; // Reset on success
 
           if (status.status === 'completed' && status.asset) {
             clearInterval(pollInterval);
@@ -422,10 +426,14 @@ const Generator: React.FC<GeneratorProps> = ({
           // If still 'processing' or 'pending', keep polling
         } catch (pollError) {
           console.error(`[Generator] Poll error for job ${jobId}:`, pollError);
-          // If 404, the job was killed - stop polling
+          // Allow up to 3 retries for 404s (race condition with job creation)
           if ((pollError as Error).message?.includes('Failed to fetch')) {
-            clearInterval(pollInterval);
-            pollingIntervalsRef.current.delete(jobId);
+            poll404Retries++;
+            if (poll404Retries >= 3) {
+              console.log(`[Generator] Job ${jobId} not found after 3 retries, stopping poll`);
+              clearInterval(pollInterval);
+              pollingIntervalsRef.current.delete(jobId);
+            }
           }
         }
       }, 2000); // Poll every 2 seconds
@@ -446,14 +454,16 @@ const Generator: React.FC<GeneratorProps> = ({
       refundCredits(cost);
       alert("An unexpected error occurred. Credits have been refunded.");
     }
-  }, [business, creditsRemaining, deductSubscriptionCredits, refundCredits, addAsset, setPendingAssets, subjects, aestheticStyles, strategy]);
+  }, [business, creditsRemaining, deductSubscriptionCredits, refundCredits, addAsset, setPendingAssets, subjects, aestheticStyles]);
 
   const handleGenerate = useCallback(async (
     prompt: string,
     styleId: string,
     ratio: string,
     subjectId: string,
-    modelTier: 'flash' | 'pro' | 'ultra'
+    modelTier: 'flash' | 'pro' | 'ultra',
+    thinkingMode?: 'LOW' | 'HIGH',
+    isFreedomMode?: boolean
   ) => {
     // If Ultra is selected, show confirmation modal first
     if (modelTier === 'ultra' && !showUltraConfirm) {
@@ -463,7 +473,7 @@ const Generator: React.FC<GeneratorProps> = ({
     }
 
     // Otherwise, proceed with generation
-    await executeGenerate(prompt, styleId, ratio, subjectId, modelTier);
+    await executeGenerate(prompt, styleId, ratio, subjectId, modelTier, isFreedomMode);
 
     // After execution (if it was confirmed Ultra), reset modal state
     if (modelTier === 'ultra') {
@@ -714,9 +724,7 @@ const Generator: React.FC<GeneratorProps> = ({
         activeCount={pendingAssets.length}
         firstJobProgress={firstJobProgress}
         restoreState={restoreState}
-        strategy={strategy}
-        onStrategyChange={setStrategy}
-        visualMotifs={business.visualMotifs || []}
+        visualMotifs={business.visualMotifs || []}  // Strategy props removed
       />
 
       {/* Asset Viewer Lightbox */}

@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocat
 import { Business, ViewState, Task, Asset, ExtendedAsset } from './types';
 import { StorageService } from './services/storage';
 import { TeamService } from './services/teamService';
+import { supabase } from './services/supabase';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { NotificationProvider, useNotification } from './context/NotificationContext';
 import { NavigationProvider, useNavigation } from './context/NavigationContext';
@@ -19,6 +20,7 @@ import Dashboard from './views/Dashboard';
 import BrandKit from './views/BrandKit';
 import Generator from './views/Generator';
 import Tasks from './views/Tasks';
+import { TaskProvider } from './context/TaskContext';
 import BusinessProfile from './views/BusinessProfile';
 import Offerings from './views/Offerings';
 import Library from './views/Library';
@@ -91,7 +93,7 @@ const MainLayout: React.FC<any> = (props) => {
 };
 
 const AppContent: React.FC = () => {
-  const { user, profile, loading, authChecked, profileChecked } = useAuth();
+  const { user, profile, loading, authChecked, profileChecked, isOrphanedUser, signOut } = useAuth();
   const { theme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -107,7 +109,7 @@ const AppContent: React.FC = () => {
   // We no longer keep 'view' state here. We use 'location.pathname'.
   const currentView = getViewStateFromPath(location.pathname);
 
-  const [tasks, setTasks] = useState<Task[]>([]);
+  // Tasks state removed - now managed by TaskContext at workspace level
 
   const [pendingAssets, setPendingAssets] = useState<ExtendedAsset[]>([]);
   const [loadingData, setLoadingData] = useState(true);
@@ -116,10 +118,17 @@ const AppContent: React.FC = () => {
   // Load initial data
   useEffect(() => {
     // Don't act until we know if there's a user (auth check complete)
-    if (!authChecked) return;
+    if (!authChecked || !profileChecked) return;
 
     if (!user) {
       setLoadingData(false); // Allow Login screen to render if no user
+      return;
+    }
+
+    // If user hasn't completed onboarding, skip business loading entirely
+    // They'll go to AccessGate or UserOnboarding instead
+    if (!profile || !profile.onboarding_completed) {
+      setLoadingData(false);
       return;
     }
 
@@ -137,9 +146,7 @@ const AppContent: React.FC = () => {
 
           setActiveBusinessId(targetBusinessId);
 
-          // Initial Fetch
-          const loadedTasks = await StorageService.getTasks(targetBusinessId);
-          setTasks(loadedTasks);
+          // Tasks are now loaded by TaskContext at workspace level, not per-business
 
           // Sync Contexts
           setBusinessId(targetBusinessId);
@@ -169,7 +176,7 @@ const AppContent: React.FC = () => {
       }
     };
     load();
-  }, [authChecked, user?.id]); // Wait for auth check, then load on user ID change
+  }, [authChecked, profileChecked, profile?.onboarding_completed, user?.id]); // Wait for auth + profile check
 
   // Check for pending team invites on login
   useEffect(() => {
@@ -292,6 +299,33 @@ const AppContent: React.FC = () => {
     );
   }
 
+  // BLOCK ORPHANED USERS - authenticated but profile was deleted
+  if (user && isOrphanedUser) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-neu-dark p-4">
+        <div className="max-w-md w-full p-8 rounded-3xl bg-neu-dark shadow-neu-out-dark text-center space-y-6">
+          <div className="w-16 h-16 mx-auto rounded-full bg-red-500/20 flex items-center justify-center">
+            <svg className="w-8 h-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <div>
+            <GalaxyHeading text="Account Removed" className="text-2xl mb-2" mode="light-on-dark" />
+            <p className="text-gray-400 text-sm">
+              Your account has been removed from the system. Please sign out and use an invite code to create a new account.
+            </p>
+          </div>
+          <button
+            onClick={signOut}
+            className="w-full px-6 py-3 rounded-xl bg-red-500 text-white font-bold hover:bg-red-600 transition-colors"
+          >
+            Sign Out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!user) {
     return (
       <Routes>
@@ -350,6 +384,34 @@ const AppContent: React.FC = () => {
   const handleBusinessCreate = async (newBusinessData: Partial<Business>) => {
     if (!user) return;
 
+    // Check business creation limit from user's own subscription
+    // (Important for beta users who have limited max_businesses)
+    try {
+      const { data: userSub } = await supabase
+        .from('subscriptions')
+        .select('extra_businesses, plan_id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (userSub) {
+        const baseBusinesses = 1; // All plans start with 1
+        const maxAllowed = baseBusinesses + (userSub.extra_businesses ?? 0);
+
+        if (businesses.length >= maxAllowed) {
+          notify({
+            type: 'warning',
+            title: 'Business Limit Reached',
+            message: `Your plan allows ${maxAllowed} business${maxAllowed > 1 ? 'es' : ''}. Upgrade to add more.`
+          });
+          navigate('/dashboard');
+          return;
+        }
+      }
+    } catch (err) {
+      // No subscription = no limit (shouldn't happen for beta users)
+      console.warn('[App] Could not check business limit:', err);
+    }
+
     const newBusiness: Business = {
       ...newBusinessData as any,
       owner_id: user.id, // Explicitly set owner
@@ -376,7 +438,6 @@ const AppContent: React.FC = () => {
       localStorage.setItem('lastBusinessId', id);
 
       // Clear data immediately to prevent ghosting
-      setTasks([]);
 
       // Update Contexts (Asset + Subscription)
       setBusinessId(id);
@@ -387,8 +448,7 @@ const AppContent: React.FC = () => {
       setSocialBusinessId(id);
       loadSocialPosts(id, true); // Don't await - let it load in background
 
-      const loadedTasks = await StorageService.getTasks(id);
-      setTasks(loadedTasks);
+      // Tasks are now workspace-level (loaded by TaskContext), no per-business reload needed
       // Stay on current view
     } catch (error) {
       console.error("Error switching business", error);
@@ -433,22 +493,7 @@ const AppContent: React.FC = () => {
 
   // handleAddAsset removed - Generator uses Context directly
   // handleDeleteAsset removed - Generator uses Context directly
-
-
-
-  const handleUpdateTasks = async (newTasks: Task[]) => {
-    await StorageService.saveTasks(newTasks, activeBusinessId);
-    setTasks(newTasks);
-  }
-
-  const setTasksWrapper = (val: React.SetStateAction<Task[]>) => {
-    if (typeof val === 'function') {
-      const newState = val(tasks);
-      handleUpdateTasks(newState);
-    } else {
-      handleUpdateTasks(val);
-    }
-  };
+  // handleUpdateTasks removed - Tasks now managed by TaskContext
 
   // Handle business reorder (drag-and-drop)
   const handleReorderBusinesses = async (orderedIds: string[]) => {
@@ -498,11 +543,12 @@ const AppContent: React.FC = () => {
           {activeBusiness && (
             <>
               <Route path="/dashboard" element={
-                <Dashboard
-                  business={activeBusiness}
-                  tasks={tasks}
-                  onNavigate={handleSetView}
-                />
+                <TaskProvider userId={user.id}>
+                  <Dashboard
+                    business={activeBusiness}
+                    onNavigate={handleSetView}
+                  />
+                </TaskProvider>
               } />
               <Route path="/profile" element={
                 <BusinessProfile business={activeBusiness} updateBusiness={updateBusiness} />
@@ -524,8 +570,10 @@ const AppContent: React.FC = () => {
               } />
               <Route path="/tasks" element={
                 <Tasks
-                  businessId={activeBusiness.id}
+                  userId={user.id}
                   businessDesc={activeBusiness.description}
+                  activeBusinessId={activeBusiness.id}
+                  businesses={businesses.map(b => ({ id: b.id, name: b.name }))}
                 />
               } />
               <Route path="/library" element={

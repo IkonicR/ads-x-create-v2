@@ -61,6 +61,11 @@ const Login: React.FC = () => {
         setCodeValid(true);
         // Store code for use after OAuth
         localStorage.setItem('pending_invite_code', inviteCode);
+
+        // Auto-trigger Google OAuth after short delay for visual feedback
+        setTimeout(() => {
+          signInWithGoogle();
+        }, 400);
       } else {
         setCodeValid(false);
         setCodeError(data.error || 'Invalid code');

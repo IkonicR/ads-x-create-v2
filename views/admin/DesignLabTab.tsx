@@ -729,6 +729,7 @@ export const DesignLabTab: React.FC<DesignLabTabProps> = ({ styles }) => {
         colorTint: '#94ca42',
         shape: 'none' as 'none' | 'circle' | 'daisy' | 'diamond' | 'metaballs',
         image: '' as string, // URL or empty for shape mode
+        strokeWidth: 4, // Stroke thickness for text outline mode
         repetition: 1.55,
         softness: 0.45,
         shiftRed: 0.57,
@@ -751,6 +752,17 @@ export const DesignLabTab: React.FC<DesignLabTabProps> = ({ styles }) => {
 
     const [liquidMetalConfig, setLiquidMetalConfig] = useState(LIQUID_METAL_DEFAULTS);
     const sliderPreviewHoverRef = useRef(false);
+
+    // Shader section toggles (for RAM management)
+    const [shaderSections, setShaderSections] = useState({
+        section10: true, // Dithering Buttons
+        section11: true, // LiquidMetal Generate Buttons
+        section12: true, // Brand Logo Shaders
+        section13: true, // LiquidMetal Shader Lab
+    });
+    const toggleSection = (section: keyof typeof shaderSections) => {
+        setShaderSections(prev => ({ ...prev, [section]: !prev[section] }));
+    };
 
     // Animated shader values (lerped)
     const [animatedShader, setAnimatedShader] = useState({
@@ -1601,475 +1613,547 @@ export const DesignLabTab: React.FC<DesignLabTabProps> = ({ styles }) => {
 
             {/* --- 10. CELESTIAL NEUMORPHISM: DITHERING BUTTONS --- */}
             <section className="space-y-8 pt-12 border-t border-black/10 dark:border-white/10">
-                <div>
-                    <h2 className="text-2xl font-bold text-brand">10. Celestial Neumorphism: Dithering Buttons</h2>
-                    <p className="opacity-70 mt-1">Tactile buttons with animated Dithering shader cores.</p>
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h2 className="text-2xl font-bold text-brand">10. Celestial Neumorphism: Dithering Buttons</h2>
+                        <p className="opacity-70 mt-1">Tactile buttons with animated Dithering shader cores.</p>
+                    </div>
+                    <button
+                        onClick={() => toggleSection('section10')}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${shaderSections.section10
+                            ? 'bg-brand/20 border-brand/30 text-brand'
+                            : 'bg-red-500/20 border-red-500/30 text-red-500'
+                            }`}
+                    >
+                        {shaderSections.section10 ? 'ON' : 'OFF'}
+                    </button>
                 </div>
+                {shaderSections.section10 && (
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
-                    {/* Dithering 1: The Ripple Pool */}
-                    <div className="flex flex-col items-center justify-center space-y-4">
-                        <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">1. Ripple Pool</h4>
-                        <motion.button
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.96, y: 2 }}
-                            className="relative w-56 h-16 rounded-2xl overflow-hidden shadow-neu-out-light dark:shadow-neu-out-dark"
-                        >
-                            <Dithering colorBack="#000000" colorFront="#94ca42" shape="ripple" type="noise" size={4} speed={0.5} scale={8} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
-                            <div className="absolute inset-0 flex items-center justify-center text-white font-bold text-lg tracking-widest drop-shadow-lg">
-                                GENERATE
-                            </div>
-                        </motion.button>
-                        <p className="text-[10px] opacity-40">Outward radial pulse. Calm energy.</p>
-                    </div>
-
-                    {/* Dithering 2: The Cylinder Press */}
-                    <div className="flex flex-col items-center justify-center space-y-4">
-                        <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">2. Cylinder Press</h4>
-                        <motion.button
-                            whileTap={{ scale: 0.94, y: 3 }}
-                            className="relative w-56 h-16 rounded-2xl overflow-hidden shadow-neu-out-light dark:shadow-neu-out-dark"
-                        >
-                            <Dithering colorBack="#94ca42" colorFront="#ffffff" shape="cylinder" type="dots" size={3} speed={1} scale={6} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
-                            <div className="absolute inset-0 flex items-center justify-center gap-2 text-white font-bold">
-                                <Zap size={18} fill="currentColor" />
-                                ACTIVATE
-                            </div>
-                        </motion.button>
-                        <p className="text-[10px] opacity-40">Mechanical rotation. High tension.</p>
-                    </div>
-
-                    {/* Dithering 3: The Noise Orb */}
-                    <div className="flex flex-col items-center justify-center space-y-4">
-                        <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">3. Noise Orb</h4>
-                        <motion.button
-                            whileHover={{ scale: 1.1, rotate: 5 }}
-                            whileTap={{ scale: 0.9, rotate: -5 }}
-                            className="relative w-20 h-20 rounded-full overflow-hidden shadow-neu-out-light dark:shadow-neu-out-dark"
-                        >
-                            <Dithering colorBack="#0a0a0a" colorFront="#94ca42" shape="sphere" type="8x8" size={5} speed={1.2} scale={12} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
-                            <div className="absolute inset-0 flex items-center justify-center text-white">
-                                <Zap size={28} fill="currentColor" />
-                            </div>
-                        </motion.button>
-                        <p className="text-[10px] opacity-40">Spherical distortion. FAB style.</p>
-                    </div>
-
-                    {/* Dithering 4: The Scanline Trigger */}
-                    <div className="flex flex-col items-center justify-center space-y-4">
-                        <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">4. Scanline Trigger</h4>
-                        <motion.button
-                            whileTap={{ y: 2 }}
-                            className="relative w-48 h-14 rounded-xl overflow-hidden shadow-neu-out-light dark:shadow-neu-out-dark border border-brand/20"
-                        >
-                            <Dithering colorBack="#000000" colorFront="#94ca42" shape="cylinder" type="lines" size={2} speed={2} scale={20} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.4 }} />
-                            <div className="absolute inset-0 flex items-center justify-center gap-2 text-brand font-bold text-sm tracking-tight uppercase">
-                                <Zap size={16} fill="#94ca42" />
-                                PRECISION
-                            </div>
-                        </motion.button>
-                        <p className="text-[10px] opacity-40">Retro CRT lines. Industrial.</p>
-                    </div>
-
-                    {/* Dithering 5: The Frosted Lens */}
-                    <div className="flex flex-col items-center justify-center space-y-4">
-                        <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">5. Frosted Lens</h4>
-                        <div className="relative w-56 h-16 rounded-xl overflow-hidden shadow-neu-out-light dark:shadow-neu-out-dark bg-neu-light dark:bg-neu-dark">
-                            <div className="absolute inset-0 z-0">
-                                <Dithering colorBack="#000000" colorFront="#94ca42" shape="sphere" type="dots" size={8} speed={1} scale={4} />
-                            </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
+                        {/* Dithering 1: The Ripple Pool */}
+                        <div className="flex flex-col items-center justify-center space-y-4">
+                            <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">1. Ripple Pool</h4>
                             <motion.button
-                                whileHover={{ backgroundColor: 'rgba(255,255,255,0.1)' }}
-                                className="absolute inset-0 z-10 backdrop-blur-md bg-white/5 dark:bg-black/30 flex items-center justify-center text-brand font-bold tracking-widest"
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.96, y: 2 }}
+                                className="relative w-56 h-16 rounded-2xl overflow-hidden shadow-neu-out-light dark:shadow-neu-out-dark"
                             >
-                                ENGAGED
+                                <Dithering colorBack="#000000" colorFront="#94ca42" shape="ripple" type="noise" size={4} speed={0.5} scale={8} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
+                                <div className="absolute inset-0 flex items-center justify-center text-white font-bold text-lg tracking-widest drop-shadow-lg">
+                                    GENERATE
+                                </div>
                             </motion.button>
+                            <p className="text-[10px] opacity-40">Outward radial pulse. Calm energy.</p>
                         </div>
-                        <p className="text-[10px] opacity-40">Shader behind frosted glass.</p>
-                    </div>
 
-                    {/* Dithering 6: The Underglow */}
-                    <div className="flex flex-col items-center justify-center space-y-4">
-                        <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">6. Underglow</h4>
-                        <div className="relative w-48 h-14">
-                            <div className="absolute top-3 left-0 w-full h-full rounded-xl overflow-hidden opacity-60 blur-md scale-95">
-                                <Dithering colorBack="#000000" colorFront="#94ca42" shape="ripple" type="noise" size={6} speed={0.5} scale={4} style={{ width: '100%', height: '100%' }} />
-                            </div>
+                        {/* Dithering 2: The Cylinder Press */}
+                        <div className="flex flex-col items-center justify-center space-y-4">
+                            <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">2. Cylinder Press</h4>
                             <motion.button
-                                whileHover={{ y: -2 }}
+                                whileTap={{ scale: 0.94, y: 3 }}
+                                className="relative w-56 h-16 rounded-2xl overflow-hidden shadow-neu-out-light dark:shadow-neu-out-dark"
+                            >
+                                <Dithering colorBack="#94ca42" colorFront="#ffffff" shape="cylinder" type="dots" size={3} speed={1} scale={6} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
+                                <div className="absolute inset-0 flex items-center justify-center gap-2 text-white font-bold">
+                                    <Zap size={18} fill="currentColor" />
+                                    ACTIVATE
+                                </div>
+                            </motion.button>
+                            <p className="text-[10px] opacity-40">Mechanical rotation. High tension.</p>
+                        </div>
+
+                        {/* Dithering 3: The Noise Orb */}
+                        <div className="flex flex-col items-center justify-center space-y-4">
+                            <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">3. Noise Orb</h4>
+                            <motion.button
+                                whileHover={{ scale: 1.1, rotate: 5 }}
+                                whileTap={{ scale: 0.9, rotate: -5 }}
+                                className="relative w-20 h-20 rounded-full overflow-hidden shadow-neu-out-light dark:shadow-neu-out-dark"
+                            >
+                                <Dithering colorBack="#0a0a0a" colorFront="#94ca42" shape="sphere" type="8x8" size={5} speed={1.2} scale={12} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
+                                <div className="absolute inset-0 flex items-center justify-center text-white">
+                                    <Zap size={28} fill="currentColor" />
+                                </div>
+                            </motion.button>
+                            <p className="text-[10px] opacity-40">Spherical distortion. FAB style.</p>
+                        </div>
+
+                        {/* Dithering 4: The Scanline Trigger */}
+                        <div className="flex flex-col items-center justify-center space-y-4">
+                            <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">4. Scanline Trigger</h4>
+                            <motion.button
                                 whileTap={{ y: 2 }}
-                                className="relative w-full h-full bg-neu-light dark:bg-[#1a1a1a] rounded-xl border border-brand/30 flex items-center justify-center gap-2 font-bold text-brand"
+                                className="relative w-48 h-14 rounded-xl overflow-hidden shadow-neu-out-light dark:shadow-neu-out-dark border border-brand/20"
                             >
-                                START ENGINE
+                                <Dithering colorBack="#000000" colorFront="#94ca42" shape="cylinder" type="lines" size={2} speed={2} scale={20} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.4 }} />
+                                <div className="absolute inset-0 flex items-center justify-center gap-2 text-brand font-bold text-sm tracking-tight uppercase">
+                                    <Zap size={16} fill="#94ca42" />
+                                    PRECISION
+                                </div>
                             </motion.button>
+                            <p className="text-[10px] opacity-40">Retro CRT lines. Industrial.</p>
                         </div>
-                        <p className="text-[10px] opacity-40">Floating plate. Ambient glow.</p>
+
+                        {/* Dithering 5: The Frosted Lens */}
+                        <div className="flex flex-col items-center justify-center space-y-4">
+                            <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">5. Frosted Lens</h4>
+                            <div className="relative w-56 h-16 rounded-xl overflow-hidden shadow-neu-out-light dark:shadow-neu-out-dark bg-neu-light dark:bg-neu-dark">
+                                <div className="absolute inset-0 z-0">
+                                    <Dithering colorBack="#000000" colorFront="#94ca42" shape="sphere" type="dots" size={8} speed={1} scale={4} />
+                                </div>
+                                <motion.button
+                                    whileHover={{ backgroundColor: 'rgba(255,255,255,0.1)' }}
+                                    className="absolute inset-0 z-10 backdrop-blur-md bg-white/5 dark:bg-black/30 flex items-center justify-center text-brand font-bold tracking-widest"
+                                >
+                                    ENGAGED
+                                </motion.button>
+                            </div>
+                            <p className="text-[10px] opacity-40">Shader behind frosted glass.</p>
+                        </div>
+
+                        {/* Dithering 6: The Underglow */}
+                        <div className="flex flex-col items-center justify-center space-y-4">
+                            <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">6. Underglow</h4>
+                            <div className="relative w-48 h-14">
+                                <div className="absolute top-3 left-0 w-full h-full rounded-xl overflow-hidden opacity-60 blur-md scale-95">
+                                    <Dithering colorBack="#000000" colorFront="#94ca42" shape="ripple" type="noise" size={6} speed={0.5} scale={4} style={{ width: '100%', height: '100%' }} />
+                                </div>
+                                <motion.button
+                                    whileHover={{ y: -2 }}
+                                    whileTap={{ y: 2 }}
+                                    className="relative w-full h-full bg-neu-light dark:bg-[#1a1a1a] rounded-xl border border-brand/30 flex items-center justify-center gap-2 font-bold text-brand"
+                                >
+                                    START ENGINE
+                                </motion.button>
+                            </div>
+                            <p className="text-[10px] opacity-40">Floating plate. Ambient glow.</p>
+                        </div>
                     </div>
-                </div>
+                )}
             </section>
 
             {/* --- 11. CELESTIAL NEUMORPHISM: LIQUID METAL BUTTONS (PREMIUM) --- */}
             <section className="space-y-8 pt-12 border-t border-black/10 dark:border-white/10">
-                <div>
-                    <h2 className="text-2xl font-bold text-brand">11. Premium: Liquid Metal Generate Buttons</h2>
-                    <p className="opacity-70 mt-1">Click to trigger a 5-second simulated generation. Stage-based color transitions.</p>
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h2 className="text-2xl font-bold text-brand">11. Premium: Liquid Metal Generate Buttons</h2>
+                        <p className="opacity-70 mt-1">Click to trigger a 5-second simulated generation. Stage-based color transitions.</p>
+                    </div>
+                    <button
+                        onClick={() => toggleSection('section11')}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${shaderSections.section11
+                            ? 'bg-brand/20 border-brand/30 text-brand'
+                            : 'bg-red-500/20 border-red-500/30 text-red-500'
+                            }`}
+                    >
+                        {shaderSections.section11 ? 'ON' : 'OFF'}
+                    </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-16">
+                <div style={{ display: shaderSections.section11 ? 'block' : 'none' }}>
 
-                    {/* --- 1. THE GENESIS FORGE --- */}
-                    {(() => {
-                        const [state, setState] = React.useState<'idle' | 'generating' | 'complete'>('idle');
-                        const [progress, setProgress] = React.useState(0);
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-16">
 
-                        // Stage-based color: white → yellow → orange → green
-                        const getProgressColor = (p: number) => {
-                            if (p < 33) return '#ffffff';
-                            if (p < 66) return '#fbbf24'; // yellow
-                            if (p < 100) return '#f97316'; // orange
-                            return '#22c55e'; // green
-                        };
+                        {/* --- 1. THE GENESIS FORGE --- */}
+                        {(() => {
+                            const [state, setState] = React.useState<'idle' | 'generating' | 'complete'>('idle');
+                            const [progress, setProgress] = React.useState(0);
 
-                        const handleClick = () => {
-                            if (state !== 'idle') return;
-                            setState('generating');
-                            setProgress(0);
-                            const interval = setInterval(() => {
-                                setProgress(p => {
-                                    if (p >= 100) {
-                                        clearInterval(interval);
-                                        setState('complete');
-                                        setTimeout(() => setState('idle'), 2500);
-                                        return 100;
-                                    }
-                                    return p + 2;
-                                });
-                            }, 100);
-                        };
+                            // Stage-based color: white → yellow → orange → green
+                            const getProgressColor = (p: number) => {
+                                if (p < 33) return '#ffffff';
+                                if (p < 66) return '#fbbf24'; // yellow
+                                if (p < 100) return '#f97316'; // orange
+                                return '#22c55e'; // green
+                            };
 
-                        return (
-                            <div className="flex flex-col items-center justify-center space-y-4">
-                                <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">1. Genesis Forge</h4>
-                                <motion.button
-                                    onClick={handleClick}
-                                    animate={{
-                                        scale: state === 'generating' ? [1, 1.02, 1] : 1,
-                                        boxShadow: state === 'generating'
-                                            ? [`0 0 15px ${getProgressColor(progress)}40`, `0 0 30px ${getProgressColor(progress)}60`, `0 0 15px ${getProgressColor(progress)}40`]
-                                            : '0 4px 12px rgba(0,0,0,0.3)'
-                                    }}
-                                    transition={{ duration: 0.6, repeat: state === 'generating' ? Infinity : 0 }}
-                                    className="relative w-40 h-11 rounded-xl overflow-hidden cursor-pointer"
-                                >
-                                    {/* Liquid Metal - always visible, intensifies on generate */}
-                                    <LiquidMetal
-                                        colorBack="#0a0a0a"
-                                        colorTint={state === 'complete' ? '#22c55e' : state === 'generating' ? getProgressColor(progress) : '#94ca42'}
-                                        shape="metaballs"
-                                        repetition={state === 'generating' ? 6 + Math.floor(progress / 20) : 4}
-                                        softness={0.7}
-                                        distortion={state === 'generating' ? 0.4 + (progress * 0.006) : 0.3}
-                                        speed={state === 'generating' ? 1.5 + (progress * 0.025) : 0.8}
-                                        scale={state === 'generating' ? 1.2 + (progress * 0.008) : 1.0}
-                                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
-                                    />
-                                    <div className="absolute inset-0 flex items-center justify-center">
-                                        <AnimatePresence mode="wait">
-                                            {state === 'idle' ? (
-                                                <motion.span key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-white font-bold text-sm tracking-widest drop-shadow-lg">
-                                                    GENERATE
-                                                </motion.span>
-                                            ) : state === 'generating' ? (
-                                                <motion.span
-                                                    key="gen"
-                                                    initial={{ opacity: 0 }}
-                                                    animate={{ opacity: 1 }}
-                                                    exit={{ opacity: 0 }}
-                                                    className="font-mono text-base font-black"
-                                                    style={{ color: getProgressColor(progress), textShadow: `0 0 12px ${getProgressColor(progress)}` }}
-                                                >
-                                                    {progress}%
-                                                </motion.span>
-                                            ) : state === 'complete' ? (
-                                                <motion.div key="done" initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-green-400">
-                                                    <Check size={20} strokeWidth={3} />
-                                                </motion.div>
-                                            ) : null}
-                                        </AnimatePresence>
-                                    </div>
-                                </motion.button>
-                                <p className="text-[10px] opacity-40">Shader expands and intensifies during generation.</p>
-                            </div>
-                        );
-                    })()}
+                            const handleClick = () => {
+                                if (state !== 'idle') return;
+                                setState('generating');
+                                setProgress(0);
+                                const interval = setInterval(() => {
+                                    setProgress(p => {
+                                        if (p >= 100) {
+                                            clearInterval(interval);
+                                            setState('complete');
+                                            setTimeout(() => setState('idle'), 2500);
+                                            return 100;
+                                        }
+                                        return p + 2;
+                                    });
+                                }, 100);
+                            };
 
-                    {/* --- 2. THE MOLTEN CORE --- */}
-                    <MoltenCoreButton />
-
-                    {/* --- 3. THE CHROME REACTOR --- */}
-                    {(() => {
-                        const [state, setState] = React.useState<'idle' | 'generating' | 'complete'>('idle');
-                        const [progress, setProgress] = React.useState(0);
-
-                        const getStatusText = (p: number) => {
-                            if (p < 20) return 'INITIALIZING...';
-                            if (p < 40) return 'COMPILING...';
-                            if (p < 60) return 'RENDERING...';
-                            if (p < 80) return 'OPTIMIZING...';
-                            if (p < 100) return 'FINALIZING...';
-                            return 'DEPLOYED';
-                        };
-
-                        const getProgressColor = (p: number) => {
-                            if (p < 33) return '#c0c0c0'; // silver
-                            if (p < 66) return '#fbbf24'; // gold
-                            if (p < 100) return '#f97316';
-                            return '#22c55e';
-                        };
-
-                        const handleClick = () => {
-                            if (state !== 'idle') return;
-                            setState('generating');
-                            setProgress(0);
-                            const interval = setInterval(() => {
-                                setProgress(p => {
-                                    if (p >= 100) { clearInterval(interval); setState('complete'); setTimeout(() => setState('idle'), 2500); return 100; }
-                                    return p + 2;
-                                });
-                            }, 100);
-                        };
-
-                        return (
-                            <div className="flex flex-col items-center justify-center space-y-4">
-                                <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">3. Chrome Reactor</h4>
-                                <div className="relative">
-                                    <motion.div
+                            return (
+                                <div className="flex flex-col items-center justify-center space-y-4">
+                                    <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">1. Genesis Forge</h4>
+                                    <motion.button
+                                        onClick={handleClick}
                                         animate={{
-                                            scale: state === 'generating' ? [1, 1.2, 1] : 1,
-                                            opacity: state === 'generating' ? [0.2, 0.5, 0.2] : 0
+                                            scale: state === 'generating' ? [1, 1.02, 1] : 1,
+                                            boxShadow: state === 'generating'
+                                                ? [`0 0 15px ${getProgressColor(progress)}40`, `0 0 30px ${getProgressColor(progress)}60`, `0 0 15px ${getProgressColor(progress)}40`]
+                                                : '0 4px 12px rgba(0,0,0,0.3)'
                                         }}
-                                        transition={{ duration: 1.2, repeat: Infinity }}
-                                        className="absolute inset-0 rounded-2xl blur-xl"
-                                        style={{ background: getProgressColor(progress) }}
-                                    />
-                                    <motion.button
-                                        onClick={handleClick}
-                                        whileTap={{ scale: 0.96 }}
-                                        className="relative w-44 h-11 rounded-xl overflow-hidden cursor-pointer shadow-lg border border-white/10"
-                                    >
-                                        <LiquidMetal
-                                            colorBack="#0a0a0a"
-                                            colorTint={state === 'complete' ? '#22c55e' : getProgressColor(progress)}
-                                            shape="none"
-                                            repetition={6}
-                                            softness={0.8}
-                                            shiftRed={0.5}
-                                            shiftBlue={-0.5}
-                                            distortion={state === 'generating' ? 0.3 + (progress * 0.004) : 0.2}
-                                            speed={state === 'generating' ? 1.5 + (progress * 0.02) : 0.5}
-                                            scale={0.7}
-                                            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
-                                        />
-                                        {/* Bottom progress line */}
-                                        {state === 'generating' && (
-                                            <motion.div
-                                                initial={{ width: 0 }}
-                                                animate={{ width: `${progress}%` }}
-                                                className="absolute bottom-0 left-0 h-1"
-                                                style={{ background: getProgressColor(progress) }}
-                                            />
-                                        )}
-                                        <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                            <AnimatePresence mode="wait">
-                                                {state === 'idle' ? (
-                                                    <motion.span key="idle" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} className="text-white font-bold tracking-widest">
-                                                        INITIALIZE
-                                                    </motion.span>
-                                                ) : state === 'generating' ? (
-                                                    <motion.div key="gen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-1">
-                                                        <span className="font-mono text-xs" style={{ color: getProgressColor(progress) }}>{getStatusText(progress)}</span>
-                                                        <span className="font-mono text-lg font-black" style={{ color: getProgressColor(progress), textShadow: `0 0 10px ${getProgressColor(progress)}` }}>{progress}%</span>
-                                                    </motion.div>
-                                                ) : state === 'complete' ? (
-                                                    <motion.span key="done" initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="text-green-400 font-bold flex items-center gap-2">
-                                                        <Check size={20} strokeWidth={3} /> DEPLOYED
-                                                    </motion.span>
-                                                ) : null}
-                                            </AnimatePresence>
-                                        </div>
-                                    </motion.button>
-                                </div>
-                                <p className="text-[10px] opacity-40">Multi-stage status text. Dynamic glow color.</p>
-                            </div>
-                        );
-                    })()}
-
-                    {/* --- 4. THE PLASMA CONDUIT --- */}
-                    <PlasmaConduitButton />
-
-                    {/* --- 5. MOLTEN CORE PRO --- */}
-                    <MoltenCoreProButton />
-
-                    {/* --- 6. THE SPLIT COMMANDER --- */}
-                    {(() => {
-                        const [state, setState] = React.useState<'idle' | 'generating' | 'complete'>('idle');
-                        const [progress, setProgress] = React.useState(0);
-
-                        const getProgressColor = (p: number) => {
-                            if (p < 33) return '#94ca42';
-                            if (p < 66) return '#fbbf24';
-                            if (p < 100) return '#f97316';
-                            return '#22c55e';
-                        };
-
-                        const handleClick = () => {
-                            if (state !== 'idle') return;
-                            setState('generating');
-                            setProgress(0);
-                            const interval = setInterval(() => {
-                                setProgress(p => {
-                                    if (p >= 100) { clearInterval(interval); setState('complete'); setTimeout(() => setState('idle'), 2500); return 100; }
-                                    return p + 2;
-                                });
-                            }, 100);
-                        };
-
-                        return (
-                            <div className="flex flex-col items-center justify-center space-y-4">
-                                <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">6. Split Commander</h4>
-                                <div className="flex rounded-xl overflow-hidden shadow-lg h-11 w-48 bg-neu-light dark:bg-neu-dark">
-                                    <motion.div
-                                        animate={{ width: state === 'generating' ? '30%' : '40%' }}
-                                        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                                        className="flex items-center justify-center font-bold text-xs border-r border-black/10 dark:border-white/10 px-2"
-                                    >
-                                        <AnimatePresence mode="wait">
-                                            {state === 'idle' ? (
-                                                <motion.span key="cfg" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>CFG</motion.span>
-                                            ) : state === 'generating' ? (
-                                                <motion.span key="pct" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="font-mono text-xs font-black" style={{ color: getProgressColor(progress) }}>
-                                                    {progress}%
-                                                </motion.span>
-                                            ) : state === 'complete' ? (
-                                                <motion.span key="ok" initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-green-500 font-bold">✓</motion.span>
-                                            ) : null}
-                                        </AnimatePresence>
-                                    </motion.div>
-                                    <motion.button
-                                        onClick={handleClick}
-                                        animate={{ width: state === 'generating' ? '70%' : '60%' }}
-                                        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                                        className="relative overflow-hidden cursor-pointer"
+                                        transition={{ duration: 0.6, repeat: state === 'generating' ? Infinity : 0 }}
+                                        className="relative w-40 h-11 rounded-xl overflow-hidden cursor-pointer"
                                     >
                                         {/* Liquid Metal - always visible, intensifies on generate */}
                                         <LiquidMetal
                                             colorBack="#0a0a0a"
                                             colorTint={state === 'complete' ? '#22c55e' : state === 'generating' ? getProgressColor(progress) : '#94ca42'}
                                             shape="metaballs"
-                                            repetition={state === 'generating' ? 5 + Math.floor(progress / 25) : 3}
+                                            repetition={state === 'generating' ? 6 + Math.floor(progress / 20) : 4}
                                             softness={0.7}
-                                            distortion={state === 'generating' ? 0.3 + (progress * 0.005) : 0.25}
-                                            speed={state === 'generating' ? 1.2 + (progress * 0.02) : 0.6}
-                                            scale={state === 'generating' ? 1.0 + (progress * 0.006) : 0.9}
+                                            distortion={state === 'generating' ? 0.4 + (progress * 0.006) : 0.3}
+                                            speed={state === 'generating' ? 1.5 + (progress * 0.025) : 0.8}
+                                            scale={state === 'generating' ? 1.2 + (progress * 0.008) : 1.0}
                                             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
                                         />
-                                        <div className="absolute inset-0 flex items-center justify-center text-white">
+                                        <div className="absolute inset-0 flex items-center justify-center">
                                             <AnimatePresence mode="wait">
-                                                {state === 'complete' ? (
-                                                    <motion.div key="done" initial={{ scale: 0 }} animate={{ scale: 1 }}>
-                                                        <Check size={18} strokeWidth={3} />
+                                                {state === 'idle' ? (
+                                                    <motion.span key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-white font-bold text-sm tracking-widest drop-shadow-lg">
+                                                        GENERATE
+                                                    </motion.span>
+                                                ) : state === 'generating' ? (
+                                                    <motion.span
+                                                        key="gen"
+                                                        initial={{ opacity: 0 }}
+                                                        animate={{ opacity: 1 }}
+                                                        exit={{ opacity: 0 }}
+                                                        className="font-mono text-base font-black"
+                                                        style={{ color: getProgressColor(progress), textShadow: `0 0 12px ${getProgressColor(progress)}` }}
+                                                    >
+                                                        {progress}%
+                                                    </motion.span>
+                                                ) : state === 'complete' ? (
+                                                    <motion.div key="done" initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-green-400">
+                                                        <Check size={20} strokeWidth={3} />
                                                     </motion.div>
-                                                ) : (
-                                                    <Zap size={18} fill="currentColor" />
-                                                )}
+                                                ) : null}
                                             </AnimatePresence>
                                         </div>
                                     </motion.button>
+                                    <p className="text-[10px] opacity-40">Shader expands and intensifies during generation.</p>
                                 </div>
-                                <p className="text-[10px] opacity-40">Shader expands and intensifies during generation.</p>
-                            </div>
-                        );
-                    })()}
+                            );
+                        })()}
 
+                        {/* --- 2. THE MOLTEN CORE --- */}
+                        <MoltenCoreButton />
+
+                        {/* --- 3. THE CHROME REACTOR --- */}
+                        {(() => {
+                            const [state, setState] = React.useState<'idle' | 'generating' | 'complete'>('idle');
+                            const [progress, setProgress] = React.useState(0);
+
+                            const getStatusText = (p: number) => {
+                                if (p < 20) return 'INITIALIZING...';
+                                if (p < 40) return 'COMPILING...';
+                                if (p < 60) return 'RENDERING...';
+                                if (p < 80) return 'OPTIMIZING...';
+                                if (p < 100) return 'FINALIZING...';
+                                return 'DEPLOYED';
+                            };
+
+                            const getProgressColor = (p: number) => {
+                                if (p < 33) return '#c0c0c0'; // silver
+                                if (p < 66) return '#fbbf24'; // gold
+                                if (p < 100) return '#f97316';
+                                return '#22c55e';
+                            };
+
+                            const handleClick = () => {
+                                if (state !== 'idle') return;
+                                setState('generating');
+                                setProgress(0);
+                                const interval = setInterval(() => {
+                                    setProgress(p => {
+                                        if (p >= 100) { clearInterval(interval); setState('complete'); setTimeout(() => setState('idle'), 2500); return 100; }
+                                        return p + 2;
+                                    });
+                                }, 100);
+                            };
+
+                            return (
+                                <div className="flex flex-col items-center justify-center space-y-4">
+                                    <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">3. Chrome Reactor</h4>
+                                    <div className="relative">
+                                        <motion.div
+                                            animate={{
+                                                scale: state === 'generating' ? [1, 1.2, 1] : 1,
+                                                opacity: state === 'generating' ? [0.2, 0.5, 0.2] : 0
+                                            }}
+                                            transition={{ duration: 1.2, repeat: Infinity }}
+                                            className="absolute inset-0 rounded-2xl blur-xl"
+                                            style={{ background: getProgressColor(progress) }}
+                                        />
+                                        <motion.button
+                                            onClick={handleClick}
+                                            whileTap={{ scale: 0.96 }}
+                                            className="relative w-44 h-11 rounded-xl overflow-hidden cursor-pointer shadow-lg border border-white/10"
+                                        >
+                                            <LiquidMetal
+                                                colorBack="#0a0a0a"
+                                                colorTint={state === 'complete' ? '#22c55e' : getProgressColor(progress)}
+                                                shape="none"
+                                                repetition={6}
+                                                softness={0.8}
+                                                shiftRed={0.5}
+                                                shiftBlue={-0.5}
+                                                distortion={state === 'generating' ? 0.3 + (progress * 0.004) : 0.2}
+                                                speed={state === 'generating' ? 1.5 + (progress * 0.02) : 0.5}
+                                                scale={0.7}
+                                                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+                                            />
+                                            {/* Bottom progress line */}
+                                            {state === 'generating' && (
+                                                <motion.div
+                                                    initial={{ width: 0 }}
+                                                    animate={{ width: `${progress}%` }}
+                                                    className="absolute bottom-0 left-0 h-1"
+                                                    style={{ background: getProgressColor(progress) }}
+                                                />
+                                            )}
+                                            <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                                <AnimatePresence mode="wait">
+                                                    {state === 'idle' ? (
+                                                        <motion.span key="idle" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} className="text-white font-bold tracking-widest">
+                                                            INITIALIZE
+                                                        </motion.span>
+                                                    ) : state === 'generating' ? (
+                                                        <motion.div key="gen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-1">
+                                                            <span className="font-mono text-xs" style={{ color: getProgressColor(progress) }}>{getStatusText(progress)}</span>
+                                                            <span className="font-mono text-lg font-black" style={{ color: getProgressColor(progress), textShadow: `0 0 10px ${getProgressColor(progress)}` }}>{progress}%</span>
+                                                        </motion.div>
+                                                    ) : state === 'complete' ? (
+                                                        <motion.span key="done" initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="text-green-400 font-bold flex items-center gap-2">
+                                                            <Check size={20} strokeWidth={3} /> DEPLOYED
+                                                        </motion.span>
+                                                    ) : null}
+                                                </AnimatePresence>
+                                            </div>
+                                        </motion.button>
+                                    </div>
+                                    <p className="text-[10px] opacity-40">Multi-stage status text. Dynamic glow color.</p>
+                                </div>
+                            );
+                        })()}
+
+                        {/* --- 4. THE PLASMA CONDUIT --- */}
+                        <PlasmaConduitButton />
+
+                        {/* --- 5. MOLTEN CORE PRO --- */}
+                        <MoltenCoreProButton />
+
+                        {/* --- 6. THE SPLIT COMMANDER --- */}
+                        {(() => {
+                            const [state, setState] = React.useState<'idle' | 'generating' | 'complete'>('idle');
+                            const [progress, setProgress] = React.useState(0);
+
+                            const getProgressColor = (p: number) => {
+                                if (p < 33) return '#94ca42';
+                                if (p < 66) return '#fbbf24';
+                                if (p < 100) return '#f97316';
+                                return '#22c55e';
+                            };
+
+                            const handleClick = () => {
+                                if (state !== 'idle') return;
+                                setState('generating');
+                                setProgress(0);
+                                const interval = setInterval(() => {
+                                    setProgress(p => {
+                                        if (p >= 100) { clearInterval(interval); setState('complete'); setTimeout(() => setState('idle'), 2500); return 100; }
+                                        return p + 2;
+                                    });
+                                }, 100);
+                            };
+
+                            return (
+                                <div className="flex flex-col items-center justify-center space-y-4">
+                                    <h4 className="font-bold text-xs uppercase tracking-widest opacity-50">6. Split Commander</h4>
+                                    <div className="flex rounded-xl overflow-hidden shadow-lg h-11 w-48 bg-neu-light dark:bg-neu-dark">
+                                        <motion.div
+                                            animate={{ width: state === 'generating' ? '30%' : '40%' }}
+                                            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                                            className="flex items-center justify-center font-bold text-xs border-r border-black/10 dark:border-white/10 px-2"
+                                        >
+                                            <AnimatePresence mode="wait">
+                                                {state === 'idle' ? (
+                                                    <motion.span key="cfg" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>CFG</motion.span>
+                                                ) : state === 'generating' ? (
+                                                    <motion.span key="pct" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="font-mono text-xs font-black" style={{ color: getProgressColor(progress) }}>
+                                                        {progress}%
+                                                    </motion.span>
+                                                ) : state === 'complete' ? (
+                                                    <motion.span key="ok" initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-green-500 font-bold">✓</motion.span>
+                                                ) : null}
+                                            </AnimatePresence>
+                                        </motion.div>
+                                        <motion.button
+                                            onClick={handleClick}
+                                            animate={{ width: state === 'generating' ? '70%' : '60%' }}
+                                            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                                            className="relative overflow-hidden cursor-pointer"
+                                        >
+                                            {/* Liquid Metal - always visible, intensifies on generate */}
+                                            <LiquidMetal
+                                                colorBack="#0a0a0a"
+                                                colorTint={state === 'complete' ? '#22c55e' : state === 'generating' ? getProgressColor(progress) : '#94ca42'}
+                                                shape="metaballs"
+                                                repetition={state === 'generating' ? 5 + Math.floor(progress / 25) : 3}
+                                                softness={0.7}
+                                                distortion={state === 'generating' ? 0.3 + (progress * 0.005) : 0.25}
+                                                speed={state === 'generating' ? 1.2 + (progress * 0.02) : 0.6}
+                                                scale={state === 'generating' ? 1.0 + (progress * 0.006) : 0.9}
+                                                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+                                            />
+                                            <div className="absolute inset-0 flex items-center justify-center text-white">
+                                                <AnimatePresence mode="wait">
+                                                    {state === 'complete' ? (
+                                                        <motion.div key="done" initial={{ scale: 0 }} animate={{ scale: 1 }}>
+                                                            <Check size={18} strokeWidth={3} />
+                                                        </motion.div>
+                                                    ) : (
+                                                        <Zap size={18} fill="currentColor" />
+                                                    )}
+                                                </AnimatePresence>
+                                            </div>
+                                        </motion.button>
+                                    </div>
+                                    <p className="text-[10px] opacity-40">Shader expands and intensifies during generation.</p>
+                                </div>
+                            );
+                        })()}
+
+                    </div>
                 </div>
             </section>
 
             {/* --- 12. BRAND LOGO SHADERS --- */}
             <section className="space-y-8 pt-12 border-t border-black/10 dark:border-white/10">
-                <div>
-                    <h2 className="text-2xl font-bold text-brand">12. Brand Logo Shaders</h2>
-                    <p className="opacity-70 mt-1">LiquidMetal applied to actual brand logo images.</p>
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h2 className="text-2xl font-bold text-brand">12. Brand Logo Shaders</h2>
+                        <p className="opacity-70 mt-1">LiquidMetal applied to actual brand logo images.</p>
+                    </div>
+                    <button
+                        onClick={() => toggleSection('section12')}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${shaderSections.section12
+                            ? 'bg-brand/20 border-brand/30 text-brand'
+                            : 'bg-red-500/20 border-red-500/30 text-red-500'
+                            }`}
+                    >
+                        {shaderSections.section12 ? 'ON' : 'OFF'}
+                    </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                    {/* Icon (Dark Mode) */}
-                    <div className="flex flex-col items-center justify-center space-y-4 p-8 bg-black rounded-3xl overflow-hidden shadow-2xl">
-                        <h4 className="text-brand/60 text-xs font-mono uppercase tracking-widest">BRAND ICON (LiquidMetal)</h4>
-                        <div className="w-64 h-64 relative">
-                            <LiquidMetal
-                                colorBack="#000000"
-                                colorTint="#94ca42"
-                                shape="circle"
-                                image="/header-icon-dark-mode (1).svg"
-                                repetition={6}
-                                softness={0.8}
-                                shiftRed={0.8}
-                                shiftBlue={-0.8}
-                                distortion={0.4}
-                                contour={0.4}
-                                speed={1}
-                                scale={0.8}
-                                fit="contain"
-                                style={{ width: '100%', height: '100%' }}
-                            />
-                        </div>
-                        <p className="text-[10px] text-white/40 text-center">Main brand icon with LiquidMetal overlay.</p>
-                    </div>
+                {shaderSections.section12 && (
 
-                    {/* Wordmark (Dark Mode) */}
-                    <div className="flex flex-col items-center justify-center space-y-4 p-8 bg-black rounded-3xl overflow-hidden shadow-2xl">
-                        <h4 className="text-brand/60 text-xs font-mono uppercase tracking-widest">WORDMARK (LiquidMetal)</h4>
-                        <div className="w-full h-32 relative">
-                            <LiquidMetal
-                                colorBack="#000000"
-                                colorTint="#94ca42"
-                                shape="none"
-                                image="/xcreate-wordmark-logo-dark-mode.png"
-                                repetition={8}
-                                softness={0.6}
-                                shiftRed={0.5}
-                                shiftBlue={-0.5}
-                                distortion={0.3}
-                                contour={0.2}
-                                speed={0.6}
-                                scale={0.5}
-                                fit="contain"
-                                style={{ width: '100%', height: '100%' }}
-                            />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                        {/* Icon (Dark Mode) */}
+                        <div className="flex flex-col items-center justify-center space-y-4 p-8 bg-black rounded-3xl overflow-hidden shadow-2xl">
+                            <h4 className="text-brand/60 text-xs font-mono uppercase tracking-widest">BRAND ICON (LiquidMetal)</h4>
+                            <div className="w-64 h-64 relative">
+                                <LiquidMetal
+                                    colorBack="#000000"
+                                    colorTint="#94ca42"
+                                    shape="circle"
+                                    image="/header-icon-dark-mode (1).svg"
+                                    repetition={6}
+                                    softness={0.8}
+                                    shiftRed={0.8}
+                                    shiftBlue={-0.8}
+                                    distortion={0.4}
+                                    contour={0.4}
+                                    speed={1}
+                                    scale={0.8}
+                                    fit="contain"
+                                    style={{ width: '100%', height: '100%' }}
+                                />
+                            </div>
+                            <p className="text-[10px] text-white/40 text-center">Main brand icon with LiquidMetal overlay.</p>
                         </div>
-                        <p className="text-[10px] text-white/40 text-center">Wordmark with flowing metal texture.</p>
+
+                        {/* Wordmark (Dark Mode) */}
+                        <div className="flex flex-col items-center justify-center space-y-4 p-8 bg-black rounded-3xl overflow-hidden shadow-2xl">
+                            <h4 className="text-brand/60 text-xs font-mono uppercase tracking-widest">WORDMARK (LiquidMetal)</h4>
+                            <div className="w-full h-32 relative">
+                                <LiquidMetal
+                                    colorBack="#000000"
+                                    colorTint="#94ca42"
+                                    shape="none"
+                                    image="/xcreate-wordmark-logo-dark-mode.png"
+                                    repetition={8}
+                                    softness={0.6}
+                                    shiftRed={0.5}
+                                    shiftBlue={-0.5}
+                                    distortion={0.3}
+                                    contour={0.2}
+                                    speed={0.6}
+                                    scale={0.5}
+                                    fit="contain"
+                                    style={{ width: '100%', height: '100%' }}
+                                />
+                            </div>
+                            <p className="text-[10px] text-white/40 text-center">Wordmark with flowing metal texture.</p>
+                        </div>
                     </div>
-                </div>
+                )}
             </section>
 
             {/* --- 13. LIQUIDMETAL SHADER LAB --- */}
             <section className="space-y-8 pt-12 border-t border-black/10 dark:border-white/10">
-                <div>
-                    <h2 className="text-2xl font-bold text-brand">13. LiquidMetal Shader Lab</h2>
-                    <p className="opacity-70 mt-1">Experiment with shader parameters. Text masks render directly on the page canvas.</p>
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h2 className="text-2xl font-bold text-brand">13. LiquidMetal Shader Lab</h2>
+                        <p className="opacity-70 mt-1">Experiment with shader parameters. Text masks render directly on the page canvas.</p>
+                    </div>
+                    <button
+                        onClick={() => toggleSection('section13')}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${shaderSections.section13
+                            ? 'bg-brand/20 border-brand/30 text-brand'
+                            : 'bg-red-500/20 border-red-500/30 text-red-500'
+                            }`}
+                    >
+                        {shaderSections.section13 ? 'ON' : 'OFF'}
+                    </button>
                 </div>
 
-                {/* TEXT MASK PREVIEWS */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Preview 1: Main Text */}
-                    <div
-                        className="relative h-28 cursor-pointer flex items-center justify-center rounded-2xl border border-black/5 dark:border-white/5"
-                        onMouseEnter={() => { sliderPreviewHoverRef.current = true; }}
-                        onMouseLeave={() => { sliderPreviewHoverRef.current = false; }}
-                    >
-                        <svg className="w-full h-full" viewBox="0 0 500 80" preserveAspectRatio="xMidYMid meet">
-                            <defs>
-                                <clipPath id="liquid-text-mask-1">
+                {shaderSections.section13 && (
+                    <>
+                        {/* TEXT MASK PREVIEWS */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Preview 1: Main Text (Solid Fill + Stroke Shader) */}
+                            <div
+                                className="relative h-28 cursor-pointer flex items-center justify-center rounded-2xl border border-black/5 dark:border-white/5"
+                                onMouseEnter={() => { sliderPreviewHoverRef.current = true; }}
+                                onMouseLeave={() => { sliderPreviewHoverRef.current = false; }}
+                            >
+                                <svg className="w-full h-full" viewBox="0 0 500 80" preserveAspectRatio="xMidYMid meet">
+                                    <defs>
+                                        <mask id="liquid-stroke-mask-1">
+                                            <text
+                                                x="50%"
+                                                y="50%"
+                                                dominantBaseline="middle"
+                                                textAnchor="middle"
+                                                fontSize="56"
+                                                fontWeight="800"
+                                                fontFamily="system-ui, -apple-system, sans-serif"
+                                                fill="black"
+                                                stroke="white"
+                                                strokeWidth={liquidMetalConfig.strokeWidth}
+                                                paintOrder="stroke"
+                                            >
+                                                DESIGN SYSTEM
+                                            </text>
+                                        </mask>
+                                    </defs>
+                                    {/* Solid filled text (base layer) */}
                                     <text
                                         x="50%"
                                         y="50%"
@@ -2078,38 +2162,56 @@ export const DesignLabTab: React.FC<DesignLabTabProps> = ({ styles }) => {
                                         fontSize="56"
                                         fontWeight="800"
                                         fontFamily="system-ui, -apple-system, sans-serif"
+                                        fill={isDark ? '#ffffff' : '#000000'}
                                     >
                                         DESIGN SYSTEM
                                     </text>
-                                </clipPath>
-                            </defs>
-                            <foreignObject x="0" y="0" width="100%" height="100%" clipPath="url(#liquid-text-mask-1)">
-                                <div style={{ width: '100%', height: '100%' }}>
-                                    <LiquidMetal
-                                        colorBack={isDark ? '#0F1115' : '#F9FAFB'}
-                                        colorTint={liquidMetalConfig.colorTint}
-                                        shape="none"
-                                        repetition={animatedShader.repetition}
-                                        softness={liquidMetalConfig.softness}
-                                        shiftRed={animatedShader.shiftRed}
-                                        shiftBlue={animatedShader.shiftBlue}
-                                        distortion={liquidMetalConfig.distortion}
-                                        contour={liquidMetalConfig.contour}
-                                        angle={liquidMetalConfig.angle}
-                                        speed={animatedShader.speed}
-                                        scale={animatedShader.scale}
-                                        style={{ width: '100%', height: '100%' }}
-                                    />
-                                </div>
-                            </foreignObject>
-                        </svg>
-                    </div>
+                                    {/* Shader stroke overlay */}
+                                    <foreignObject x="0" y="0" width="100%" height="100%" mask="url(#liquid-stroke-mask-1)">
+                                        <div style={{ width: '100%', height: '100%' }}>
+                                            <LiquidMetal
+                                                colorBack={isDark ? '#0F1115' : '#F9FAFB'}
+                                                colorTint={liquidMetalConfig.colorTint}
+                                                shape="none"
+                                                repetition={animatedShader.repetition}
+                                                softness={liquidMetalConfig.softness}
+                                                shiftRed={animatedShader.shiftRed}
+                                                shiftBlue={animatedShader.shiftBlue}
+                                                distortion={liquidMetalConfig.distortion}
+                                                contour={liquidMetalConfig.contour}
+                                                angle={liquidMetalConfig.angle}
+                                                speed={animatedShader.speed}
+                                                scale={animatedShader.scale}
+                                                style={{ width: '100%', height: '100%' }}
+                                            />
+                                        </div>
+                                    </foreignObject>
+                                </svg>
+                            </div>
 
-                    {/* Preview 2: Secondary Text */}
-                    <div className="relative h-28 cursor-pointer flex items-center justify-center rounded-2xl border border-black/5 dark:border-white/5">
-                        <svg className="w-full h-full" viewBox="0 0 400 80" preserveAspectRatio="xMidYMid meet">
-                            <defs>
-                                <clipPath id="liquid-text-mask-2">
+                            {/* Preview 2: Secondary Text (Solid Fill + Stroke Shader) */}
+                            <div className="relative h-28 cursor-pointer flex items-center justify-center rounded-2xl border border-black/5 dark:border-white/5">
+                                <svg className="w-full h-full" viewBox="0 0 400 80" preserveAspectRatio="xMidYMid meet">
+                                    <defs>
+                                        <mask id="liquid-stroke-mask-2">
+                                            <text
+                                                x="50%"
+                                                y="50%"
+                                                dominantBaseline="middle"
+                                                textAnchor="middle"
+                                                fontSize="52"
+                                                fontWeight="800"
+                                                fontFamily="system-ui, -apple-system, sans-serif"
+                                                fill="black"
+                                                stroke="white"
+                                                strokeWidth={liquidMetalConfig.strokeWidth}
+                                                paintOrder="stroke"
+                                            >
+                                                OFFERINGS
+                                            </text>
+                                        </mask>
+                                    </defs>
+                                    {/* Solid filled text (base layer) */}
                                     <text
                                         x="50%"
                                         y="50%"
@@ -2118,279 +2220,294 @@ export const DesignLabTab: React.FC<DesignLabTabProps> = ({ styles }) => {
                                         fontSize="52"
                                         fontWeight="800"
                                         fontFamily="system-ui, -apple-system, sans-serif"
+                                        fill={isDark ? '#ffffff' : '#000000'}
                                     >
                                         OFFERINGS
                                     </text>
-                                </clipPath>
-                            </defs>
-                            <foreignObject x="0" y="0" width="100%" height="100%" clipPath="url(#liquid-text-mask-2)">
-                                <div style={{ width: '100%', height: '100%' }}>
-                                    <LiquidMetal
-                                        colorBack={isDark ? '#0F1115' : '#F9FAFB'}
-                                        colorTint={liquidMetalConfig.colorTint}
-                                        shape="none"
-                                        repetition={animatedShader.repetition}
-                                        softness={liquidMetalConfig.softness}
-                                        shiftRed={animatedShader.shiftRed}
-                                        shiftBlue={animatedShader.shiftBlue}
-                                        distortion={liquidMetalConfig.distortion}
-                                        contour={liquidMetalConfig.contour}
-                                        angle={liquidMetalConfig.angle}
-                                        speed={animatedShader.speed}
-                                        scale={animatedShader.scale}
-                                        style={{ width: '100%', height: '100%' }}
-                                    />
-                                </div>
-                            </foreignObject>
-                        </svg>
-                    </div>
-                </div>
-
-                {/* SHAPE/IMAGE PREVIEW (Separate from Text Mask Demos) */}
-                <div className="mt-8 p-6 rounded-3xl bg-white/5 dark:bg-black/20 border border-black/10 dark:border-white/10">
-                    <div className="flex items-center gap-2 mb-4">
-                        <NeuBadge>Preview</NeuBadge>
-                        <h4 className="font-bold text-sm">Shape / Image Mode</h4>
-                    </div>
-                    <div className="relative h-64 rounded-2xl overflow-hidden">
-                        <LiquidMetal
-                            colorBack={isDark ? '#0F1115' : '#F9FAFB'}
-                            colorTint={liquidMetalConfig.colorTint}
-                            shape={liquidMetalConfig.image ? 'none' : liquidMetalConfig.shape}
-                            image={liquidMetalConfig.image || undefined}
-                            repetition={animatedShader.repetition}
-                            softness={liquidMetalConfig.softness}
-                            shiftRed={animatedShader.shiftRed}
-                            shiftBlue={animatedShader.shiftBlue}
-                            distortion={liquidMetalConfig.distortion}
-                            contour={liquidMetalConfig.contour}
-                            angle={liquidMetalConfig.angle}
-                            speed={animatedShader.speed}
-                            scale={animatedShader.scale}
-                            style={{ width: '100%', height: '100%' }}
-                        />
-                    </div>
-                    <p className="text-xs text-center opacity-50 mt-2">
-                        {liquidMetalConfig.image ? 'Image mode — shader applied to custom image' : `Shape: ${liquidMetalConfig.shape}`}
-                    </p>
-                </div>
-
-                {/* SHADER CONTROLS (Full Width, Below Grid) */}
-                <div className="mt-8 p-6 rounded-3xl bg-white/5 dark:bg-black/20 border border-black/10 dark:border-white/10 space-y-6">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <h3 className="text-lg font-bold text-brand">LiquidMetal Shader Controls</h3>
-                            <p className="text-xs opacity-60">Tweak these values to find your ideal configuration.</p>
+                                    {/* Shader stroke overlay */}
+                                    <foreignObject x="0" y="0" width="100%" height="100%" mask="url(#liquid-stroke-mask-2)">
+                                        <div style={{ width: '100%', height: '100%' }}>
+                                            <LiquidMetal
+                                                colorBack={isDark ? '#0F1115' : '#F9FAFB'}
+                                                colorTint={liquidMetalConfig.colorTint}
+                                                shape="none"
+                                                repetition={animatedShader.repetition}
+                                                softness={liquidMetalConfig.softness}
+                                                shiftRed={animatedShader.shiftRed}
+                                                shiftBlue={animatedShader.shiftBlue}
+                                                distortion={liquidMetalConfig.distortion}
+                                                contour={liquidMetalConfig.contour}
+                                                angle={liquidMetalConfig.angle}
+                                                speed={animatedShader.speed}
+                                                scale={animatedShader.scale}
+                                                style={{ width: '100%', height: '100%' }}
+                                            />
+                                        </div>
+                                    </foreignObject>
+                                </svg>
+                            </div>
                         </div>
-                        <button
-                            onClick={resetLiquidMetal}
-                            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 transition-colors"
-                        >
-                            Reset to Defaults
-                        </button>
-                    </div>
 
-                    {/* SOURCE CONTROLS */}
-                    <div className="space-y-3">
-                        <h4 className="text-xs font-bold uppercase tracking-widest opacity-40">Source</h4>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            {/* Shape Selector */}
-                            <div className="flex flex-col gap-1">
-                                <label className="text-xs opacity-60">shape</label>
-                                <select
-                                    value={liquidMetalConfig.shape}
-                                    onChange={(e) => updateLiquidMetal('shape', e.target.value)}
-                                    className="w-full h-9 rounded-lg px-2 text-sm bg-white/10 dark:bg-black/30 border border-white/10 cursor-pointer"
+                        {/* SHAPE/IMAGE PREVIEW (Separate from Text Mask Demos) */}
+                        <div className="mt-8 p-6 rounded-3xl bg-white/5 dark:bg-black/20 border border-black/10 dark:border-white/10">
+                            <div className="flex items-center gap-2 mb-4">
+                                <NeuBadge>Preview</NeuBadge>
+                                <h4 className="font-bold text-sm">Shape / Image Mode</h4>
+                            </div>
+                            <div className="relative h-64 rounded-2xl overflow-hidden">
+                                <LiquidMetal
+                                    colorBack={isDark ? '#0F1115' : '#F9FAFB'}
+                                    colorTint={liquidMetalConfig.colorTint}
+                                    shape={liquidMetalConfig.image ? 'none' : liquidMetalConfig.shape}
+                                    image={liquidMetalConfig.image || undefined}
+                                    repetition={animatedShader.repetition}
+                                    softness={liquidMetalConfig.softness}
+                                    shiftRed={animatedShader.shiftRed}
+                                    shiftBlue={animatedShader.shiftBlue}
+                                    distortion={liquidMetalConfig.distortion}
+                                    contour={liquidMetalConfig.contour}
+                                    angle={liquidMetalConfig.angle}
+                                    speed={animatedShader.speed}
+                                    scale={animatedShader.scale}
+                                    style={{ width: '100%', height: '100%' }}
+                                />
+                            </div>
+                            <p className="text-xs text-center opacity-50 mt-2">
+                                {liquidMetalConfig.image ? 'Image mode — shader applied to custom image' : `Shape: ${liquidMetalConfig.shape}`}
+                            </p>
+                        </div>
+
+                        {/* SHADER CONTROLS (Full Width, Below Grid) */}
+                        <div className="mt-8 p-6 rounded-3xl bg-white/5 dark:bg-black/20 border border-black/10 dark:border-white/10 space-y-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-lg font-bold text-brand">LiquidMetal Shader Controls</h3>
+                                    <p className="text-xs opacity-60">Tweak these values to find your ideal configuration.</p>
+                                </div>
+                                <button
+                                    onClick={resetLiquidMetal}
+                                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 transition-colors"
                                 >
-                                    <option value="none">none (full fill)</option>
-                                    <option value="circle">circle</option>
-                                    <option value="daisy">daisy</option>
-                                    <option value="diamond">diamond</option>
-                                    <option value="metaballs">metaballs</option>
-                                </select>
+                                    Reset to Defaults
+                                </button>
                             </div>
 
-                            {/* Color Tint */}
-                            <div className="flex flex-col gap-1">
-                                <label className="text-xs opacity-60">colorTint</label>
-                                <input
-                                    type="color"
-                                    value={liquidMetalConfig.colorTint}
-                                    onChange={(e) => updateLiquidMetal('colorTint', e.target.value)}
-                                    className="w-full h-9 rounded-lg cursor-pointer"
-                                />
-                            </div>
-
-                            {/* Image URL */}
-                            <div className="flex flex-col gap-1 col-span-2">
-                                <label className="text-xs opacity-60">image URL <span className="opacity-40">(overrides shape)</span></label>
-                                <input
-                                    type="text"
-                                    value={liquidMetalConfig.image}
-                                    onChange={(e) => updateLiquidMetal('image', e.target.value)}
-                                    placeholder="https://... or leave empty"
-                                    className="w-full h-9 rounded-lg px-3 text-sm bg-white/10 dark:bg-black/30 border border-white/10"
-                                />
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* PATTERN CONTROLS */}
-                    <div className="space-y-3 pt-4 border-t border-white/5">
-                        <h4 className="text-xs font-bold uppercase tracking-widest opacity-40">Pattern</h4>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            {/* Repetition */}
-                            <div className="flex flex-col gap-1">
-                                <div className="flex justify-between">
-                                    <label className="text-xs opacity-60">repetition</label>
-                                    <span className="text-xs font-mono opacity-40">{liquidMetalConfig.repetition.toFixed(2)}</span>
-                                </div>
-                                <input
-                                    type="range" min="1" max="10" step="0.01"
-                                    value={liquidMetalConfig.repetition}
-                                    onChange={(e) => updateLiquidMetal('repetition', parseFloat(e.target.value))}
-                                    className="w-full accent-brand"
-                                />
-                                <div className="flex justify-between text-[10px] opacity-30"><span>1</span><span>10</span></div>
-                            </div>
-
-                            {/* Softness */}
-                            <div className="flex flex-col gap-1">
-                                <div className="flex justify-between">
-                                    <label className="text-xs opacity-60">softness</label>
-                                    <span className="text-xs font-mono opacity-40">{liquidMetalConfig.softness.toFixed(2)}</span>
-                                </div>
-                                <input
-                                    type="range" min="0" max="1" step="0.01"
-                                    value={liquidMetalConfig.softness}
-                                    onChange={(e) => updateLiquidMetal('softness', parseFloat(e.target.value))}
-                                    className="w-full accent-brand"
-                                />
-                                <div className="flex justify-between text-[10px] opacity-30"><span>0</span><span>1</span></div>
-                            </div>
-
-                            {/* Distortion */}
-                            <div className="flex flex-col gap-1">
-                                <div className="flex justify-between">
-                                    <label className="text-xs opacity-60">distortion</label>
-                                    <span className="text-xs font-mono opacity-40">{liquidMetalConfig.distortion.toFixed(2)}</span>
-                                </div>
-                                <input
-                                    type="range" min="0" max="1" step="0.01"
-                                    value={liquidMetalConfig.distortion}
-                                    onChange={(e) => updateLiquidMetal('distortion', parseFloat(e.target.value))}
-                                    className="w-full accent-brand"
-                                />
-                                <div className="flex justify-between text-[10px] opacity-30"><span>0</span><span>1</span></div>
-                            </div>
-
-                            {/* Contour */}
-                            <div className="flex flex-col gap-1">
-                                <div className="flex justify-between">
-                                    <label className="text-xs opacity-60">contour</label>
-                                    <span className="text-xs font-mono opacity-40">{liquidMetalConfig.contour.toFixed(2)}</span>
-                                </div>
-                                <input
-                                    type="range" min="0" max="1" step="0.01"
-                                    value={liquidMetalConfig.contour}
-                                    onChange={(e) => updateLiquidMetal('contour', parseFloat(e.target.value))}
-                                    className="w-full accent-brand"
-                                />
-                                <div className="flex justify-between text-[10px] opacity-30"><span>0</span><span>1</span></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* COLOR SHIFT & MOTION */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-white/5">
-                        {/* Color Shift */}
-                        <div className="space-y-3">
-                            <h4 className="text-xs font-bold uppercase tracking-widest opacity-40">Color Shift</h4>
-                            <div className="grid grid-cols-2 gap-4">
-                                {/* Shift Red */}
-                                <div className="flex flex-col gap-1">
-                                    <div className="flex justify-between">
-                                        <label className="text-xs opacity-60">shiftRed</label>
-                                        <span className="text-xs font-mono opacity-40">{liquidMetalConfig.shiftRed.toFixed(2)}</span>
+                            {/* SOURCE CONTROLS */}
+                            <div className="space-y-3">
+                                <h4 className="text-xs font-bold uppercase tracking-widest opacity-40">Source</h4>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    {/* Shape Selector */}
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-xs opacity-60">shape</label>
+                                        <select
+                                            value={liquidMetalConfig.shape}
+                                            onChange={(e) => updateLiquidMetal('shape', e.target.value)}
+                                            className="w-full h-9 rounded-lg px-2 text-sm bg-white/10 dark:bg-black/30 border border-white/10 cursor-pointer"
+                                        >
+                                            <option value="none">none (full fill)</option>
+                                            <option value="circle">circle</option>
+                                            <option value="daisy">daisy</option>
+                                            <option value="diamond">diamond</option>
+                                            <option value="metaballs">metaballs</option>
+                                        </select>
                                     </div>
-                                    <input
-                                        type="range" min="-1" max="1" step="0.01"
-                                        value={liquidMetalConfig.shiftRed}
-                                        onChange={(e) => updateLiquidMetal('shiftRed', parseFloat(e.target.value))}
-                                        className="w-full accent-red-500"
-                                    />
-                                    <div className="flex justify-between text-[10px] opacity-30"><span>-1</span><span>1</span></div>
-                                </div>
 
-                                {/* Shift Blue */}
-                                <div className="flex flex-col gap-1">
-                                    <div className="flex justify-between">
-                                        <label className="text-xs opacity-60">shiftBlue</label>
-                                        <span className="text-xs font-mono opacity-40">{liquidMetalConfig.shiftBlue.toFixed(2)}</span>
+                                    {/* Color Tint */}
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-xs opacity-60">colorTint</label>
+                                        <input
+                                            type="color"
+                                            value={liquidMetalConfig.colorTint}
+                                            onChange={(e) => updateLiquidMetal('colorTint', e.target.value)}
+                                            className="w-full h-9 rounded-lg cursor-pointer"
+                                        />
                                     </div>
-                                    <input
-                                        type="range" min="-1" max="1" step="0.01"
-                                        value={liquidMetalConfig.shiftBlue}
-                                        onChange={(e) => updateLiquidMetal('shiftBlue', parseFloat(e.target.value))}
-                                        className="w-full accent-blue-500"
-                                    />
-                                    <div className="flex justify-between text-[10px] opacity-30"><span>-1</span><span>1</span></div>
+
+                                    {/* Stroke Width */}
+                                    <div className="flex flex-col gap-1">
+                                        <div className="flex justify-between">
+                                            <label className="text-xs opacity-60">strokeWidth</label>
+                                            <span className="text-xs font-mono opacity-40">{liquidMetalConfig.strokeWidth}</span>
+                                        </div>
+                                        <input
+                                            type="range" min="1" max="12" step="0.5"
+                                            value={liquidMetalConfig.strokeWidth}
+                                            onChange={(e) => updateLiquidMetal('strokeWidth', parseFloat(e.target.value))}
+                                            className="w-full accent-brand"
+                                        />
+                                        <div className="flex justify-between text-[10px] opacity-30"><span>1</span><span>12</span></div>
+                                    </div>
+
+                                    {/* Image URL */}
+                                    <div className="flex flex-col gap-1 col-span-2">
+                                        <label className="text-xs opacity-60">image URL <span className="opacity-40">(overrides shape)</span></label>
+                                        <input
+                                            type="text"
+                                            value={liquidMetalConfig.image}
+                                            onChange={(e) => updateLiquidMetal('image', e.target.value)}
+                                            placeholder="https://... or leave empty"
+                                            className="w-full h-9 rounded-lg px-3 text-sm bg-white/10 dark:bg-black/30 border border-white/10"
+                                        />
+                                    </div>
                                 </div>
                             </div>
-                        </div>
 
-                        {/* Motion / Transform */}
-                        <div className="space-y-3">
-                            <h4 className="text-xs font-bold uppercase tracking-widest opacity-40">Motion & Transform</h4>
-                            <div className="grid grid-cols-3 gap-4">
-                                {/* Angle */}
-                                <div className="flex flex-col gap-1">
-                                    <div className="flex justify-between">
-                                        <label className="text-xs opacity-60">angle</label>
-                                        <span className="text-xs font-mono opacity-40">{liquidMetalConfig.angle.toFixed(0)}°</span>
+                            {/* PATTERN CONTROLS */}
+                            <div className="space-y-3 pt-4 border-t border-white/5">
+                                <h4 className="text-xs font-bold uppercase tracking-widest opacity-40">Pattern</h4>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    {/* Repetition */}
+                                    <div className="flex flex-col gap-1">
+                                        <div className="flex justify-between">
+                                            <label className="text-xs opacity-60">repetition</label>
+                                            <span className="text-xs font-mono opacity-40">{liquidMetalConfig.repetition.toFixed(2)}</span>
+                                        </div>
+                                        <input
+                                            type="range" min="1" max="10" step="0.01"
+                                            value={liquidMetalConfig.repetition}
+                                            onChange={(e) => updateLiquidMetal('repetition', parseFloat(e.target.value))}
+                                            className="w-full accent-brand"
+                                        />
+                                        <div className="flex justify-between text-[10px] opacity-30"><span>1</span><span>10</span></div>
                                     </div>
-                                    <input
-                                        type="range" min="0" max="360" step="1"
-                                        value={liquidMetalConfig.angle}
-                                        onChange={(e) => updateLiquidMetal('angle', parseFloat(e.target.value))}
-                                        className="w-full accent-brand"
-                                    />
-                                </div>
 
-                                {/* Speed */}
-                                <div className="flex flex-col gap-1">
-                                    <div className="flex justify-between">
-                                        <label className="text-xs opacity-60">speed</label>
-                                        <span className="text-xs font-mono opacity-40">{liquidMetalConfig.speed.toFixed(2)}</span>
+                                    {/* Softness */}
+                                    <div className="flex flex-col gap-1">
+                                        <div className="flex justify-between">
+                                            <label className="text-xs opacity-60">softness</label>
+                                            <span className="text-xs font-mono opacity-40">{liquidMetalConfig.softness.toFixed(2)}</span>
+                                        </div>
+                                        <input
+                                            type="range" min="0" max="1" step="0.01"
+                                            value={liquidMetalConfig.softness}
+                                            onChange={(e) => updateLiquidMetal('softness', parseFloat(e.target.value))}
+                                            className="w-full accent-brand"
+                                        />
+                                        <div className="flex justify-between text-[10px] opacity-30"><span>0</span><span>1</span></div>
                                     </div>
-                                    <input
-                                        type="range" min="0" max="3" step="0.01"
-                                        value={liquidMetalConfig.speed}
-                                        onChange={(e) => updateLiquidMetal('speed', parseFloat(e.target.value))}
-                                        className="w-full accent-brand"
-                                    />
-                                </div>
 
-                                {/* Scale */}
-                                <div className="flex flex-col gap-1">
-                                    <div className="flex justify-between">
-                                        <label className="text-xs opacity-60">scale</label>
-                                        <span className="text-xs font-mono opacity-40">{liquidMetalConfig.scale.toFixed(2)}</span>
+                                    {/* Distortion */}
+                                    <div className="flex flex-col gap-1">
+                                        <div className="flex justify-between">
+                                            <label className="text-xs opacity-60">distortion</label>
+                                            <span className="text-xs font-mono opacity-40">{liquidMetalConfig.distortion.toFixed(2)}</span>
+                                        </div>
+                                        <input
+                                            type="range" min="0" max="1" step="0.01"
+                                            value={liquidMetalConfig.distortion}
+                                            onChange={(e) => updateLiquidMetal('distortion', parseFloat(e.target.value))}
+                                            className="w-full accent-brand"
+                                        />
+                                        <div className="flex justify-between text-[10px] opacity-30"><span>0</span><span>1</span></div>
                                     </div>
-                                    <input
-                                        type="range" min="0.1" max="4" step="0.01"
-                                        value={liquidMetalConfig.scale}
-                                        onChange={(e) => updateLiquidMetal('scale', parseFloat(e.target.value))}
-                                        className="w-full accent-brand"
-                                    />
+
+                                    {/* Contour */}
+                                    <div className="flex flex-col gap-1">
+                                        <div className="flex justify-between">
+                                            <label className="text-xs opacity-60">contour</label>
+                                            <span className="text-xs font-mono opacity-40">{liquidMetalConfig.contour.toFixed(2)}</span>
+                                        </div>
+                                        <input
+                                            type="range" min="0" max="1" step="0.01"
+                                            value={liquidMetalConfig.contour}
+                                            onChange={(e) => updateLiquidMetal('contour', parseFloat(e.target.value))}
+                                            className="w-full accent-brand"
+                                        />
+                                        <div className="flex justify-between text-[10px] opacity-30"><span>0</span><span>1</span></div>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
 
-                    {/* Current Config Display */}
-                    <pre className="text-[10px] p-3 rounded-lg bg-black/30 border border-white/5 overflow-x-auto font-mono">
-                        {`<LiquidMetal
+                            {/* COLOR SHIFT & MOTION */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-white/5">
+                                {/* Color Shift */}
+                                <div className="space-y-3">
+                                    <h4 className="text-xs font-bold uppercase tracking-widest opacity-40">Color Shift</h4>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        {/* Shift Red */}
+                                        <div className="flex flex-col gap-1">
+                                            <div className="flex justify-between">
+                                                <label className="text-xs opacity-60">shiftRed</label>
+                                                <span className="text-xs font-mono opacity-40">{liquidMetalConfig.shiftRed.toFixed(2)}</span>
+                                            </div>
+                                            <input
+                                                type="range" min="-1" max="1" step="0.01"
+                                                value={liquidMetalConfig.shiftRed}
+                                                onChange={(e) => updateLiquidMetal('shiftRed', parseFloat(e.target.value))}
+                                                className="w-full accent-red-500"
+                                            />
+                                            <div className="flex justify-between text-[10px] opacity-30"><span>-1</span><span>1</span></div>
+                                        </div>
+
+                                        {/* Shift Blue */}
+                                        <div className="flex flex-col gap-1">
+                                            <div className="flex justify-between">
+                                                <label className="text-xs opacity-60">shiftBlue</label>
+                                                <span className="text-xs font-mono opacity-40">{liquidMetalConfig.shiftBlue.toFixed(2)}</span>
+                                            </div>
+                                            <input
+                                                type="range" min="-1" max="1" step="0.01"
+                                                value={liquidMetalConfig.shiftBlue}
+                                                onChange={(e) => updateLiquidMetal('shiftBlue', parseFloat(e.target.value))}
+                                                className="w-full accent-blue-500"
+                                            />
+                                            <div className="flex justify-between text-[10px] opacity-30"><span>-1</span><span>1</span></div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Motion / Transform */}
+                                <div className="space-y-3">
+                                    <h4 className="text-xs font-bold uppercase tracking-widest opacity-40">Motion & Transform</h4>
+                                    <div className="grid grid-cols-3 gap-4">
+                                        {/* Angle */}
+                                        <div className="flex flex-col gap-1">
+                                            <div className="flex justify-between">
+                                                <label className="text-xs opacity-60">angle</label>
+                                                <span className="text-xs font-mono opacity-40">{liquidMetalConfig.angle.toFixed(0)}°</span>
+                                            </div>
+                                            <input
+                                                type="range" min="0" max="360" step="1"
+                                                value={liquidMetalConfig.angle}
+                                                onChange={(e) => updateLiquidMetal('angle', parseFloat(e.target.value))}
+                                                className="w-full accent-brand"
+                                            />
+                                        </div>
+
+                                        {/* Speed */}
+                                        <div className="flex flex-col gap-1">
+                                            <div className="flex justify-between">
+                                                <label className="text-xs opacity-60">speed</label>
+                                                <span className="text-xs font-mono opacity-40">{liquidMetalConfig.speed.toFixed(2)}</span>
+                                            </div>
+                                            <input
+                                                type="range" min="0" max="3" step="0.01"
+                                                value={liquidMetalConfig.speed}
+                                                onChange={(e) => updateLiquidMetal('speed', parseFloat(e.target.value))}
+                                                className="w-full accent-brand"
+                                            />
+                                        </div>
+
+                                        {/* Scale */}
+                                        <div className="flex flex-col gap-1">
+                                            <div className="flex justify-between">
+                                                <label className="text-xs opacity-60">scale</label>
+                                                <span className="text-xs font-mono opacity-40">{liquidMetalConfig.scale.toFixed(2)}</span>
+                                            </div>
+                                            <input
+                                                type="range" min="0.1" max="4" step="0.01"
+                                                value={liquidMetalConfig.scale}
+                                                onChange={(e) => updateLiquidMetal('scale', parseFloat(e.target.value))}
+                                                className="w-full accent-brand"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Current Config Display */}
+                            <pre className="text-[10px] p-3 rounded-lg bg-black/30 border border-white/5 overflow-x-auto font-mono">
+                                {`<LiquidMetal
   shape="${liquidMetalConfig.shape}"${liquidMetalConfig.image ? `\n  image="${liquidMetalConfig.image}"` : ''}
   colorTint="${liquidMetalConfig.colorTint}"
   repetition={${liquidMetalConfig.repetition.toFixed(2)}}
@@ -2403,8 +2520,10 @@ export const DesignLabTab: React.FC<DesignLabTabProps> = ({ styles }) => {
   speed={${liquidMetalConfig.speed.toFixed(2)}}
   scale={${liquidMetalConfig.scale.toFixed(2)}}
 />`}
-                    </pre>
-                </div>
+                            </pre>
+                        </div>
+                    </>
+                )}
             </section>
         </div >
     );

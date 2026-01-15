@@ -1,6 +1,7 @@
-import React from 'react';
 import LandingShell from '../components/landing/LandingShell';
 import HeroSection from '../components/landing/HeroSection';
+import TrustBar from '../components/landing/TrustBar';
+import LandingHeader from '../components/landing/menu/LandingHeader';
 
 /**
  * LandingPage - Clean shell for the new landing page
@@ -10,7 +11,9 @@ import HeroSection from '../components/landing/HeroSection';
 const LandingPage: React.FC = () => {
     return (
         <LandingShell>
+            <LandingHeader />
             <HeroSection />
+            <TrustBar />
 
             {/* 
                 Placeholder for "What We Do" Section 
@@ -23,3 +26,4 @@ const LandingPage: React.FC = () => {
 };
 
 export default LandingPage;
+

@@ -24,7 +24,12 @@ import {
     File,
     Image as ImageIcon,
     Link2,
-    Loader2
+    Loader2,
+    Building2,
+    User,
+    Bell,
+    Mail as MailIcon,
+    Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DatePicker } from '../DatePicker';
@@ -37,6 +42,8 @@ interface TaskDetailPanelProps {
     onDelete: (taskId: string) => void;
     isNew?: boolean;
     businessId?: string;
+    businesses?: { id: string; name: string }[];
+    teamMembers?: { userId: string; userName: string; avatarUrl?: string }[];
 }
 
 const PRIORITY_OPTIONS = [
@@ -130,7 +137,9 @@ export const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
     onSave,
     onDelete,
     isNew = false,
-    businessId
+    businessId,
+    businesses = [],
+    teamMembers = []
 }) => {
     const { styles } = useThemeStyles();
     const [editedTask, setEditedTask] = useState<Task | null>(null);
@@ -142,6 +151,7 @@ export const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
     const [assets, setAssets] = useState<Asset[]>([]);
     const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
     const [isLoadingAssets, setIsLoadingAssets] = useState(false);
+    const [linkSuccess, setLinkSuccess] = useState(false);
 
     // Auto-save debounce timer
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -196,15 +206,18 @@ export const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
         };
     }, []);
 
-    // Auto-save on blur
+    // Auto-save on blur - SKIP for new tasks (they get saved on explicit action only)
     const triggerAutoSave = useCallback(() => {
+        // Don't auto-save new tasks - the parent will close the panel on save
+        if (isNew) return;
+
         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
         saveTimeoutRef.current = setTimeout(() => {
             if (editedTask && editedTask.title.trim()) {
                 onSave(editedTask);
             }
         }, 500);
-    }, [editedTask, onSave]);
+    }, [editedTask, onSave, isNew]);
 
     // Removed early return - AnimatePresence needs the component to stay mounted during exit
 
@@ -395,6 +408,7 @@ export const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
                                                 onSave(updated);
                                             }}
                                         />
+
                                     </div>
 
                                     {/* Due date - use DatePicker directly */}
@@ -407,6 +421,35 @@ export const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
                                         }}
                                     />
 
+                                    {/* Repeat section - show if due date is set */}
+                                    {editedTask.dueDate && (
+                                        <div className={`flex items-center gap-3 py-2 px-3 rounded-lg ${styles.bgAccent}`}>
+                                            <span className={`text-xs ${styles.textSub}`}>Repeat:</span>
+                                            <div className="flex gap-1.5">
+                                                {(['none', 'daily', 'weekly', 'monthly'] as const).map(opt => (
+                                                    <button
+                                                        key={opt}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const updated = {
+                                                                ...editedTask,
+                                                                recurrence: opt === 'none' ? undefined : { type: opt }
+                                                            };
+                                                            setEditedTask(updated);
+                                                            onSave(updated);
+                                                        }}
+                                                        className={`text-xs px-2.5 py-1 rounded-md transition-all ${(opt === 'none' && !editedTask.recurrence) || editedTask.recurrence?.type === opt
+                                                            ? `${styles.shadowIn} text-brand font-medium`
+                                                            : `${styles.shadowOut} ${styles.textSub} hover:text-brand`
+                                                            }`}
+                                                    >
+                                                        {opt === 'none' ? 'None' : opt.charAt(0).toUpperCase() + opt.slice(1)}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {/* Description section */}
                                     <Section title="Description" icon={<FileText size={12} />} description="Add notes, briefs, or context">
                                         <NeuTextArea
@@ -417,6 +460,140 @@ export const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
                                             className="w-full min-h-[80px]"
                                         />
                                     </Section>
+
+                                    {/* Business section - only show if multiple businesses */}
+                                    {businesses.length > 0 && (
+                                        <Section
+                                            title="Business"
+                                            icon={<Building2 size={12} />}
+                                            description="Tag this task to a specific business"
+                                            badge={editedTask.businessId ? businesses.find(b => b.id === editedTask.businessId)?.name : undefined}
+                                        >
+                                            <div className="flex flex-wrap gap-2 max-h-[120px] overflow-y-auto">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const updated = { ...editedTask, businessId: undefined };
+                                                        setEditedTask(updated);
+                                                        onSave(updated);
+                                                    }}
+                                                    className={`text-xs px-3 py-1.5 rounded-lg transition-all ${!editedTask.businessId
+                                                        ? `${styles.bgAccent} ${styles.shadowIn} text-brand font-medium`
+                                                        : `${styles.bg} ${styles.shadowOut} ${styles.textSub} hover:text-brand`
+                                                        }`}
+                                                >
+                                                    None
+                                                </button>
+                                                {businesses.map(b => (
+                                                    <button
+                                                        key={b.id}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const updated = { ...editedTask, businessId: b.id };
+                                                            setEditedTask(updated);
+                                                            onSave(updated);
+                                                        }}
+                                                        className={`text-xs px-3 py-1.5 rounded-lg transition-all truncate max-w-[140px] ${editedTask.businessId === b.id
+                                                            ? `${styles.bgAccent} ${styles.shadowIn} text-brand font-medium`
+                                                            : `${styles.bg} ${styles.shadowOut} ${styles.textSub} hover:text-brand`
+                                                            }`}
+                                                        title={b.name}
+                                                    >
+                                                        {b.name}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </Section>
+                                    )}
+
+                                    {/* Assignee section - only show if team members exist */}
+                                    {teamMembers.length > 0 && (
+                                        <Section
+                                            title="Assignee"
+                                            icon={<User size={12} />}
+                                            description="Assign this task to a team member"
+                                            badge={editedTask.assigneeId ? teamMembers.find(m => m.userId === editedTask.assigneeId)?.userName : undefined}
+                                        >
+                                            <div className="space-y-3">
+                                                {/* Team member pills */}
+                                                <div className="flex flex-wrap gap-2 max-h-[120px] overflow-y-auto">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const updated = { ...editedTask, assigneeId: undefined };
+                                                            setEditedTask(updated);
+                                                            onSave(updated);
+                                                        }}
+                                                        className={`text-xs px-3 py-1.5 rounded-lg transition-all ${!editedTask.assigneeId
+                                                            ? `${styles.bgAccent} ${styles.shadowIn} text-brand font-medium`
+                                                            : `${styles.bg} ${styles.shadowOut} ${styles.textSub} hover:text-brand`
+                                                            }`}
+                                                    >
+                                                        Unassigned
+                                                    </button>
+                                                    {teamMembers.map(m => (
+                                                        <button
+                                                            key={m.userId}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const updated = { ...editedTask, assigneeId: m.userId };
+                                                                setEditedTask(updated);
+                                                                onSave(updated);
+                                                            }}
+                                                            className={`text-xs px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${editedTask.assigneeId === m.userId
+                                                                ? `${styles.bgAccent} ${styles.shadowIn} text-brand font-medium`
+                                                                : `${styles.bg} ${styles.shadowOut} ${styles.textSub} hover:text-brand`
+                                                                }`}
+                                                            title={m.userName}
+                                                        >
+                                                            {m.avatarUrl ? (
+                                                                <img src={m.avatarUrl} alt="" className="w-4 h-4 rounded-full" />
+                                                            ) : (
+                                                                <div className="w-4 h-4 rounded-full bg-brand/20 flex items-center justify-center">
+                                                                    <span className="text-[8px] font-bold text-brand">{m.userName.charAt(0).toUpperCase()}</span>
+                                                                </div>
+                                                            )}
+                                                            <span className="truncate max-w-[100px]">{m.userName}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+
+                                                {/* Notification toggles - only show when assigned */}
+                                                {editedTask.assigneeId && (
+                                                    <div className={`flex items-center gap-4 pt-2 border-t ${styles.border}`}>
+                                                        <label className={`flex items-center gap-2 text-xs ${styles.textSub} cursor-pointer`}>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={editedTask.notifyInApp !== false}
+                                                                onChange={(e) => {
+                                                                    const updated = { ...editedTask, notifyInApp: e.target.checked };
+                                                                    setEditedTask(updated);
+                                                                    onSave(updated);
+                                                                }}
+                                                                className="w-3.5 h-3.5 rounded accent-brand"
+                                                            />
+                                                            <Bell size={12} />
+                                                            In-app
+                                                        </label>
+                                                        <label className={`flex items-center gap-2 text-xs ${styles.textSub} cursor-pointer`}>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={editedTask.notifyEmail === true}
+                                                                onChange={(e) => {
+                                                                    const updated = { ...editedTask, notifyEmail: e.target.checked };
+                                                                    setEditedTask(updated);
+                                                                    onSave(updated);
+                                                                }}
+                                                                className="w-3.5 h-3.5 rounded accent-brand"
+                                                            />
+                                                            <MailIcon size={12} />
+                                                            Email
+                                                        </label>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </Section>
+                                    )}
 
                                     {/* Checkpoints section */}
                                     <Section
@@ -639,14 +816,14 @@ export const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
                             </div >
 
                             {/* Asset Picker Column */}
-                            <AnimatePresence>
+                            <AnimatePresence mode="popLayout">
                                 {showAssetPicker && (
                                     <motion.div
-                                        initial={{ opacity: 0, width: 0 }}
-                                        animate={{ opacity: 1, width: 300 }}
-                                        exit={{ opacity: 0, width: 0 }}
-                                        transition={{ type: 'spring', bounce: 0.1, duration: 0.25 }}
-                                        className="h-full flex flex-col overflow-hidden"
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        exit={{ opacity: 0 }}
+                                        transition={{ duration: 0.2 }}
+                                        className="w-[300px] h-full flex flex-col overflow-hidden"
                                     >
                                         <div className={`flex items-center justify-between p-4 border-b ${styles.border}`}>
                                             <h3 className={`text-sm font-semibold ${styles.textMain}`}>Link Assets</h3>
@@ -707,6 +884,7 @@ export const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
                                                 <NeuButton
                                                     variant="primary"
                                                     className="w-full"
+                                                    disabled={linkSuccess}
                                                     onClick={() => {
                                                         const newAttachments: TaskAttachment[] = selectedAssetIds.map(assetId => {
                                                             const asset = assets.find(a => a.id === assetId);
@@ -715,7 +893,7 @@ export const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
                                                                 type: 'asset',
                                                                 name: asset?.stylePreset || 'Generated Asset',
                                                                 url: asset?.content || '',
-                                                                mimeType: 'image/png', // All generated assets are images
+                                                                mimeType: 'image/png',
                                                                 assetId,
                                                                 thumbnailUrl: asset?.content,
                                                                 createdAt: new Date().toISOString()
@@ -727,11 +905,21 @@ export const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
                                                         };
                                                         setEditedTask(updated);
                                                         onSave(updated);
-                                                        setShowAssetPicker(false);
-                                                        setSelectedAssetIds([]);
+
+                                                        // Show success feedback before closing
+                                                        setLinkSuccess(true);
+                                                        setTimeout(() => {
+                                                            setShowAssetPicker(false);
+                                                            setSelectedAssetIds([]);
+                                                            setLinkSuccess(false);
+                                                        }, 400);
                                                     }}
                                                 >
-                                                    <Link2 size={14} /> Link {selectedAssetIds.length} Asset{selectedAssetIds.length > 1 ? 's' : ''}
+                                                    {linkSuccess ? (
+                                                        <><Check size={14} /> Linked!</>
+                                                    ) : (
+                                                        <><Link2 size={14} /> Link {selectedAssetIds.length} Asset{selectedAssetIds.length > 1 ? 's' : ''}</>
+                                                    )}
                                                 </NeuButton>
                                             </div>
                                         )}

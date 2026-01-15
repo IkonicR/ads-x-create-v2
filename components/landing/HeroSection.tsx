@@ -18,10 +18,10 @@ const LIBRARY_ASSETS_LEFT = [
 ];
 
 const LIBRARY_ASSETS_RIGHT = [
-    'https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/yxup0oddz/generated/1768382125482_h0riin.png',
+    'https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/ag54vxxn0/generated/1768403068220_u9cul.png',
     'https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/yxup0oddz/generated/1768382050296_6ew52j.png',
-    'https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/yxup0oddz/generated/1768381887659_wnfm3s.png',
-    'https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/yxup0oddz/generated/1768381862830_e8hnw.png',
+    'https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/ag54vxxn0/generated/1768403085814_shjnrg.png',
+    'https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/ag54vxxn0/generated/1768403221434_yi0uu.png',
     'https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/yxup0oddz/generated/1768381488849_uh6u84.png',
     'https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/yxup0oddz/generated/1768380680481_5q6ggn.png',
     'https://afzrfcqidscibmgptkcl.supabase.co/storage/v1/object/public/business-assets/yxup0oddz/generated/1768380677030_efg73l.png',
@@ -71,16 +71,16 @@ const HeroSection: React.FC<HeroSectionProps> = ({
                             </div>
 
                             {/* Headline */}
-                            <h1 className="text-5xl md:text-6xl lg:text-[4rem] font-bold text-gray-900 leading-[1.1] tracking-tight">
-                                What Agencies Charge Thousands For.{' '}
-                                <span className="text-brand block mt-2">You Get Instantly.</span>
+                            <h1 className="text-5xl md:text-6xl lg:text-[4rem] font-bold text-gray-900 leading-[0.9] tracking-tight">
+                                The First AI Marketing Team That Actually{' '}
+                                <span className="text-brand block">Remembers Your Business.</span>
                             </h1>
 
                             {/* Subtitle */}
                             <p className="text-xl text-gray-600 leading-relaxed font-medium">
-                                Professional ads for growing businesses.
+                                Paste your URL. We extract your colors, voice, and products.
                                 <br className="hidden md:block" />
-                                AI-powered, brand-aware, and ready to convert.
+                                Generate on-brand ads in seconds.
                             </p>
                         </div>
 
@@ -114,12 +114,12 @@ const HeroSection: React.FC<HeroSectionProps> = ({
                     <MarqueeColumn
                         images={leftColumnImages}
                         direction="down"
-                        speed={35}
+                        speed={100}
                     />
                     <MarqueeColumn
                         images={rightColumnImages}
                         direction="up"
-                        speed={40}
+                        speed={120}
                     />
                 </div>
 

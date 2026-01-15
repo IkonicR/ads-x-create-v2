@@ -23,6 +23,7 @@ import { TaskCard, TaskDetailPanel, TaskFiltersBar } from '../components/tasks';
 import { GalaxyHeading } from '../components/GalaxyHeading';
 import { Plus, Undo2, AlertTriangle } from 'lucide-react';
 import { useTaskContext, TaskProvider } from '../context/TaskContext';
+import { TeamService } from '../services/teamService';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // ============================================================================
@@ -31,6 +32,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 interface TasksInnerProps {
   businessDesc: string;
+  activeBusinessId: string;
+  businesses: { id: string; name: string }[];
 }
 
 const COLUMNS: { id: Task['status']; label: string; warnAt: number }[] = [
@@ -60,12 +63,12 @@ const DroppableColumn: React.FC<DroppableColumnProps> = ({ id, children, classNa
   );
 };
 
-const TasksInner: React.FC<TasksInnerProps> = ({ businessDesc }) => {
+const TasksInner: React.FC<TasksInnerProps> = ({ businessDesc, activeBusinessId, businesses }) => {
   const { styles } = useThemeStyles();
   const {
     tasks,
     isLoading,
-    businessId,
+    userId,
     addTask,
     updateTask,
     deleteTask,
@@ -81,6 +84,33 @@ const TasksInner: React.FC<TasksInnerProps> = ({ businessDesc }) => {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [isNewTask, setIsNewTask] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<{ userId: string; userName: string; avatarUrl?: string }[]>([]);
+
+  // Fetch team members for all businesses
+  useEffect(() => {
+    const fetchTeamMembers = async () => {
+      if (businesses.length === 0) return;
+
+      const allMembers: { userId: string; userName: string; avatarUrl?: string }[] = [];
+      const seenUserIds = new Set<string>();
+
+      for (const biz of businesses) {
+        const members = await TeamService.getBusinessMembers(biz.id);
+        for (const m of members) {
+          if (!seenUserIds.has(m.userId)) {
+            seenUserIds.add(m.userId);
+            allMembers.push({
+              userId: m.userId,
+              userName: m.userName || 'Unknown',
+              avatarUrl: m.avatarUrl
+            });
+          }
+        }
+      }
+      setTeamMembers(allMembers);
+    };
+    fetchTeamMembers();
+  }, [businesses]);
 
   // Keyboard shortcut for undo
   useEffect(() => {
@@ -117,6 +147,13 @@ const TasksInner: React.FC<TasksInnerProps> = ({ businessDesc }) => {
     });
     return grouped;
   }, [filteredTasks]);
+
+  // Create businessMap for quick lookup
+  const businessMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    businesses.forEach(b => { map[b.id] = b.name; });
+    return map;
+  }, [businesses]);
 
   // Get active task for overlay
   const activeTask = activeId ? tasks.find(t => t.id === activeId) : null;
@@ -243,6 +280,7 @@ const TasksInner: React.FC<TasksInnerProps> = ({ businessDesc }) => {
           onChange={setFilters}
           taskCount={tasks.length}
           filteredCount={filteredTasks.length}
+          businesses={businesses}
         />
       </div>
 
@@ -302,6 +340,7 @@ const TasksInner: React.FC<TasksInnerProps> = ({ businessDesc }) => {
                               task={task}
                               onEdit={handleEditTask}
                               onDelete={handleDeleteTask}
+                              businessName={task.businessId ? businessMap[task.businessId] : undefined}
                             />
                           </motion.div>
                         ))}
@@ -329,6 +368,7 @@ const TasksInner: React.FC<TasksInnerProps> = ({ businessDesc }) => {
               onEdit={() => { }}
               onDelete={() => { }}
               isDragging
+              businessName={activeTask.businessId ? businessMap[activeTask.businessId] : undefined}
             />
           )}
         </DragOverlay>
@@ -342,7 +382,9 @@ const TasksInner: React.FC<TasksInnerProps> = ({ businessDesc }) => {
         onSave={handleSaveTask}
         onDelete={handleDeleteTask}
         isNew={isNewTask}
-        businessId={businessId}
+        businessId={activeBusinessId}
+        businesses={businesses}
+        teamMembers={teamMembers}
       />
     </div>
   );
@@ -353,14 +395,16 @@ const TasksInner: React.FC<TasksInnerProps> = ({ businessDesc }) => {
 // ============================================================================
 
 interface TasksProps {
-  businessId: string;
+  userId: string;
   businessDesc: string;
+  activeBusinessId: string;
+  businesses: { id: string; name: string }[];
 }
 
-const Tasks: React.FC<TasksProps> = ({ businessId, businessDesc }) => {
+const Tasks: React.FC<TasksProps> = ({ userId, businessDesc, activeBusinessId, businesses }) => {
   return (
-    <TaskProvider businessId={businessId}>
-      <TasksInner businessDesc={businessDesc} />
+    <TaskProvider userId={userId}>
+      <TasksInner businessDesc={businessDesc} activeBusinessId={activeBusinessId} businesses={businesses} />
     </TaskProvider>
   );
 };

@@ -87,9 +87,10 @@ export const generateImage = async (
   aspectRatio: string = "1:1",
   modelTier: 'flash' | 'pro' | 'ultra' = 'pro',
   strategy?: GenerationStrategy,
-  thinkingMode?: 'LOW' | 'HIGH' // NEW: Optional thinking mode
+  thinkingMode?: 'LOW' | 'HIGH',
+  isFreedomMode?: boolean // NEW: Freedom Mode flag
 ): Promise<{ jobId: string; status: string }> => {
-  console.log(`[GeminiService] Initializing generation for business: ${business.id}`, { prompt, modelTier, aspectRatio });
+  console.log(`[GeminiService] Initializing generation for business: ${business.id}`, { prompt, modelTier, aspectRatio, isFreedomMode });
 
   // Call the server-side API instead of generating client-side
   // This enables job persistence across page refreshes
@@ -103,10 +104,11 @@ export const generateImage = async (
       styleId: stylePreset?.id,
       subjectId: subjectContext ? undefined : undefined, // Will be passed via subjectContext
       modelTier,
-      thinkingMode, // NEW: Pass thinking mode to server
+      thinkingMode,
       strategy,
       subjectContext,
-      stylePreset
+      stylePreset,
+      isFreedomMode // NEW: Pass freedom mode to server
     })
   });
 

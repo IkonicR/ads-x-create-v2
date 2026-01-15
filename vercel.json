@@ -5,8 +5,7 @@
   "outputDirectory": "dist",
   "functions": {
     "api/**/*.ts": {
-      "maxDuration": 60,
-      "includeFiles": "emails/**/*"
+      "maxDuration": 60
     }
   },
   "rewrites": [

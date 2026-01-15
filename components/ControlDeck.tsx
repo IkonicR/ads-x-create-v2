@@ -2,12 +2,12 @@ import React, { useState, useRef, useMemo } from 'react';
 import { useOnClickOutside } from '../hooks/useOnClickOutside';
 import { useThemeStyles, useNeuButtonProps, NeuButton, NeuInput, NeuDropdown } from './NeuComponents';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Send, LayoutTemplate, Palette, X, Crop, User, Smartphone, Monitor, Square, Box, RectangleVertical, RectangleHorizontal, Zap, Diamond, Plus, Camera, Sun, Edit2, Target, DollarSign, Tag, RotateCcw } from 'lucide-react';
-import { StylePreset, ViewState, GenerationStrategy, VisualMotif, CampaignMode, SubjectType, Offering, TeamMember } from '../types';
+import { Sparkles, Send, LayoutTemplate, Palette, X, Crop, User, Smartphone, Monitor, Square, Box, RectangleVertical, RectangleHorizontal, Zap, Diamond, Plus, Camera, Sun, Edit2, DollarSign, Tag, Unlock, SlidersHorizontal } from 'lucide-react';
+import { StylePreset, ViewState, SubjectType, Offering, TeamMember } from '../types';
 import { SmartPromptInput } from './SmartPromptInput';
 import { useNavigation } from '../context/NavigationContext';
 import { supabase } from '../services/supabase';
-import { CAMPAIGN_PRESETS, applyPreset, DEFAULT_STRATEGY } from '../constants/campaignPresets';
+// campaignPresets import removed - Strategy tab removed
 
 // Helper to format technical strings
 const formatValue = (val: string) => {
@@ -16,7 +16,7 @@ const formatValue = (val: string) => {
 };
 
 interface ControlDeckProps {
-  onGenerate: (prompt: string, styleId: string, ratio: string, subjectId: string, modelTier: 'flash' | 'pro' | 'ultra', thinkingMode?: 'LOW' | 'HIGH') => void;
+  onGenerate: (prompt: string, styleId: string, ratio: string, subjectId: string, modelTier: 'flash' | 'pro' | 'ultra', thinkingMode?: 'LOW' | 'HIGH', isFreedomMode?: boolean) => void;
   styles: StylePreset[];
   subjects: { id: string; name: string; type: 'product' | 'service' | 'person' | 'location'; imageUrl?: string; price?: string; description?: string; preserveLikeness?: boolean; promotion?: string }[];
   activeCount?: number;
@@ -29,10 +29,7 @@ interface ControlDeckProps {
     modelTier: 'flash' | 'pro' | 'ultra';
     timestamp: number;
   } | null;
-  // Strategy Props
-  strategy: GenerationStrategy;
-  onStrategyChange: (strategy: GenerationStrategy) => void;
-  visualMotifs?: VisualMotif[];
+  // Strategy Props removed - Strategy tab removed
 }
 
 const RATIOS = [
@@ -60,9 +57,7 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
   activeCount = 0,
   firstJobProgress = 0,
   restoreState,
-  strategy,
-  onStrategyChange,
-  visualMotifs = []
+  // strategy props removed
 }) => {
   const { styles: themeStyles, theme } = useThemeStyles();
   const { navigate } = useNavigation();
@@ -103,10 +98,13 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
     localStorage.setItem('gen_thinkingMode', thinkingMode || '');
   }, [prompt, selectedStyle, selectedRatio, selectedSubject, modelTier, thinkingMode]);
 
-  const [activeMenu, setActiveMenu] = useState<'style' | 'ratio' | 'subject' | 'model' | 'strategy' | null>(null);
+  const [activeMenu, setActiveMenu] = useState<'style' | 'ratio' | 'subject' | 'model' | 'adPrefs' | null>(null);
 
-  // Determine layout mode - Strategy also uses larger layout
-  const isComplexMenu = activeMenu === 'style' || activeMenu === 'subject' || activeMenu === 'strategy';
+  // Freedom Mode state
+  const [isFreedomMode, setIsFreedomMode] = useState(false);
+
+  // Determine layout mode
+  const isComplexMenu = activeMenu === 'style' || activeMenu === 'subject';
 
   // Derive subject type from selected subject
   const selectedSubjectData = useMemo(() => {
@@ -119,36 +117,19 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
     return selectedSubjectData.type as SubjectType;
   }, [selectedSubjectData]);
 
-  // Strategy update helper
-  const updateStrategy = (updates: Partial<GenerationStrategy>) => {
-    onStrategyChange({
-      ...strategy,
-      ...updates,
-      mode: 'custom', // Any manual change sets mode to custom
-    });
-  };
-
-  // Handle preset click - clicking active preset deselects it
-  const handlePresetClick = (mode: Exclude<CampaignMode, 'custom'>) => {
-    if (strategy.mode === mode) {
-      onStrategyChange({ ...strategy, mode: 'custom' });
-    } else {
-      const newStrategy = applyPreset(mode, subjectType, strategy);
-      onStrategyChange(newStrategy);
-    }
-  };
+  // Strategy helpers removed - Strategy tab removed
 
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!prompt.trim()) return;
-    onGenerate(prompt, selectedStyle, selectedRatio, selectedSubject, modelTier, thinkingMode);
+    onGenerate(prompt, selectedStyle, selectedRatio, selectedSubject, modelTier, thinkingMode, isFreedomMode);
   };
 
   const activeStyleName = aestheticStyles.find(s => s.id === selectedStyle)?.name || 'Style';
   const activeRatioLabel = RATIOS.find(r => r.id === selectedRatio)?.label || 'Ratio';
   const activeSubject = subjects.find(s => s.id === selectedSubject);
   const activeSubjectLabel = activeSubject ? activeSubject.name : 'Subject';
-  const activeStrategyLabel = strategy.mode === 'custom' ? 'Strategy' : CAMPAIGN_PRESETS[strategy.mode as Exclude<CampaignMode, 'custom'>]?.name || 'Strategy';
+  // activeStrategyLabel removed - Strategy tab removed
 
   // Neumorphic Tokens
   const slabBg = themeStyles.bg;
@@ -174,7 +155,8 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
   const styleMotion = useNeuButtonProps(activeMenu === 'style');
   const ratioMotion = useNeuButtonProps(activeMenu === 'ratio');
   const modelMotion = useNeuButtonProps(activeMenu === 'model');
-  const strategyMotion = useNeuButtonProps(activeMenu === 'strategy' || strategy.mode !== 'custom');
+  const adPrefsMotion = useNeuButtonProps(activeMenu === 'adPrefs');
+  const freedomMotion = useNeuButtonProps(isFreedomMode);
 
   const menuRef = useRef<HTMLDivElement>(null);
   useOnClickOutside(menuRef, () => setActiveMenu(null));
@@ -204,15 +186,13 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
                   absolute bottom-full mb-4 left-1/2 -translate-x-1/2 
                   overflow-hidden rounded-3xl ${slabBg} ${slabShadowClass} border border-white/5 flex 
                   ${isComplexMenu
-                    ? activeMenu === 'strategy'
-                      ? 'w-[90vw] max-w-xl max-h-[70vh] flex-col'
-                      : 'w-[90vw] max-w-6xl h-[70vh] flex-col md:flex-row'
+                    ? 'w-[90vw] max-w-6xl h-[70vh] flex-col md:flex-row'
                     : 'w-full max-w-xl max-h-[50vh] flex-col'}
                 `}
               >
                 {/* LEFT SIDE (Grid) */}
-                <div className={`flex-1 flex flex-col h-full relative ${isComplexMenu && activeMenu !== 'strategy' ? 'w-full md:w-1/2 lg:w-7/12 border-r border-white/5' : 'w-full'}`}>
-                  <div className={`p-4 border-b border-gray-100 dark:border-white/5 shrink-0 flex justify-between items-center ${isComplexMenu && activeMenu !== 'strategy' ? 'md:border-b-0' : ''}`}>
+                <div className={`flex-1 flex flex-col h-full relative ${isComplexMenu ? 'w-full md:w-1/2 lg:w-7/12 border-r border-white/5' : 'w-full'}`}>
+                  <div className={`p-4 border-b border-gray-100 dark:border-white/5 shrink-0 flex justify-between items-center ${isComplexMenu ? 'md:border-b-0' : ''}`}>
                     <h4 className={`text-xs font-bold uppercase tracking-wider ${themeStyles.textSub}`}>
                       Select {activeMenu ? activeMenu.charAt(0).toUpperCase() + activeMenu.slice(1) : ''}
                     </h4>
@@ -343,265 +323,42 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
                       </div>
                     )}
 
-                    {/* Strategy Menu */}
-                    {activeMenu === 'strategy' && (
+
+                    {/* Ad Prefs Menu */}
+                    {activeMenu === 'adPrefs' && (
                       <div className="space-y-4">
-                        {/* Campaign Presets */}
-                        <div>
-                          <h4 className={`text-xs font-bold uppercase tracking-wider ${themeStyles.textSub} mb-2`}>Campaign Mode</h4>
-                          <p className={`text-xs ${themeStyles.textSub} mb-3 opacity-70`}>Quick presets that configure all settings for you</p>
-                          <div className="grid grid-cols-2 gap-2">
-                            {Object.entries(CAMPAIGN_PRESETS).map(([key, preset]) => (
-                              <button
-                                key={key}
-                                onClick={() => handlePresetClick(key as Exclude<CampaignMode, 'custom'>)}
-                                className={`p-3 rounded-2xl text-center transition-all flex flex-col items-center gap-1 ${strategy.mode === key
-                                  ? `${insetShadowClass} text-brand`
-                                  : `${btnShadowClass} ${themeStyles.textMain} hover:translate-y-[-1px]`
-                                  }`}
-                              >
-                                <span className="text-xl">{preset.icon}</span>
-                                <span className="text-xs font-bold">{preset.name}</span>
-                                <span className={`text-[10px] ${strategy.mode === key ? 'text-brand/70' : 'opacity-50'}`}>{preset.description}</span>
-                              </button>
-                            ))}
-                          </div>
-                          {strategy.mode === 'custom' && (
-                            <p className={`text-xs ${themeStyles.textSub} text-center mt-2`}>Custom settings active</p>
-                          )}
+                        <p className={`text-xs ${themeStyles.textSub} opacity-70`}>Toggle what appears in your generated ads. These are session-only and won't save to your profile.</p>
+
+                        {/* Visibility Toggles */}
+                        <div className="flex flex-col gap-2">
+                          {[
+                            { key: 'showBusinessName', label: 'Business Name' },
+                            { key: 'showSlogan', label: 'Slogan' },
+                            { key: 'showContact', label: 'Contact Info' },
+                            { key: 'showLocation', label: 'Location' },
+                            { key: 'showHours', label: 'Business Hours' },
+                          ].map(toggle => (
+                            <button
+                              key={toggle.key}
+                              onClick={() => {
+                                // TODO: Wire to actual toggle state
+                                setActiveMenu(null);
+                              }}
+                              className={`w-full py-2 px-4 rounded-xl text-xs font-bold text-left flex justify-between items-center ${btnShadowClass} ${themeStyles.textMain} hover:translate-y-[-1px] transition-all`}
+                            >
+                              <span>{toggle.label}</span>
+                              <span className="text-brand">On</span>
+                            </button>
+                          ))}
                         </div>
-
-                        {/* Dynamic Controls based on subject type */}
-                        <div className={`p-3 rounded-2xl ${btnShadowClass}`}>
-                          <h4 className={`text-xs font-bold uppercase tracking-wider ${themeStyles.textSub} mb-1`}>
-                            {subjectType === 'product' && 'Product Controls'}
-                            {subjectType === 'service' && 'Service Controls'}
-                            {subjectType === 'person' && 'Team Controls'}
-                            {subjectType === 'location' && 'Location Controls'}
-                            {subjectType === 'none' && 'Brand Controls'}
-                          </h4>
-                          <p className={`text-[10px] ${themeStyles.textSub} opacity-60 mb-3`}>Override how this ad is generated</p>
-
-                          {/* Product Controls */}
-                          {subjectType === 'product' && (
-                            <div className="space-y-3">
-                              {/* Framing */}
-                              <div>
-                                <label className={`text-xs ${themeStyles.textSub} block mb-1`}>Framing</label>
-                                <div className="flex gap-2">
-                                  <button
-                                    onClick={() => updateStrategy({ productFraming: 'hero' })}
-                                    className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${strategy.productFraming === 'hero'
-                                      ? `${insetShadowClass} text-brand`
-                                      : `${btnShadowClass} ${themeStyles.textMain}`
-                                      }`}
-                                  >Hero</button>
-                                  <button
-                                    onClick={() => updateStrategy({ productFraming: 'lifestyle' })}
-                                    className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${strategy.productFraming === 'lifestyle'
-                                      ? `${insetShadowClass} text-brand`
-                                      : `${btnShadowClass} ${themeStyles.textMain}`
-                                      }`}
-                                  >Lifestyle</button>
-                                </div>
-                              </div>
-
-                              {/* Deal Layer */}
-                              <div>
-                                <label className={`text-xs ${themeStyles.textSub} block mb-1`}>Deal Layer</label>
-                                <div className="flex gap-2">
-                                  <button
-                                    onClick={() => updateStrategy({ showPrice: !strategy.showPrice })}
-                                    disabled={!selectedSubjectData?.price}
-                                    className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 ${!selectedSubjectData?.price ? 'opacity-40 cursor-not-allowed' : ''} ${strategy.showPrice
-                                      ? `${insetShadowClass} text-brand`
-                                      : `${btnShadowClass} ${themeStyles.textMain}`
-                                      }`}
-                                  ><DollarSign size={12} /> Price</button>
-                                  <button
-                                    onClick={() => updateStrategy({ showPromo: !strategy.showPromo })}
-                                    disabled={!selectedSubjectData?.promotion}
-                                    className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 ${!selectedSubjectData?.promotion ? 'opacity-40 cursor-not-allowed' : ''} ${strategy.showPromo
-                                      ? `${insetShadowClass} text-brand`
-                                      : `${btnShadowClass} ${themeStyles.textMain}`
-                                      }`}
-                                  ><Tag size={12} /> Promo</button>
-                                </div>
-                              </div>
-
-                              {/* Strict Likeness */}
-                              <button
-                                onClick={() => updateStrategy({ strictLikeness: !strategy.strictLikeness })}
-                                className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition-all ${strategy.strictLikeness
-                                  ? `${insetShadowClass} text-brand`
-                                  : `${btnShadowClass} ${themeStyles.textMain}`
-                                  }`}
-                              >Strict Product Likeness</button>
-                            </div>
-                          )}
-
-                          {/* Team Controls */}
-                          {subjectType === 'person' && (
-                            <div className="space-y-3">
-                              {/* Framing */}
-                              <div>
-                                <label className={`text-xs ${themeStyles.textSub} block mb-1`}>Framing</label>
-                                <div className="flex gap-2">
-                                  <button
-                                    onClick={() => updateStrategy({ teamFraming: 'portrait' })}
-                                    className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${strategy.teamFraming === 'portrait'
-                                      ? `${insetShadowClass} text-brand`
-                                      : `${btnShadowClass} ${themeStyles.textMain}`
-                                      }`}
-                                  >Portrait</button>
-                                  <button
-                                    onClick={() => updateStrategy({ teamFraming: 'action' })}
-                                    className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${strategy.teamFraming === 'action'
-                                      ? `${insetShadowClass} text-brand`
-                                      : `${btnShadowClass} ${themeStyles.textMain}`
-                                      }`}
-                                  >Action</button>
-                                </div>
-                              </div>
-
-                              {/* Name & Role */}
-                              <button
-                                onClick={() => updateStrategy({ showNameRole: !strategy.showNameRole })}
-                                className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition-all ${strategy.showNameRole
-                                  ? `${insetShadowClass} text-brand`
-                                  : `${btnShadowClass} ${themeStyles.textMain}`
-                                  }`}
-                              >Show Name & Role</button>
-
-                              {/* Vibe */}
-                              <div>
-                                <label className={`text-xs ${themeStyles.textSub} block mb-1`}>Vibe</label>
-                                <div className="flex gap-2">
-                                  {(['authority', 'friendly', 'creative'] as const).map(vibe => (
-                                    <button
-                                      key={vibe}
-                                      onClick={() => updateStrategy({ teamVibe: vibe })}
-                                      className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all capitalize ${strategy.teamVibe === vibe
-                                        ? `${insetShadowClass} text-brand`
-                                        : `${btnShadowClass} ${themeStyles.textMain}`
-                                        }`}
-                                    >{vibe}</button>
-                                  ))}
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* No Subject Controls */}
-                          {subjectType === 'none' && (
-                            <div>
-                              <label className={`text-xs ${themeStyles.textSub} block mb-1`}>Copy Strategy</label>
-                              <div className="grid grid-cols-2 gap-2">
-                                {(['benefit', 'problem_solution', 'urgent', 'minimal'] as const).map(strat => (
-                                  <button
-                                    key={strat}
-                                    onClick={() => updateStrategy({ copyStrategy: strat })}
-                                    className={`py-2 px-3 rounded-xl text-xs font-bold transition-all ${strategy.copyStrategy === strat
-                                      ? `${insetShadowClass} text-brand`
-                                      : `${btnShadowClass} ${themeStyles.textMain}`
-                                      }`}
-                                  >{strat === 'problem_solution' ? 'Problem-Solution' : strat.charAt(0).toUpperCase() + strat.slice(1)}</button>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Service Controls */}
-                          {subjectType === 'service' && (
-                            <div className="space-y-3">
-                              <div>
-                                <label className={`text-xs ${themeStyles.textSub} block mb-1`}>Service Framing</label>
-                                <div className="grid grid-cols-3 gap-2">
-                                  {([
-                                    { id: 'in_action', label: 'In Action' },
-                                    { id: 'outcome', label: 'Outcome' },
-                                    { id: 'abstract', label: 'Abstract' }
-                                  ] as const).map(opt => (
-                                    <button
-                                      key={opt.id}
-                                      onClick={() => updateStrategy({ serviceFraming: opt.id })}
-                                      className={`py-2 px-3 rounded-xl text-xs font-bold transition-all ${strategy.serviceFraming === opt.id
-                                        ? `${insetShadowClass} text-brand`
-                                        : `${btnShadowClass} ${themeStyles.textMain}`
-                                        }`}
-                                    >{opt.label}</button>
-                                  ))}
-                                </div>
-                                <p className={`text-[10px] ${themeStyles.textSub} mt-1 opacity-60`}>
-                                  {strategy.serviceFraming === 'in_action' && 'Show the service being performed'}
-                                  {strategy.serviceFraming === 'outcome' && 'Focus on the result/transformation'}
-                                  {strategy.serviceFraming === 'abstract' && 'Conceptual representation'}
-                                </p>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Location Controls */}
-                          {subjectType === 'location' && (
-                            <div className="space-y-3">
-                              <div>
-                                <label className={`text-xs ${themeStyles.textSub} block mb-1`}>Location Framing</label>
-                                <div className="grid grid-cols-2 gap-2">
-                                  {([
-                                    { id: 'exterior', label: 'Exterior' },
-                                    { id: 'interior', label: 'Interior' },
-                                    { id: 'detail', label: 'Detail' },
-                                    { id: 'crowd', label: 'Crowd' }
-                                  ] as const).map(opt => (
-                                    <button
-                                      key={opt.id}
-                                      onClick={() => updateStrategy({ locationFraming: opt.id })}
-                                      className={`py-2 px-3 rounded-xl text-xs font-bold transition-all ${strategy.locationFraming === opt.id
-                                        ? `${insetShadowClass} text-brand`
-                                        : `${btnShadowClass} ${themeStyles.textMain}`
-                                        }`}
-                                    >{opt.label}</button>
-                                  ))}
-                                </div>
-                                <p className={`text-[10px] ${themeStyles.textSub} mt-1 opacity-60`}>
-                                  {strategy.locationFraming === 'exterior' && 'Showcase the storefront facade'}
-                                  {strategy.locationFraming === 'interior' && 'Warm interior atmosphere'}
-                                  {strategy.locationFraming === 'detail' && 'Architectural details, ambiance'}
-                                  {strategy.locationFraming === 'crowd' && 'Show activity, customers'}
-                                </p>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* CTA Override */}
-                        <div>
-                          <label className={`text-xs ${themeStyles.textSub} block mb-1`}>CTA Override</label>
-                          <input
-                            type="text"
-                            value={strategy.customCta || ''}
-                            onChange={(e) => updateStrategy({ customCta: e.target.value })}
-                            placeholder="Leave empty for AI to decide"
-                            className={`w-full px-4 py-2 rounded-xl text-sm ${insetShadowClass} bg-transparent ${themeStyles.textMain} placeholder-gray-400 outline-none`}
-                          />
-                        </div>
-
-                        {/* Reset Button */}
-                        <button
-                          onClick={() => { onStrategyChange(DEFAULT_STRATEGY); setActiveMenu(null); }}
-                          className={`w-full py-2 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${btnShadowClass} ${themeStyles.textSub} hover:text-brand active:scale-95`}
-                        >
-                          <RotateCcw size={14} />
-                          Reset to Defaults
-                        </button>
                       </div>
                     )}
 
                   </div>
                 </div>
 
-                {/* RIGHT SIDE: The Inspector (Desktop Only, Style/Subject ONLY - not Strategy) */}
-                {isComplexMenu && activeMenu !== 'strategy' && (
+                {/* RIGHT SIDE: The Inspector (Desktop Only, Style/Subject) */}
+                {isComplexMenu && (
                   <div className="hidden md:flex w-[350px] shrink-0 flex-col p-6 pl-0">
                     <div className="flex justify-end">
                       <button onClick={() => setActiveMenu(null)} className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
@@ -727,11 +484,12 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
         {/* Top Controls Grid */}
         <div className="flex w-full gap-1 px-1">
 
-          {/* Subject */}
+          {/* Subject - disabled in Freedom mode */}
           <motion.button
-            onClick={() => setActiveMenu(activeMenu === 'subject' ? null : 'subject')}
+            onClick={() => !isFreedomMode && setActiveMenu(activeMenu === 'subject' ? null : 'subject')}
             {...subjectMotion}
-            className={`flex-1 flex items-center justify-center gap-2 px-2 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-colors duration-200 truncate ${activeMenu === 'subject' || selectedSubject
+            disabled={isFreedomMode}
+            className={`flex-1 flex items-center justify-center gap-2 px-2 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-colors duration-200 truncate ${isFreedomMode ? 'opacity-40 cursor-not-allowed' : ''} ${activeMenu === 'subject' || selectedSubject
               ? `text-brand`
               : `${themeStyles.textMain}`
               }`}
@@ -754,11 +512,12 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
             <span className="truncate hidden sm:inline">{activePresetName}</span>
           </button> */}
 
-          {/* Style */}
+          {/* Style - disabled in Freedom mode */}
           <motion.button
-            onClick={() => setActiveMenu(activeMenu === 'style' ? null : 'style')}
+            onClick={() => !isFreedomMode && setActiveMenu(activeMenu === 'style' ? null : 'style')}
             {...styleMotion}
-            className={`flex-1 flex items-center justify-center gap-2 px-2 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-colors duration-200 truncate ${activeMenu === 'style'
+            disabled={isFreedomMode}
+            className={`flex-1 flex items-center justify-center gap-2 px-2 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-colors duration-200 truncate ${isFreedomMode ? 'opacity-40 cursor-not-allowed' : ''} ${activeMenu === 'style'
               ? `text-brand`
               : `${themeStyles.textMain}`
               }`}
@@ -780,11 +539,12 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
             <span className="truncate hidden sm:inline">{activeRatioLabel}</span>
           </motion.button>
 
-          {/* NEW: Model Tier Selector */}
+          {/* Model Tier Selector - disabled in Freedom mode */}
           <motion.button
-            onClick={() => setActiveMenu(activeMenu === 'model' ? null : 'model')}
+            onClick={() => !isFreedomMode && setActiveMenu(activeMenu === 'model' ? null : 'model')}
             {...modelMotion}
-            className={`flex-1 flex items-center justify-center gap-2 px-2 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-colors duration-200 truncate ${activeMenu === 'model'
+            disabled={isFreedomMode}
+            className={`flex-1 flex items-center justify-center gap-2 px-2 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-colors duration-200 truncate ${isFreedomMode ? 'opacity-40 cursor-not-allowed' : ''} ${activeMenu === 'model'
               ? `text-brand`
               : `${themeStyles.textMain}`
               }`}
@@ -793,17 +553,40 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
             <span className="truncate hidden sm:inline">{getTierLabel()}</span>
           </motion.button>
 
-          {/* Strategy */}
+
+          {/* Ad Prefs - disabled in Freedom mode */}
           <motion.button
-            onClick={() => setActiveMenu(activeMenu === 'strategy' ? null : 'strategy')}
-            {...strategyMotion}
-            className={`flex-1 flex items-center justify-center gap-2 px-2 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-colors duration-200 truncate ${activeMenu === 'strategy' || strategy.mode !== 'custom'
+            onClick={() => !isFreedomMode && setActiveMenu(activeMenu === 'adPrefs' ? null : 'adPrefs')}
+            {...adPrefsMotion}
+            disabled={isFreedomMode}
+            className={`flex-1 flex items-center justify-center gap-2 px-2 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-colors duration-200 truncate ${isFreedomMode ? 'opacity-40 cursor-not-allowed' : ''} ${activeMenu === 'adPrefs'
               ? `text-brand`
               : `${themeStyles.textMain}`
               }`}
           >
-            <Target size={14} />
-            <span className="truncate hidden sm:inline">{activeStrategyLabel}</span>
+            <SlidersHorizontal size={14} />
+            <span className="truncate hidden sm:inline">Ad Prefs</span>
+          </motion.button>
+
+          {/* Freedom Mode Toggle */}
+          <motion.button
+            onClick={() => {
+              setIsFreedomMode(!isFreedomMode);
+              if (!isFreedomMode) {
+                // Entering Freedom mode - clear subject and style selections
+                setSelectedSubject('');
+                setSelectedStyle('');
+                setActiveMenu(null);
+              }
+            }}
+            {...freedomMotion}
+            className={`flex-1 flex items-center justify-center gap-2 px-2 py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-all duration-200 truncate ${isFreedomMode
+              ? `text-brand ${insetShadowClass}`
+              : `${themeStyles.textMain}`
+              }`}
+          >
+            <Unlock size={14} />
+            <span className="truncate hidden sm:inline">Freedom</span>
           </motion.button>
         </div>
 

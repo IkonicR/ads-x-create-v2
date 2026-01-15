@@ -1,13 +1,19 @@
 import React from 'react';
 import { TaskCategory, Task } from '../../types';
 import { NeuInput, NeuDropdown, useThemeStyles } from '../NeuComponents';
-import { Search, X, FileText, Megaphone, Smartphone, Mail, BarChart3, Pin, Circle } from 'lucide-react';
+import { Search, X, FileText, Megaphone, Smartphone, Mail, BarChart3, Pin, Circle, Building2 } from 'lucide-react';
 
 interface TaskFilters {
     search: string;
     category: TaskCategory | 'all';
     priority: Task['priority'] | 'all';
     status: Task['status'] | 'all';
+    businessId: string | 'all';
+}
+
+interface BusinessOption {
+    id: string;
+    name: string;
 }
 
 interface TaskFiltersProps {
@@ -15,6 +21,7 @@ interface TaskFiltersProps {
     onChange: (filters: TaskFilters) => void;
     taskCount: number;
     filteredCount: number;
+    businesses?: BusinessOption[];
 }
 
 const CATEGORY_OPTIONS = [
@@ -35,22 +42,32 @@ const PRIORITY_OPTIONS = [
     { value: 'Urgent', label: 'Urgent', icon: <Circle size={8} className="fill-red-500 text-red-500" /> }
 ];
 
+const STATUS_OPTIONS = [
+    { value: 'all', label: 'All Statuses' },
+    { value: 'To Do', label: 'To Do' },
+    { value: 'In Progress', label: 'In Progress' },
+    { value: 'Blocked', label: 'Blocked' },
+    { value: 'Done', label: 'Done' }
+];
+
 export const TaskFiltersBar: React.FC<TaskFiltersProps> = ({
     filters,
     onChange,
     taskCount,
-    filteredCount
+    filteredCount,
+    businesses = []
 }) => {
     const { styles } = useThemeStyles();
 
-    const hasActiveFilters = filters.search || filters.category !== 'all' || filters.priority !== 'all';
+    const hasActiveFilters = filters.search || filters.category !== 'all' || filters.priority !== 'all' || filters.businessId !== 'all' || filters.status !== 'all';
 
     const clearFilters = () => {
         onChange({
             search: '',
             category: 'all',
             priority: 'all',
-            status: 'all'
+            status: 'all',
+            businessId: 'all'
         });
     };
 
@@ -67,6 +84,20 @@ export const TaskFiltersBar: React.FC<TaskFiltersProps> = ({
                 />
             </div>
 
+            {/* Business filter */}
+            {businesses.length > 0 && (
+                <NeuDropdown
+                    overlay
+                    className="min-w-[180px]"
+                    value={filters.businessId}
+                    options={[
+                        { value: 'all', label: 'All Businesses', icon: <Building2 size={12} /> },
+                        ...businesses.map(b => ({ value: b.id, label: b.name }))
+                    ]}
+                    onChange={val => onChange({ ...filters, businessId: val as string })}
+                />
+            )}
+
             {/* Category filter */}
             <NeuDropdown
                 overlay
@@ -81,6 +112,14 @@ export const TaskFiltersBar: React.FC<TaskFiltersProps> = ({
                 value={filters.priority}
                 options={PRIORITY_OPTIONS}
                 onChange={val => onChange({ ...filters, priority: val as Task['priority'] | 'all' })}
+            />
+
+            {/* Status filter */}
+            <NeuDropdown
+                overlay
+                value={filters.status}
+                options={STATUS_OPTIONS}
+                onChange={val => onChange({ ...filters, status: val as Task['status'] | 'all' })}
             />
 
             {/* Clear filters */}
