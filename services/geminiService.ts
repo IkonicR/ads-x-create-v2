@@ -47,7 +47,7 @@ export const generateAdCopy = async (
   }
 
   try {
-    const model = AI_MODELS.text;
+    const model = AI_MODELS.textDirect;
     const prompt = `
       Write a short, punchy ad copy for a business named "${businessName}".
       Product: "${productName}".
@@ -80,7 +80,7 @@ export const generateChatTitle = async (message: string): Promise<string> => {
 
   try {
     const response = await ai.models.generateContent({
-      model: AI_MODELS.text,
+      model: AI_MODELS.textDirect,
       contents: `Generate a concise 3-6 word title for this chat request. Be descriptive but brief. No quotes or punctuation at the end.
 
 User message: "${message.slice(0, 200)}"
@@ -215,7 +215,7 @@ export const enhanceOffering = async (
 
   try {
     const response = await ai.models.generateContent({
-      model: AI_MODELS.text,
+      model: AI_MODELS.textDirect,
       contents: prompt,
       config: { responseMimeType: 'application/json' }
     });
@@ -359,7 +359,7 @@ export const sendChatMessage = async (
     }
 
     const chat = ai.chats.create({
-      model: AI_MODELS.text,
+      model: AI_MODELS.textDirect,
       config: {
         systemInstruction: systemInstruction,
         tools: [{ functionDeclarations: [imageGenTool] }],
