@@ -5,7 +5,7 @@ import { Asset, Business } from '../types';
 import { useThemeStyles, NeuButton, NeuIconButton, NeuInput, NeuTooltip, NeuExpandableText } from './NeuComponents';
 import { GalaxyCanvas } from './GalaxyCanvas';
 import { X, Download, Trash2, Copy, Share2, Maximize2, ZoomIn, Search, MessageCircle, History, Send, Calendar, Instagram, Facebook, Linkedin, Sparkles, Clock, Check, AlertCircle, FileOutput, RotateCcw, Info, CheckSquare, Square, Plus } from 'lucide-react';
-import { ExportPanel, ExportPreset } from './ExportPanel';
+import { ExportPanel, ExportPreset, ExportPreviewState } from './ExportPanel';
 import { ShareModal } from './ShareModal';
 import { downloadImage, getAssetFilename } from '../utils/download';
 import { useSocial } from '../context/SocialContext';
@@ -125,6 +125,9 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
 
   // Export Panel State
   const [showExportPanel, setShowExportPanel] = useState(false);
+  const [exportPreviewState, setExportPreviewState] = useState<ExportPreviewState | null>(null);
+  const [cropOffsetX, setCropOffsetX] = useState(0.5);
+  const [cropOffsetY, setCropOffsetY] = useState(0.5);
 
   // Share Modal State
   const [showShareModal, setShowShareModal] = useState(false);
@@ -470,7 +473,7 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 20 }}
             transition={{ type: "spring", duration: 0.5, bounce: 0.3 }}
-            className={`relative z-10 w-[95%] max-w-6xl max-h-[90vh] rounded-[2.5rem] overflow-hidden flex flex-col md:flex-row shadow-2xl border border-white/10 ${styles.bg}`}
+            className={`relative z-10 w-[95%] max-w-6xl h-[85vh] rounded-[2.5rem] overflow-hidden flex flex-col md:flex-row shadow-2xl border border-white/10 ${styles.bg}`}
             style={{
               boxShadow: '0 0 0 1px rgba(255,255,255,0.05), 0 20px 50px -12px rgba(0,0,0,0.5)'
             }}
@@ -487,7 +490,7 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
             </button>
 
             {/* Left: The Asset (The "View") */}
-            <div className={`flex-1 relative flex items-center justify-center p-6 md:p-10 ${styles.bg} overflow-hidden`}>
+            <div className={`flex-1 relative flex items-center justify-center p-6 md:p-10 min-h-[400px] ${styles.bg} overflow-hidden`}>
 
               {/* Zoom Tooltip/Icon */}
               <div className="absolute top-6 left-6 z-20 pointer-events-none opacity-50">
@@ -499,19 +502,96 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
               <motion.div
                 layoutId={`asset-${asset.id}`}
                 ref={imageContainerRef}
-                onClick={toggleZoom}
-                onMouseMove={handleMouseMove}
-                className={`relative w-full h-full max-h-[70vh] flex items-center justify-center rounded-3xl overflow-hidden ${styles.bg} ${styles.shadowOut} border border-white/5 cursor-zoom-in transition-transform duration-200`}
+                onClick={!showExportPanel || !exportPreviewState?.hasPreview ? toggleZoom : undefined}
+                onMouseMove={!showExportPanel || !exportPreviewState?.hasPreview ? handleMouseMove : undefined}
+                className={`relative w-full h-full max-h-[70vh] flex items-center justify-center rounded-3xl overflow-hidden ${styles.bg} ${styles.shadowOut} border border-white/5 ${!showExportPanel || !exportPreviewState?.hasPreview ? 'cursor-zoom-in' : ''} transition-transform duration-200`}
               >
-                <img
-                  src={asset.content}
-                  alt={asset.prompt}
-                  className="max-w-full max-h-full object-contain rounded-xl transition-transform duration-100 ease-out"
-                  style={{
-                    transformOrigin: `${mousePos.x * 100}% ${mousePos.y * 100}%`,
-                    transform: isZoomed ? 'scale(2.5)' : 'scale(1)'
-                  }}
-                />
+                {showExportPanel && exportPreviewState?.hasPreview ? (
+                  // Export preview: absolutely positioned frame (doesn't affect layout)
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    {/* Frame with target aspect ratio - absolutely positioned so no layout impact */}
+                    <div
+                      className="relative overflow-hidden rounded-xl border-2 border-brand/50 shadow-lg"
+                      style={{
+                        aspectRatio: `${exportPreviewState.targetWidthPx} / ${exportPreviewState.targetHeightPx}`,
+                        maxWidth: '85%',
+                        maxHeight: '85%',
+                        width: 'auto',
+                        height: 'auto',
+                      }}
+                    >
+                      {exportPreviewState.fitMode === 'fill' ? (
+                        // Fill mode: draggable
+                        <img
+                          src={asset.content}
+                          alt={asset.prompt}
+                          draggable={false}
+                          className="w-full h-full select-none cursor-grab active:cursor-grabbing"
+                          style={{
+                            objectFit: 'cover',
+                            objectPosition: `${(1 - cropOffsetX) * 100}% ${(1 - cropOffsetY) * 100}%`,
+                          }}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const imageAspect = asset.aspectRatio ? parseFloat(asset.aspectRatio.split(':')[0]) / parseFloat(asset.aspectRatio.split(':')[1]) : 1;
+                            const targetAspect = exportPreviewState.targetWidthPx / exportPreviewState.targetHeightPx;
+                            const isHorizontalDrag = imageAspect > targetAspect;
+
+                            const handleMove = (moveEvent: MouseEvent) => {
+                              if (isHorizontalDrag) {
+                                const x = Math.max(0, Math.min(1, (moveEvent.clientX - rect.left) / rect.width));
+                                setCropOffsetX(x);
+                              } else {
+                                const y = Math.max(0, Math.min(1, (moveEvent.clientY - rect.top) / rect.height));
+                                setCropOffsetY(y);
+                              }
+                            };
+                            const handleUp = () => {
+                              window.removeEventListener('mousemove', handleMove);
+                              window.removeEventListener('mouseup', handleUp);
+                            };
+                            window.addEventListener('mousemove', handleMove);
+                            window.addEventListener('mouseup', handleUp);
+                          }}
+                        />
+                      ) : exportPreviewState.fitMode === 'stretch' ? (
+                        // Stretch mode: distort to fill
+                        <img
+                          src={asset.content}
+                          alt={asset.prompt}
+                          className="w-full h-full"
+                          style={{ objectFit: 'fill' }}
+                        />
+                      ) : (
+                        // Fit mode (default): letterbox
+                        <img
+                          src={asset.content}
+                          alt={asset.prompt}
+                          className="w-full h-full object-contain"
+                          style={{ background: isDark ? '#1a1a1a' : '#f5f5f5' }}
+                        />
+                      )}
+                    </div>
+                    {/* Mode indicator */}
+                    <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-bold ${styles.bg} ${styles.shadowOut} ${styles.textSub}`}>
+                      {exportPreviewState.fitMode === 'fill' && 'Drag to reposition'}
+                      {exportPreviewState.fitMode === 'fit' && 'Image will be letterboxed'}
+                      {exportPreviewState.fitMode === 'stretch' && 'Image will be stretched'}
+                    </div>
+                  </div>
+                ) : (
+                  // Normal view (no export preview)
+                  <img
+                    src={asset.content}
+                    alt={asset.prompt}
+                    className="max-w-full max-h-full object-contain rounded-xl transition-transform duration-100 ease-out"
+                    style={{
+                      transformOrigin: `${mousePos.x * 100}% ${mousePos.y * 100}%`,
+                      transform: isZoomed ? 'scale(2.5)' : 'scale(1)'
+                    }}
+                  />
+                )}
               </motion.div>
             </div>
 
@@ -1466,6 +1546,10 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
                       savedPresets={business?.exportPresets || []}
                       onSavePreset={handleSaveExportPreset}
                       onDeletePreset={handleDeleteExportPreset}
+                      onPreviewStateChange={setExportPreviewState}
+                      onCropOffsetChange={(x, y) => { setCropOffsetX(x); setCropOffsetY(y); }}
+                      cropOffsetX={cropOffsetX}
+                      cropOffsetY={cropOffsetY}
                     />
                   </motion.div>
                 )}

@@ -325,6 +325,19 @@ export interface TaskAttachment {
   createdAt: string;
 }
 
+// Technical specifications for deliverables
+export type DimensionUnit = 'px' | 'cm' | 'mm' | 'in';
+export type FileFormat = 'PNG' | 'JPG' | 'PDF' | 'SVG' | 'WEBP' | 'MP4' | 'GIF';
+
+export interface TaskTechSpecs {
+  fileFormat?: FileFormat;
+  dimensions?: {
+    width: number;
+    height: number;
+    unit: DimensionUnit;
+  };
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -338,6 +351,7 @@ export interface Task {
   labels?: string[];                  // Free-form tags
   subtasks?: Subtask[];               // Checkpoints
   attachments?: TaskAttachment[];     // Files and linked assets
+  techSpecs?: TaskTechSpecs;          // Technical requirements
   sortOrder: number;                  // For drag-drop ordering
   businessId?: string;                // Optional: tag to a specific business
   assigneeId?: string;                // Optional: assigned team member user ID
@@ -505,8 +519,13 @@ export interface ChatMessage {
   timestamp: Date;
   attachment?: {
     type: 'image';
-    content: string; // Base64
+    content: string; // Base64 or URL
   };
+  attachments?: {  // Phase 5: Multiple images for batch generation
+    type: 'image';
+    content: string;
+  }[];
+  imageUrl?: string;  // Phase 6: Supabase URL for AI vision
 }
 
 // ============================================================================

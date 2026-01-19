@@ -591,6 +591,7 @@ export const StorageService = {
       subtasks: row.subtasks || [],
       sortOrder: row.sort_order ?? 0,
       attachments: row.attachments || [],
+      techSpecs: row.tech_specs || undefined,
       businessId: row.business_id || undefined
     }));
   },
@@ -631,6 +632,7 @@ export const StorageService = {
       labels: task.labels || [],
       subtasks: task.subtasks || [],
       attachments: task.attachments || [],
+      tech_specs: task.techSpecs || {},
       sort_order: task.sortOrder ?? 0,
       updated_at: new Date().toISOString()
     };

@@ -422,7 +422,54 @@ export const DEFAULT_CHAT_PROMPT = `
       3. Always stay within the brand's tone.
       4. Do not act like a generic AI. Act like a partner in the business.
       5. If the user asks for an ad, format it clearly. If they ask for an infographic or specific structure, adapt the format accordingly.
-      6. If the user asks for an image, use the 'generate_marketing_image' tool.
+      6. If the user asks for an image, use the 'generate_marketing_image' tool with appropriate parameters.
+
+      IMAGE EDITING:
+      When you see an image in the conversation and the user asks for changes:
+      1. Understand what they want to modify
+      2. Generate a NEW image that applies their requested edit
+      3. Reference the previous image's concept but apply the change
+      Examples:
+      - "Make the heading bigger" → Regenerate with larger text
+      - "Change the background to blue" → Regenerate with blue background
+      - "Add a starburst" → Regenerate with starburst element
+      When generating an edit, call 'generate_marketing_image' with:
+      - A prompt that describes the original concept + modification
+      - isEdit: true
+      
+      GENERATION CAPABILITIES:
+      When generating images, you can specify style, aspect ratio, and quality tier.
+      
+      **Available Styles:**
+{{AVAILABLE_STYLES}}
+      
+      **Aspect Ratios:**
+      - 1:1 "Square": Instagram Feed, Carousel posts
+      - 9:16 "Story/Reel": TikTok, Instagram Reels, Stories
+      - 16:9 "HD Wide": YouTube thumbnails, Website heroes
+      - 4:5 "IG Feed": Optimized Instagram portrait
+      - 2:3 "Pinterest": Pinterest pins, Blog images
+      - 4:3 "Broadcast": Presentations, TV
+      
+      **Model Tiers:**
+      - "pro" (1 credit): High fidelity. Best for social media.
+      - "ultra" (2 credits): 4K print-ready. Best for large format.
+      
+      SMART SELECTION:
+      - If user says "Instagram story" → use 9:16
+      - If user says "YouTube thumbnail" → use 16:9
+      - If user mentions "print" or "poster" → suggest ultra tier
+      - Match style to user's described aesthetic if they mention one
+      - If unsure, default to 1:1 and pro tier
+
+      BATCH GENERATION:
+      You CAN generate multiple images at once by calling 'generate_marketing_image' multiple times in a single response.
+      Use this when:
+      - User asks for "variations" or "different versions"
+      - User says "try 3 styles" or "give me options"
+      - User wants to compare different looks
+      Example: If user says "Generate 3 different styles for this product", call generate_marketing_image 3 times with different styleIds.
+      Each generation is 1-2 credits. Always inform the user how many you're creating.
       
       Keep responses concise and actionable.
 `;
@@ -444,7 +491,10 @@ export const PromptFactory = {
    * THE CMO AGENT
    * Controls the "Chat" personality.
    */
-  createChatSystemInstruction: async (business: Business): Promise<string> => {
+  createChatSystemInstruction: async (
+    business: Business,
+    availableStyles?: { id: string; name: string; description?: string }[]
+  ): Promise<string> => {
     const customPrompts = await StorageService.getSystemPrompts();
     const today = new Date().toLocaleDateString('en-US', {
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
@@ -469,6 +519,11 @@ export const PromptFactory = {
 
     const location = business.profile.publicLocationLabel || business.profile.address || "Online/Global";
 
+    // Format available styles for AI context
+    const stylesText = availableStyles && availableStyles.length > 0
+      ? availableStyles.map(s => `      - "${s.name}" (ID: ${s.id})`).join('\n')
+      : '      - Various creative styles available';
+
     let template = customPrompts?.chatPersona || DEFAULT_CHAT_PROMPT;
 
     // Hydrate Template
@@ -481,7 +536,8 @@ export const PromptFactory = {
       .replace('{{AVAILABILITY_CONTEXT}}', availability)
       .replace('{{TARGET_AUDIENCE}}', business.adPreferences.targetAudience)
       .replace('{{TONE}}', business.voice.tone)
-      .replace('{{PRODUCTS}}', business.offerings.map(o => o.name).join(', '));
+      .replace('{{PRODUCTS}}', business.offerings.map(o => o.name).join(', '))
+      .replace('{{AVAILABLE_STYLES}}', stylesText);
   },
 
   /**

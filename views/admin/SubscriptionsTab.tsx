@@ -140,6 +140,23 @@ const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({ styles: parentStyle
         }
     };
 
+    // Handle set extra businesses
+    const handleSetExtraBusinesses = async (userId: string, count: number) => {
+        setSavingUserId(userId);
+        try {
+            await AdminService.setExtraBusinesses(userId, count);
+            setUsers(prev => prev.map(u =>
+                u.id === userId && u.subscription
+                    ? { ...u, subscription: { ...u.subscription, extraBusinesses: Math.max(0, count) } }
+                    : u
+            ));
+        } catch (err) {
+            console.error('Error setting extra businesses:', err);
+        } finally {
+            setSavingUserId(null);
+        }
+    };
+
     // Handle delete user
     const handleDeleteUser = async (userId: string) => {
         const user = users.find(u => u.id === userId);
@@ -249,6 +266,7 @@ const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({ styles: parentStyle
                             onPlanChange={handlePlanChange}
                             onAddCredits={handleAddCredits}
                             onToggleComped={handleToggleComped}
+                            onSetExtraBusinesses={handleSetExtraBusinesses}
                             onDeleteUser={handleDeleteUser}
                             onToggleExpand={() => toggleExpand(user.id)}
                             styles={styles}
@@ -269,6 +287,7 @@ interface UserSubscriptionRowProps {
     onPlanChange: (userId: string, plan: PlanId) => void;
     onAddCredits: (userId: string, amount: number) => void;
     onToggleComped: (userId: string) => void;
+    onSetExtraBusinesses: (userId: string, count: number) => void;
     onDeleteUser: (userId: string) => void;
     onToggleExpand: () => void;
     styles: any;
@@ -276,10 +295,11 @@ interface UserSubscriptionRowProps {
 }
 
 const UserSubscriptionRow: React.FC<UserSubscriptionRowProps> = ({
-    user, isExpanded, isSaving, onPlanChange, onAddCredits, onToggleComped, onDeleteUser, onToggleExpand, styles, isDark
+    user, isExpanded, isSaving, onPlanChange, onAddCredits, onToggleComped, onSetExtraBusinesses, onDeleteUser, onToggleExpand, styles, isDark
 }) => {
     const plan = AdminService.getPlanInfo(user.subscription?.planId || 'creator');
-    const maxBusinesses = plan.features.businesses + (user.subscription?.extraBusinesses || 0);
+    const extraBusinesses = user.subscription?.extraBusinesses || 0;
+    const maxBusinesses = plan.features.businesses + extraBusinesses;
 
     return (
         <motion.div variants={itemVariants} layout>
@@ -288,16 +308,32 @@ const UserSubscriptionRow: React.FC<UserSubscriptionRowProps> = ({
                 <div className="p-4">
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
 
-                        {/* Avatar + Name (col-span-3) */}
+                        {/* Avatar + Name + Status (col-span-3) */}
                         <div className="col-span-3 flex items-center gap-3">
                             <div className={`w-10 h-10 rounded-full bg-gradient-to-br from-brand to-purple-600 
                                             flex items-center justify-center text-white font-bold text-sm shrink-0`}>
                                 {user.fullName?.charAt(0) || '?'}
                             </div>
-                            <div className="min-w-0">
-                                <h4 className={`font-bold ${styles.textMain} truncate`}>
-                                    {user.fullName || 'Unnamed User'}
-                                </h4>
+                            <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                    <h4 className={`font-bold ${styles.textMain} truncate`}>
+                                        {user.fullName || 'Unnamed User'}
+                                    </h4>
+                                    {/* Status Badge */}
+                                    {!user.subscription ? (
+                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/20 text-red-400">
+                                            No Sub
+                                        </span>
+                                    ) : user.subscription.status === 'comped' ? (
+                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400">
+                                            Comped
+                                        </span>
+                                    ) : (
+                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-500/20 text-green-400">
+                                            Active
+                                        </span>
+                                    )}
+                                </div>
                                 <p className={`text-xs ${styles.textSub} truncate`}>
                                     {user.email || 'No email'}
                                 </p>
@@ -344,12 +380,32 @@ const UserSubscriptionRow: React.FC<UserSubscriptionRowProps> = ({
                             </div>
                         </div>
 
-                        {/* Business Count (col-span-2) */}
-                        <div className="col-span-2 text-center">
+                        {/* Business Count + Extra Controls (col-span-2) */}
+                        <div className="col-span-2 flex flex-col items-center gap-1">
                             <p className={`text-sm font-bold ${styles.textMain}`}>
                                 {user.businessCount} / {maxBusinesses}
                             </p>
-                            <p className={`text-xs ${styles.textSub}`}>businesses</p>
+                            <div className="flex items-center gap-1">
+                                <motion.button
+                                    whileTap={{ scale: 0.9 }}
+                                    onClick={() => onSetExtraBusinesses(user.id, extraBusinesses - 1)}
+                                    disabled={isSaving || extraBusinesses <= 0}
+                                    className={`w-5 h-5 rounded flex items-center justify-center text-xs font-bold ${styles.bg} ${styles.shadowOut} disabled:opacity-30`}
+                                >
+                                    −
+                                </motion.button>
+                                <span className={`text-[10px] ${styles.textSub} min-w-[50px] text-center`}>
+                                    +{extraBusinesses} extra
+                                </span>
+                                <motion.button
+                                    whileTap={{ scale: 0.9 }}
+                                    onClick={() => onSetExtraBusinesses(user.id, extraBusinesses + 1)}
+                                    disabled={isSaving}
+                                    className={`w-5 h-5 rounded flex items-center justify-center text-xs font-bold ${styles.bg} ${styles.shadowOut} hover:text-brand transition-colors disabled:opacity-30`}
+                                >
+                                    +
+                                </motion.button>
+                            </div>
                         </div>
 
                         {/* Status + Expand (col-span-2) */}

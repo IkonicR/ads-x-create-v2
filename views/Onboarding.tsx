@@ -1,9 +1,5 @@
-/**
- * Onboarding Component - Enhanced with URL Extraction
- * Multi-step wizard for creating a new business profile
- */
-
 import React, { useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { NeuCard, NeuButton, NeuInput, NeuTextArea, useThemeStyles, BRAND_COLOR } from '../components/NeuComponents';
 import { GalaxyHeading } from '../components/GalaxyHeading';
 import { ExtractionProgressComponent } from '../components/ExtractionProgress';
@@ -22,8 +18,9 @@ import {
 import {
   Globe, ArrowRight, Building, Store, ShoppingCart,
   UserCheck, Briefcase, ChevronLeft, Sparkles, PenLine,
-  CheckSquare, Square, Loader2
+  CheckSquare, Square, Loader2, AlertTriangle, FileText, ListChecks
 } from 'lucide-react';
+import { useSubscription } from '../context/SubscriptionContext';
 
 interface OnboardingProps {
   onComplete: (business: Partial<Business>) => void;
@@ -39,7 +36,21 @@ type OnboardingStep =
   | 'manual';        // Step 3: Manual entry form
 
 const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
-  const { styles } = useThemeStyles();
+  const { styles, theme } = useThemeStyles();
+  const navigate = useNavigate();
+  const { subscription, loading: subLoading, planName } = useSubscription();
+
+  // Limit check from context
+  // NOTE: For first-business users (0 businesses, full-screen onboarding), they're always allowed
+  // For existing users adding a new business, the limit is already checked in App.tsx
+  // So we primarily show the blocking screen only when subscription is loaded and limit is explicitly reached
+  const limitCheck = {
+    loading: subLoading,
+    atLimit: false, // Limit check is done in App.tsx before reaching here
+    maxAllowed: subscription?.maxBusinesses ?? 10,
+    currentCount: 0,
+    planName: planName || 'Your plan'
+  };
 
   // Flow state
   const [step, setStep] = useState<OnboardingStep>('type');
@@ -207,27 +218,36 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
               : `${styles.bg} ${styles.shadowOut} hover:scale-[1.01]`
               }`}
           >
-            🎯 This Page
+            <FileText size={18} className="mx-auto mb-1" />
+            This Page
             <span className={`block text-xs mt-1 ${crawlMode === 'single' ? 'opacity-80' : styles.textSub}`}>
               Fast
             </span>
           </button>
           <button
-            onClick={() => { }}
-            className={`py-3 px-3 rounded-xl text-sm font-medium transition-all opacity-50 cursor-not-allowed ${styles.bg} ${styles.shadowOut}`}
+            onClick={() => setCrawlMode('select')}
+            className={`py-3 px-3 rounded-xl text-sm font-medium transition-all ${crawlMode === 'select'
+              ? 'bg-brand/20 text-brand border-2 border-brand'
+              : `${styles.bg} ${styles.shadowOut} hover:scale-[1.01]`
+              }`}
           >
-            📋 Choose Pages
-            <span className={`block text-xs mt-1 text-red-400 font-bold`}>
-              Coming Soon
+            <ListChecks size={18} className="mx-auto mb-1" />
+            Choose Pages
+            <span className={`block text-xs mt-1 ${crawlMode === 'select' ? 'opacity-80' : styles.textSub}`}>
+              Select up to 10
             </span>
           </button>
           <button
-            onClick={() => { }}
-            className={`py-3 px-3 rounded-xl text-sm font-medium transition-all opacity-50 cursor-not-allowed ${styles.bg} ${styles.shadowOut}`}
+            onClick={() => setCrawlMode('full')}
+            className={`py-3 px-3 rounded-xl text-sm font-medium transition-all ${crawlMode === 'full'
+              ? 'bg-brand/20 text-brand border-2 border-brand'
+              : `${styles.bg} ${styles.shadowOut} hover:scale-[1.01]`
+              }`}
           >
-            🌐 Full Site
-            <span className={`block text-xs mt-1 text-red-400 font-bold`}>
-              Coming Soon
+            <Globe size={18} className="mx-auto mb-1" />
+            Full Site
+            <span className={`block text-xs mt-1 ${crawlMode === 'full' ? 'opacity-80' : styles.textSub}`}>
+              Auto-crawl 5 pages
             </span>
           </button>
         </div>
@@ -359,207 +379,252 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 animate-fade-in">
-      <NeuCard className="max-w-3xl w-full flex flex-col items-center text-center py-12 px-8 relative overflow-hidden">
+      {/* Loading State */}
+      {limitCheck.loading && (
+        <NeuCard className="max-w-md w-full flex flex-col items-center text-center py-12 px-8">
+          <Loader2 className="w-8 h-8 text-brand animate-spin mb-4" />
+          <p className={styles.textSub}>Checking your plan limits...</p>
+        </NeuCard>
+      )}
 
-        {/* Decorative Glow */}
-        <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 opacity-50" />
+      {/* Limit Reached State */}
+      {!limitCheck.loading && limitCheck.atLimit && (
+        <NeuCard className="max-w-md w-full flex flex-col items-center text-center py-12 px-8 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-orange-500 via-red-500 to-pink-500 opacity-70" />
 
-        {/* Progress Indicator - only for standard steps */}
-        {!['extracting', 'preview'].includes(step) && (
-          <div className="flex gap-2 mb-8">
-            {[1, 2, 3].map(i => (
-              <div
-                key={i}
-                className={`h-1 w-12 rounded-full transition-colors duration-300 ${getProgressStep() >= i ? 'bg-brand' : 'bg-gray-200 dark:bg-gray-700'
-                  }`}
-              />
-            ))}
+          <div className={`w-16 h-16 rounded-full ${styles.bg} ${styles.shadowIn} flex items-center justify-center text-orange-400 mb-6`}>
+            <AlertTriangle size={32} />
           </div>
-        )}
 
-        {/* Step 1: Business Type */}
-        {step === 'type' && (
-          <>
-            <div className="mb-2">
-              <GalaxyHeading text="Business Type" className="text-3xl md:text-4xl" />
-            </div>
-            <p className={`${styles.textSub} mb-12 max-w-md`}>
-              Select the category that best describes your business to tailor the AI.
-            </p>
+          <GalaxyHeading text="Business Limit Reached" className="text-2xl md:text-3xl mb-4" />
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
-              <NeuButton
-                className="h-48 flex flex-col items-center justify-center gap-4 text-lg hover:scale-[1.02] transition-transform"
-                onClick={() => handleTypeSelect('Retail')}
-              >
-                <div className={`w-16 h-16 rounded-full ${styles.bg} ${styles.shadowOut} flex items-center justify-center text-brand`}>
-                  <Store size={32} />
-                </div>
-                <div className="text-center">
-                  <div className="font-bold text-base">Local / Retail</div>
-                  <div className={`text-xs ${styles.textSub} font-normal mt-1 opacity-70`}>Physical store, Foot traffic</div>
-                </div>
-              </NeuButton>
+          <p className={`${styles.textSub} mb-2`}>
+            Your <strong className={styles.textMain}>{limitCheck.planName}</strong> plan allows{' '}
+            <strong className={styles.textMain}>{limitCheck.maxAllowed}</strong> business{limitCheck.maxAllowed > 1 ? 'es' : ''}.
+          </p>
+          <p className={`${styles.textSub} mb-8`}>
+            You currently have <strong className={styles.textMain}>{limitCheck.currentCount}</strong>.
+          </p>
 
-              <NeuButton
-                className="h-48 flex flex-col items-center justify-center gap-4 text-lg hover:scale-[1.02] transition-transform"
-                onClick={() => handleTypeSelect('E-Commerce')}
-              >
-                <div className={`w-16 h-16 rounded-full ${styles.bg} ${styles.shadowOut} flex items-center justify-center text-purple-500`}>
-                  <ShoppingCart size={32} />
-                </div>
-                <div className="text-center">
-                  <div className="font-bold text-base">E-Commerce</div>
-                  <div className={`text-xs ${styles.textSub} font-normal mt-1 opacity-70`}>Online store, Shipping</div>
-                </div>
-              </NeuButton>
-
-              <NeuButton
-                className="h-48 flex flex-col items-center justify-center gap-4 text-lg hover:scale-[1.02] transition-transform"
-                onClick={() => handleTypeSelect('Service')}
-              >
-                <div className={`w-16 h-16 rounded-full ${styles.bg} ${styles.shadowOut} flex items-center justify-center text-blue-500`}>
-                  <UserCheck size={32} />
-                </div>
-                <div className="text-center">
-                  <div className="font-bold text-base">Service / Agency</div>
-                  <div className={`text-xs ${styles.textSub} font-normal mt-1 opacity-70`}>Consulting, Booking</div>
-                </div>
-              </NeuButton>
-            </div>
-          </>
-        )}
-
-        {/* Step 2: Profile Method */}
-        {step === 'method' && (
-          <>
-            <div className="mb-2">
-              <GalaxyHeading text="Build Your Profile" className="text-3xl md:text-4xl" />
-            </div>
-            <p className={`${styles.textSub} mb-12 max-w-md`}>
-              Import from your website for instant setup, or start from scratch.
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-xl">
-              <NeuButton
-                className="h-44 flex flex-col items-center justify-center gap-4 text-lg hover:scale-[1.02] transition-transform border-2 border-brand/30"
-                onClick={() => setStep('url-input')}
-              >
-                <div className={`w-14 h-14 rounded-full bg-brand/20 flex items-center justify-center text-brand`}>
-                  <Sparkles size={28} />
-                </div>
-                <div className="text-center">
-                  <div className="font-bold flex items-center justify-center gap-2">
-                    Import from Website
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-600 border border-blue-200 uppercase tracking-wide">
-                      Beta
-                    </span>
-                  </div>
-                  <div className={`text-xs ${styles.textSub} font-normal mt-1`}>
-                    AI extracts your brand automatically
-                  </div>
-                </div>
-              </NeuButton>
-
-              <NeuButton
-                className="h-44 flex flex-col items-center justify-center gap-4 text-lg hover:scale-[1.02] transition-transform"
-                onClick={() => setStep('manual')}
-              >
-                <div className={`w-14 h-14 rounded-full ${styles.bg} ${styles.shadowOut} flex items-center justify-center text-brand`}>
-                  <PenLine size={28} />
-                </div>
-                <div className="text-center">
-                  <div className="font-bold">Start from Scratch</div>
-                  <div className={`text-xs ${styles.textSub} font-normal mt-1`}>
-                    Enter details manually
-                  </div>
-                </div>
-              </NeuButton>
-            </div>
-
-            <button
-              onClick={() => setStep('type')}
-              className={`mt-8 text-sm ${styles.textSub} hover:text-brand transition-colors flex items-center gap-1`}
+          <div className="flex flex-col gap-3 w-full">
+            <NeuButton
+              variant="primary"
+              className="w-full justify-center"
+              onClick={() => navigate('/dashboard')}
             >
-              <ChevronLeft size={14} /> Change business type
-            </button>
-          </>
-        )}
-
-        {/* Step 2b: URL Input */}
-        {step === 'url-input' && renderUrlInput()}
-
-        {/* Step 2c: Select Pages (Choose Pages mode) */}
-        {step === 'select-pages' && renderSelectPages()}
-
-        {/* Step 2d: Extracting */}
-        {step === 'extracting' && renderExtracting()}
-
-        {/* Step 2e: Preview */}
-        {step === 'preview' && renderPreview()}
-
-        {/* Step 3: Manual Entry */}
-        {step === 'manual' && (
-          <>
-            <div className="mb-2">
-              <GalaxyHeading text="Basic Info" className="text-3xl md:text-4xl" />
-            </div>
-            <p className={`${styles.textSub} mb-8 max-w-md`}>
-              Add the details to launch your workspace.
+              Back to Dashboard
+            </NeuButton>
+            <p className={`text-xs ${styles.textSub}`}>
+              Need more businesses? Contact support to upgrade.
             </p>
+          </div>
+        </NeuCard>
+      )}
 
-            <div className="w-full space-y-6 text-left max-w-xl">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className={`block text-xs font-bold mb-2 ml-1 ${styles.textSub} uppercase tracking-wider`}>Business Name</label>
-                  <NeuInput
-                    placeholder="e.g. Acme Co."
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className={`block text-xs font-bold mb-2 ml-1 ${styles.textSub} uppercase tracking-wider`}>Industry</label>
-                  <NeuInput
-                    placeholder="e.g. Fashion, Tech, Food"
-                    value={formData.industry}
-                    onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
-                  />
-                </div>
-              </div>
+      {/* Normal Onboarding Flow */}
+      {!limitCheck.loading && !limitCheck.atLimit && (
+        <NeuCard className="max-w-3xl w-full flex flex-col items-center text-center py-12 px-8 relative overflow-hidden">
 
-              <div>
-                <label className={`block text-xs font-bold mb-2 ml-1 ${styles.textSub} uppercase tracking-wider`}>Website (Optional)</label>
-                <NeuInput
-                  placeholder="https://..."
-                  value={formData.website}
-                  onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+          {/* Decorative Glow */}
+          <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 opacity-50" />
+
+          {/* Progress Indicator - only for standard steps */}
+          {!['extracting', 'preview'].includes(step) && (
+            <div className="flex gap-2 mb-8">
+              {[1, 2, 3].map(i => (
+                <div
+                  key={i}
+                  className={`h-1 w-12 rounded-full transition-colors duration-300 ${getProgressStep() >= i ? 'bg-brand' : 'bg-gray-200 dark:bg-gray-700'
+                    }`}
                 />
-              </div>
-
-              <div>
-                <label className={`block text-xs font-bold mb-2 ml-1 ${styles.textSub} uppercase tracking-wider`}>Short Description</label>
-                <NeuTextArea
-                  placeholder={selectedType === 'Retail'
-                    ? "Describe your store, location, and what makes you unique to locals..."
-                    : "Describe your brand, what you sell, and your mission..."}
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                />
-              </div>
-
-              <div className="flex justify-between pt-6">
-                <NeuButton onClick={() => setStep('method')} className="text-sm px-6">
-                  <ChevronLeft size={16} /> Back
-                </NeuButton>
-                <NeuButton onClick={handleManualSubmit} variant="primary" disabled={!formData.name} className="px-8">
-                  Create Business Profile <ArrowRight size={18} />
-                </NeuButton>
-              </div>
+              ))}
             </div>
-          </>
-        )}
-      </NeuCard>
+          )}
+
+          {/* Step 1: Business Type */}
+          {step === 'type' && (
+            <>
+              <div className="mb-2">
+                <GalaxyHeading text="Business Type" className="text-3xl md:text-4xl" />
+              </div>
+              <p className={`${styles.textSub} mb-12 max-w-md`}>
+                Select the category that best describes your business to tailor the AI.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
+                <NeuButton
+                  className="h-48 flex flex-col items-center justify-center gap-4 text-lg hover:scale-[1.02] transition-transform"
+                  onClick={() => handleTypeSelect('Retail')}
+                >
+                  <div className={`w-16 h-16 rounded-full ${styles.bg} ${styles.shadowOut} flex items-center justify-center text-brand`}>
+                    <Store size={32} />
+                  </div>
+                  <div className="text-center">
+                    <div className="font-bold text-base">Local / Retail</div>
+                    <div className={`text-xs ${styles.textSub} font-normal mt-1 opacity-70`}>Physical store, Foot traffic</div>
+                  </div>
+                </NeuButton>
+
+                <NeuButton
+                  className="h-48 flex flex-col items-center justify-center gap-4 text-lg hover:scale-[1.02] transition-transform"
+                  onClick={() => handleTypeSelect('E-Commerce')}
+                >
+                  <div className={`w-16 h-16 rounded-full ${styles.bg} ${styles.shadowOut} flex items-center justify-center text-purple-500`}>
+                    <ShoppingCart size={32} />
+                  </div>
+                  <div className="text-center">
+                    <div className="font-bold text-base">E-Commerce</div>
+                    <div className={`text-xs ${styles.textSub} font-normal mt-1 opacity-70`}>Online store, Shipping</div>
+                  </div>
+                </NeuButton>
+
+                <NeuButton
+                  className="h-48 flex flex-col items-center justify-center gap-4 text-lg hover:scale-[1.02] transition-transform"
+                  onClick={() => handleTypeSelect('Service')}
+                >
+                  <div className={`w-16 h-16 rounded-full ${styles.bg} ${styles.shadowOut} flex items-center justify-center text-blue-500`}>
+                    <UserCheck size={32} />
+                  </div>
+                  <div className="text-center">
+                    <div className="font-bold text-base">Service / Agency</div>
+                    <div className={`text-xs ${styles.textSub} font-normal mt-1 opacity-70`}>Consulting, Booking</div>
+                  </div>
+                </NeuButton>
+              </div>
+            </>
+          )}
+
+          {/* Step 2: Profile Method */}
+          {step === 'method' && (
+            <>
+              <div className="mb-2">
+                <GalaxyHeading text="Build Your Profile" className="text-3xl md:text-4xl" />
+              </div>
+              <p className={`${styles.textSub} mb-12 max-w-md`}>
+                Import from your website for instant setup, or start from scratch.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-xl">
+                <NeuButton
+                  className="h-44 flex flex-col items-center justify-center gap-4 text-lg hover:scale-[1.02] transition-transform border-2 border-brand/30"
+                  onClick={() => setStep('url-input')}
+                >
+                  <div className={`w-14 h-14 rounded-full bg-brand/20 flex items-center justify-center text-brand`}>
+                    <Sparkles size={28} />
+                  </div>
+                  <div className="text-center">
+                    <div className="font-bold flex items-center justify-center gap-2">
+                      Import from Website
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-600 border border-blue-200 uppercase tracking-wide">
+                        Beta
+                      </span>
+                    </div>
+                    <div className={`text-xs ${styles.textSub} font-normal mt-1`}>
+                      AI extracts your brand automatically
+                    </div>
+                  </div>
+                </NeuButton>
+
+                <NeuButton
+                  className="h-44 flex flex-col items-center justify-center gap-4 text-lg hover:scale-[1.02] transition-transform"
+                  onClick={() => setStep('manual')}
+                >
+                  <div className={`w-14 h-14 rounded-full ${styles.bg} ${styles.shadowOut} flex items-center justify-center text-brand`}>
+                    <PenLine size={28} />
+                  </div>
+                  <div className="text-center">
+                    <div className="font-bold">Start from Scratch</div>
+                    <div className={`text-xs ${styles.textSub} font-normal mt-1`}>
+                      Enter details manually
+                    </div>
+                  </div>
+                </NeuButton>
+              </div>
+
+              <button
+                onClick={() => setStep('type')}
+                className={`mt-8 text-sm ${styles.textSub} hover:text-brand transition-colors flex items-center gap-1`}
+              >
+                <ChevronLeft size={14} /> Change business type
+              </button>
+            </>
+          )}
+
+          {/* Step 2b: URL Input */}
+          {step === 'url-input' && renderUrlInput()}
+
+          {/* Step 2c: Select Pages (Choose Pages mode) */}
+          {step === 'select-pages' && renderSelectPages()}
+
+          {/* Step 2d: Extracting */}
+          {step === 'extracting' && renderExtracting()}
+
+          {/* Step 2e: Preview */}
+          {step === 'preview' && renderPreview()}
+
+          {/* Step 3: Manual Entry */}
+          {step === 'manual' && (
+            <>
+              <div className="mb-2">
+                <GalaxyHeading text="Basic Info" className="text-3xl md:text-4xl" />
+              </div>
+              <p className={`${styles.textSub} mb-8 max-w-md`}>
+                Add the details to launch your workspace.
+              </p>
+
+              <div className="w-full space-y-6 text-left max-w-xl">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className={`block text-xs font-bold mb-2 ml-1 ${styles.textSub} uppercase tracking-wider`}>Business Name</label>
+                    <NeuInput
+                      placeholder="e.g. Acme Co."
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-xs font-bold mb-2 ml-1 ${styles.textSub} uppercase tracking-wider`}>Industry</label>
+                    <NeuInput
+                      placeholder="e.g. Fashion, Tech, Food"
+                      value={formData.industry}
+                      onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className={`block text-xs font-bold mb-2 ml-1 ${styles.textSub} uppercase tracking-wider`}>Website (Optional)</label>
+                  <NeuInput
+                    placeholder="https://..."
+                    value={formData.website}
+                    onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                  />
+                </div>
+
+                <div>
+                  <label className={`block text-xs font-bold mb-2 ml-1 ${styles.textSub} uppercase tracking-wider`}>Short Description</label>
+                  <NeuTextArea
+                    placeholder={selectedType === 'Retail'
+                      ? "Describe your store, location, and what makes you unique to locals..."
+                      : "Describe your brand, what you sell, and your mission..."}
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  />
+                </div>
+
+                <div className="flex justify-between pt-6">
+                  <NeuButton onClick={() => setStep('method')} className="text-sm px-6">
+                    <ChevronLeft size={16} /> Back
+                  </NeuButton>
+                  <NeuButton onClick={handleManualSubmit} variant="primary" disabled={!formData.name} className="px-8">
+                    Create Business Profile <ArrowRight size={18} />
+                  </NeuButton>
+                </div>
+              </div>
+            </>
+          )}
+        </NeuCard>
+      )}
     </div>
   );
 };

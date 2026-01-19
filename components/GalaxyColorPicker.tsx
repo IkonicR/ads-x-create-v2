@@ -112,12 +112,13 @@ export const GalaxyColorPanel: React.FC<{
         const newS = x * 100;
         const newV = (1 - y) * 100;
 
-        setHsv(prev => {
-            const next = { ...prev, s: newS, v: newV };
-            onChange(hsvToHex(next.h, next.s, next.v));
-            return next;
-        });
-    }, [onChange]);
+        // Update local state first
+        setHsv(prev => ({ ...prev, s: newS, v: newV }));
+
+        // Then notify parent OUTSIDE the setState callback to avoid React render-phase setState error
+        // We need to use hsv.h from the current closure since setHsv is async
+        onChange(hsvToHex(hsv.h, newS, newV));
+    }, [onChange, hsv.h]);
 
     const handleHueChange = useCallback((e: MouseEvent | React.MouseEvent) => {
         if (!hueRef.current) return;
@@ -126,12 +127,13 @@ export const GalaxyColorPanel: React.FC<{
 
         const newH = x * 360;
 
-        setHsv(prev => {
-            const next = { ...prev, h: newH };
-            onChange(hsvToHex(next.h, next.s, next.v));
-            return next;
-        });
-    }, [onChange]);
+        // Update local state first
+        setHsv(prev => ({ ...prev, h: newH }));
+
+        // Then notify parent OUTSIDE the setState callback
+        // We use hsv.s and hsv.v from current closure
+        onChange(hsvToHex(newH, hsv.s, hsv.v));
+    }, [onChange, hsv.s, hsv.v]);
 
     // Global mouseup/move for dragging
     useEffect(() => {

@@ -2,7 +2,7 @@ import React, { useState, useRef, useMemo } from 'react';
 import { useOnClickOutside } from '../hooks/useOnClickOutside';
 import { useThemeStyles, useNeuButtonProps, NeuButton, NeuInput, NeuDropdown } from './NeuComponents';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Send, LayoutTemplate, Palette, X, Crop, User, Smartphone, Monitor, Square, Box, RectangleVertical, RectangleHorizontal, Zap, Diamond, Plus, Camera, Sun, Edit2, DollarSign, Tag, Unlock, SlidersHorizontal } from 'lucide-react';
+import { Sparkles, Send, LayoutTemplate, Palette, X, Crop, User, Smartphone, Monitor, Square, Box, RectangleVertical, RectangleHorizontal, Zap, Diamond, Plus, Camera, Sun, Edit2, DollarSign, Tag, Unlock, SlidersHorizontal, Ruler, ChevronDown, Check } from 'lucide-react';
 import { StylePreset, ViewState, SubjectType, Offering, TeamMember } from '../types';
 import { SmartPromptInput } from './SmartPromptInput';
 import { useNavigation } from '../context/NavigationContext';
@@ -13,6 +13,36 @@ import { supabase } from '../services/supabase';
 const formatValue = (val: string) => {
   if (!val) return 'Standard';
   return val.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+};
+
+// Dimension Translator: Find closest preset ratio from custom dimensions
+const RATIO_VALUES: Record<string, number> = {
+  '1:1': 1, '9:16': 0.5625, '16:9': 1.778, '4:5': 0.8,
+  '2:3': 0.667, '3:2': 1.5, '3:4': 0.75, '4:3': 1.333,
+  '5:4': 1.25, '21:9': 2.333
+};
+
+const findClosestRatio = (width: number, height: number) => {
+  if (!width || !height || width <= 0 || height <= 0) return null;
+
+  const inputRatio = width / height;
+  let closest = '1:1';
+  let minDiff = Infinity;
+
+  for (const [id, value] of Object.entries(RATIO_VALUES)) {
+    const diff = Math.abs(inputRatio - value);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closest = id;
+    }
+  }
+
+  const accuracy = Math.max(0, (1 - minDiff / inputRatio) * 100);
+  return {
+    suggestedId: closest,
+    inputRatio: inputRatio.toFixed(3),
+    accuracy: Math.min(100, accuracy).toFixed(0) + '%'
+  };
 };
 
 interface ControlDeckProps {
@@ -103,6 +133,19 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
   // Freedom Mode state
   const [isFreedomMode, setIsFreedomMode] = useState(false);
 
+  // Dimension Translator state
+  const [showDimensionInput, setShowDimensionInput] = useState(false);
+  const [customWidth, setCustomWidth] = useState('');
+  const [customHeight, setCustomHeight] = useState('');
+  const [dimensionUnit, setDimensionUnit] = useState<'mm' | 'cm' | 'in'>('mm');
+
+  // Calculate suggested ratio from custom dimensions
+  const suggestedRatio = useMemo(() => {
+    const w = parseFloat(customWidth);
+    const h = parseFloat(customHeight);
+    return findClosestRatio(w, h);
+  }, [customWidth, customHeight]);
+
   // Determine layout mode
   const isComplexMenu = activeMenu === 'style' || activeMenu === 'subject';
 
@@ -184,11 +227,12 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
                 transition={{ type: "spring", damping: 25, stiffness: 300 }}
                 className={`
                   absolute bottom-full mb-4 left-1/2 -translate-x-1/2 
-                  overflow-hidden rounded-3xl ${slabBg} ${slabShadowClass} border border-white/5 flex 
+                  rounded-3xl ${slabBg} ${slabShadowClass} border border-white/5 flex 
                   ${isComplexMenu
-                    ? 'w-[90vw] max-w-6xl h-[70vh] flex-col md:flex-row'
-                    : 'w-full max-w-xl max-h-[50vh] flex-col'}
-                `}
+                    ? 'w-[90vw] max-w-6xl h-[70vh] flex-col md:flex-row overflow-hidden'
+                    : activeMenu === 'ratio'
+                      ? 'w-full max-w-xl max-h-[70vh] flex-col overflow-y-auto'
+                      : 'w-full max-w-xl max-h-[50vh] flex-col overflow-hidden'}`}
               >
                 {/* LEFT SIDE (Grid) */}
                 <div className={`flex-1 flex flex-col h-full relative ${isComplexMenu ? 'w-full md:w-1/2 lg:w-7/12 border-r border-white/5' : 'w-full'}`}>
@@ -273,24 +317,145 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
 
                     {/* Simple Ratio Grid */}
                     {activeMenu === 'ratio' && (
-                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                        {RATIOS.map(r => (
-                          <button
-                            key={r.id}
-                            onClick={() => { setSelectedRatio(r.id); setActiveMenu(null); }}
-                            className={`p-3 rounded-2xl text-center transition-all flex flex-col items-center gap-2 ${selectedRatio === r.id
-                              ? `${insetShadowClass} text-brand`
-                              : `${btnShadowClass} ${themeStyles.textMain} hover:translate-y-[-1px]`
-                              }`}
+                      <div className="flex flex-col gap-4">
+                        {/* Preset Grid */}
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                          {RATIOS.map(r => (
+                            <button
+                              key={r.id}
+                              onClick={() => { setSelectedRatio(r.id); setActiveMenu(null); setShowDimensionInput(false); }}
+                              className={`p-3 rounded-2xl text-center transition-all flex flex-col items-center gap-2 relative ${selectedRatio === r.id
+                                ? `${insetShadowClass} text-brand`
+                                : suggestedRatio?.suggestedId === r.id && showDimensionInput
+                                  ? `${btnShadowClass} ${themeStyles.textMain} ring-2 ring-brand/50 ring-offset-2 ring-offset-transparent`
+                                  : `${btnShadowClass} ${themeStyles.textMain} hover:translate-y-[-1px]`
+                                }`}
+                            >
+                              {/* Suggested Badge */}
+                              {suggestedRatio?.suggestedId === r.id && showDimensionInput && selectedRatio !== r.id && (
+                                <motion.div
+                                  initial={{ opacity: 0, scale: 0.8 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  className="absolute -top-2 -right-2 bg-brand text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full"
+                                >
+                                  Best
+                                </motion.div>
+                              )}
+                              <r.icon size={24} />
+                              <span className="text-xs font-bold leading-tight">{r.label}</span>
+                              <span className="text-[9px] opacity-50 font-mono">{r.id}</span>
+                              <span className={`text-[9px] leading-tight opacity-70 mt-1 ${selectedRatio === r.id ? 'text-brand' : themeStyles.textSub}`}>
+                                {r.description}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Dimension Translator Section */}
+                        <div className={`rounded-2xl ${btnShadowClass} overflow-hidden`}>
+                          {/* Collapse Toggle */}
+                          <motion.button
+                            onClick={() => setShowDimensionInput(!showDimensionInput)}
+                            className={`w-full p-3 flex items-center justify-between ${themeStyles.textSub} hover:text-brand transition-colors`}
+                            whileTap={{ scale: 0.98 }}
                           >
-                            <r.icon size={24} />
-                            <span className="text-xs font-bold leading-tight">{r.label}</span>
-                            <span className="text-[9px] opacity-50 font-mono">{r.id}</span>
-                            <span className={`text-[9px] leading-tight opacity-70 mt-1 ${selectedRatio === r.id ? 'text-brand' : themeStyles.textSub}`}>
-                              {r.description}
-                            </span>
-                          </button>
-                        ))}
+                            <div className="flex items-center gap-2">
+                              <Ruler size={16} />
+                              <span className="text-xs font-bold">Got print specs?</span>
+                            </div>
+                            <motion.div
+                              animate={{ rotate: showDimensionInput ? 180 : 0 }}
+                              transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+                            >
+                              <ChevronDown size={16} />
+                            </motion.div>
+                          </motion.button>
+
+                          {/* Expandable Input Section */}
+                          <AnimatePresence>
+                            {showDimensionInput && (
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1, transition: { type: 'spring', stiffness: 300, damping: 25 } }}
+                                exit={{ height: 0, opacity: 0, transition: { duration: 0.2, ease: 'easeOut' } }}
+                                className="overflow-hidden"
+                              >
+                                <div className="p-4 pt-0 pb-6 space-y-4">
+                                  {/* Dimension Inputs */}
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex-1">
+                                      <label className={`text-[10px] font-bold uppercase tracking-wider ${themeStyles.textSub} mb-1 block`}>Width</label>
+                                      <input
+                                        type="number"
+                                        value={customWidth}
+                                        onChange={(e) => setCustomWidth(e.target.value.replace(/[^0-9.]/g, ''))}
+                                        placeholder="210"
+                                        className={`w-full p-2 rounded-xl text-sm font-mono ${insetShadowClass} ${themeStyles.bg} ${themeStyles.textMain} focus:outline-none focus:ring-2 focus:ring-brand/30`}
+                                      />
+                                    </div>
+                                    <span className={`${themeStyles.textSub} font-bold mt-5`}>×</span>
+                                    <div className="flex-1">
+                                      <label className={`text-[10px] font-bold uppercase tracking-wider ${themeStyles.textSub} mb-1 block`}>Height</label>
+                                      <input
+                                        type="number"
+                                        value={customHeight}
+                                        onChange={(e) => setCustomHeight(e.target.value.replace(/[^0-9.]/g, ''))}
+                                        placeholder="297"
+                                        className={`w-full p-2 rounded-xl text-sm font-mono ${insetShadowClass} ${themeStyles.bg} ${themeStyles.textMain} focus:outline-none focus:ring-2 focus:ring-brand/30`}
+                                      />
+                                    </div>
+                                    {/* Unit Selector */}
+                                    <div className="w-20">
+                                      <NeuDropdown
+                                        label="Unit"
+                                        options={[
+                                          { value: 'mm', label: 'mm' },
+                                          { value: 'cm', label: 'cm' },
+                                          { value: 'in', label: 'in' },
+                                        ]}
+                                        value={dimensionUnit}
+                                        onChange={(val) => setDimensionUnit(val as 'mm' | 'cm' | 'in')}
+                                        overlay={true}
+                                      />
+                                    </div>
+                                  </div>
+
+                                  {/* Suggestion Result - No separate animation to prevent double-jump */}
+                                  {suggestedRatio && (
+                                    <div className={`p-3 rounded-xl ${themeStyles.bg} ${insetShadowClass}`}>
+                                      <div className="flex items-center justify-between">
+                                        <div>
+                                          <div className="flex items-center gap-2">
+                                            <span className={`text-xs font-bold ${themeStyles.textMain}`}>→ Closest:</span>
+                                            <span className="text-sm font-bold text-brand">
+                                              {RATIOS.find(r => r.id === suggestedRatio.suggestedId)?.label} ({suggestedRatio.suggestedId})
+                                            </span>
+                                          </div>
+                                          <div className={`text-[10px] ${themeStyles.textSub} mt-1`}>
+                                            Your ratio: {suggestedRatio.inputRatio} • {suggestedRatio.accuracy} match
+                                          </div>
+                                        </div>
+                                        <motion.button
+                                          onClick={() => {
+                                            setSelectedRatio(suggestedRatio.suggestedId);
+                                            setActiveMenu(null);
+                                            setShowDimensionInput(false);
+                                          }}
+                                          whileHover={{ scale: 1.02 }}
+                                          whileTap={{ scale: 0.96 }}
+                                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-bold shadow-lg shadow-brand/30"
+                                        >
+                                          <Check size={12} />
+                                          Use This
+                                        </motion.button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
                       </div>
                     )}
 

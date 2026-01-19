@@ -3,6 +3,7 @@ import { Business, StylePreset, GenerationStrategy } from '../types';
 import { PromptFactory } from './prompts';
 import { getSymbolFromCurrency } from '../utils/currency';
 import { supabase } from './supabase';
+import { AI_MODELS } from '../config/ai-models';
 
 // Helper to get the client.
 const getAiClient = () => {
@@ -46,7 +47,7 @@ export const generateAdCopy = async (
   }
 
   try {
-    const model = 'gemini-2.5-flash';
+    const model = AI_MODELS.text;
     const prompt = `
       Write a short, punchy ad copy for a business named "${businessName}".
       Product: "${productName}".
@@ -69,6 +70,30 @@ export const generateAdCopy = async (
 
 // NOTE: generateTaskSuggestions was removed - Tasks page now uses manual task management.
 // AI task suggestions are handled by the Chat CMO assistant if needed.
+
+/**
+ * Generate a concise chat title from the first user message
+ */
+export const generateChatTitle = async (message: string): Promise<string> => {
+  const ai = getAiClient();
+  if (!ai) return message.slice(0, 40);
+
+  try {
+    const response = await ai.models.generateContent({
+      model: AI_MODELS.text,
+      contents: `Generate a concise 3-6 word title for this chat request. Be descriptive but brief. No quotes or punctuation at the end.
+
+User message: "${message.slice(0, 200)}"
+
+Title:`,
+    });
+
+    const title = response.text?.trim().replace(/^["']|["']$/g, '').slice(0, 60);
+    return title || message.slice(0, 40);
+  } catch {
+    return message.slice(0, 40);
+  }
+};
 
 export const generateImage = async (
   prompt: string,
@@ -190,7 +215,7 @@ export const enhanceOffering = async (
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: AI_MODELS.text,
       contents: prompt,
       config: { responseMimeType: 'application/json' }
     });
@@ -210,10 +235,11 @@ export const enhanceOffering = async (
 // CHAT SERVICE WITH TOOLS
 export const sendChatMessage = async (
   business: Business,
-  history: { role: 'user' | 'ai'; text: string }[],
+  history: { role: 'user' | 'ai'; text: string; imageUrl?: string }[],
   newMessage: string,
-  subjectContext?: { id: string; name: string; type: 'product' | 'person'; imageUrl?: string }
-): Promise<{ text: string; image?: string }> => {
+  subjectContext?: { id: string; name: string; type: 'product' | 'person'; imageUrl?: string },
+  recentImageUrl?: string
+): Promise<{ text: string; image?: string; jobId?: string; jobIds?: string[] }> => {
   const ai = getAiClient();
 
   if (!ai) {
@@ -221,17 +247,44 @@ export const sendChatMessage = async (
   }
 
   try {
-    const systemInstruction = await PromptFactory.createChatSystemInstruction(business);
+    // Fetch available styles for AI context (Phase 2)
+    const { data: stylesData } = await supabase
+      .from('styles')
+      .select('id, name, description')
+      .limit(15);
+
+    const availableStyles = stylesData || [];
+
+    const systemInstruction = await PromptFactory.createChatSystemInstruction(
+      business,
+      availableStyles
+    );
 
     const imageGenTool: FunctionDeclaration = {
       name: 'generate_marketing_image',
-      description: 'Generates a visual ad image based on a prompt.',
+      description: 'Generates a visual ad image with full control over style, format, and quality. Use when the user wants an image created.',
       parameters: {
         type: Type.OBJECT,
         properties: {
           prompt: {
             type: Type.STRING,
-            description: 'The visual description of the image to generate.',
+            description: 'Detailed visual description of the ad image to generate.',
+          },
+          styleId: {
+            type: Type.STRING,
+            description: 'Optional. The style preset ID. If the user mentions a style name, match it to an ID. Otherwise omit.',
+          },
+          aspectRatio: {
+            type: Type.STRING,
+            description: 'Optional. Format options: "1:1" (square/Instagram), "9:16" (story/reel/TikTok), "16:9" (wide/YouTube), "4:5" (IG feed). Default: 1:1',
+          },
+          modelTier: {
+            type: Type.STRING,
+            description: 'Optional. "pro" for standard quality (1 credit), "ultra" for 4K print-ready (2 credits). Default: pro',
+          },
+          isEdit: {
+            type: Type.BOOLEAN,
+            description: 'Set to true if this is an edit of a previous image in the conversation.',
           },
         },
         required: ['prompt'],
@@ -264,44 +317,120 @@ export const sendChatMessage = async (
       }
     }
 
+    // Build multimodal history
+    const multimodalHistory = await Promise.all(history.map(async h => {
+      const parts: Part[] = [{ text: h.text }];
+
+      // If this message has an associated image, include it
+      if (h.imageUrl) {
+        try {
+          const imageBase64 = await urlToBase64(h.imageUrl);
+          if (imageBase64) {
+            parts.push({
+              inlineData: {
+                mimeType: 'image/png',
+                data: imageBase64
+              }
+            });
+          }
+        } catch (e) {
+          console.warn('Failed to load image for history:', e);
+        }
+      }
+
+      return {
+        role: h.role === 'ai' ? 'model' : 'user',
+        parts
+      };
+    }));
+
+    // If there's a recent image context, add it to current message
+    let messageParts: Part[] = [{ text: contextMessage }];
+    if (recentImageUrl) {
+      const imageBase64 = await urlToBase64(recentImageUrl);
+      if (imageBase64) {
+        messageParts.push({
+          inlineData: {
+            mimeType: 'image/png',
+            data: imageBase64
+          }
+        });
+      }
+    }
+
     const chat = ai.chats.create({
-      model: 'gemini-2.5-flash',
+      model: AI_MODELS.text,
       config: {
         systemInstruction: systemInstruction,
         tools: [{ functionDeclarations: [imageGenTool] }],
       },
-      history: history.map(h => ({
-        role: h.role === 'ai' ? 'model' : 'user',
-        parts: [{ text: h.text }]
-      }))
+      history: multimodalHistory
     });
 
+    // @ts-ignore - The SDK types might be slightly off for the beta 'message' param with parts
     const response = await chat.sendMessage({
-      message: contextMessage
+      message: messageParts
     });
 
     const functionCalls = response.candidates?.[0]?.content?.parts?.filter(p => p.functionCall).map(p => p.functionCall);
 
     if (functionCalls && functionCalls.length > 0) {
-      const call = functionCalls[0];
-      if (call && call.name === 'generate_marketing_image') {
-        // @ts-ignore
-        const imagePrompt = call.args['prompt'] as string;
+      // Phase 5: Filter for all image generation calls
+      const imageGenCalls = functionCalls.filter(c => c?.name === 'generate_marketing_image');
 
-        // Use the job-based generateImage - returns job ID, not base64
-        const { jobId } = await generateImage(
-          imagePrompt,
-          business,
-          undefined, // No style preset for chat yet
-          imageGenContext, // Pass the hydrated context
-          '1:1',
-          'pro'
-        );
+      if (imageGenCalls.length > 0) {
+        const jobIds: string[] = [];
+        const descriptions: string[] = [];
 
-        // Return a message with the job ID - UI can poll for completion
+        // Process ALL image generation calls (not just the first)
+        for (const call of imageGenCalls) {
+          // @ts-ignore - Extract all parameters from function call
+          const imagePrompt = call.args['prompt'] as string;
+          const styleId = call.args['styleId'] as string | undefined;
+          const aspectRatio = (call.args['aspectRatio'] as string) || '1:1';
+          const modelTier = (call.args['modelTier'] as 'pro' | 'ultra') || 'pro';
+
+          // Fetch style preset if AI specified one
+          let stylePreset: StylePreset | undefined;
+          if (styleId) {
+            const { data } = await supabase
+              .from('styles')
+              .select('*')
+              .eq('id', styleId)
+              .single();
+            if (data) stylePreset = data as StylePreset;
+          }
+
+          // Use the job-based generateImage with AI-selected parameters
+          const { jobId } = await generateImage(
+            imagePrompt,
+            business,
+            stylePreset,
+            imageGenContext,
+            aspectRatio,
+            modelTier
+          );
+
+          jobIds.push(jobId);
+          descriptions.push(stylePreset?.name || `${aspectRatio} image`);
+        }
+
+        // Build response based on single vs multiple images
+        const isBatch = jobIds.length > 1;
+        const headerText = isBatch
+          ? `Creating ${jobIds.length} images now...`
+          : `Creating your image now...`;
+
+        const descList = isBatch
+          ? '\n\n' + descriptions.map((d, i) => `${i + 1}. ${d}`).join('\n')
+          : descriptions[0] ? ` in **${descriptions[0]}**` : '';
+
+        // Return with jobId (single) or jobIds (batch)
         return {
-          text: `I'm generating that image for you based on: "${imagePrompt}". Head to the Generator tab to see it when it's ready!`,
-          image: undefined // No immediate image - job is processing
+          text: `${headerText}${descList}`,
+          image: undefined,
+          jobId: isBatch ? undefined : jobIds[0],
+          jobIds: isBatch ? jobIds : undefined
         };
       }
     }

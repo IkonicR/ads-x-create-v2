@@ -13,7 +13,7 @@ import { GalaxyHeading } from './GalaxyHeading';
 import { ExtractionResult, ExtractedBusinessData } from '../services/extractionService';
 import {
     Check, Pencil, Building, Palette, Phone, MessageSquare,
-    ShoppingBag, Sparkles, ChevronDown, ChevronUp, AlertCircle, Image
+    ShoppingBag, Sparkles, ChevronDown, ChevronUp, AlertCircle, Image, X
 } from 'lucide-react';
 
 interface ExtractionPreviewProps {
@@ -135,7 +135,7 @@ export const ExtractionPreview: React.FC<ExtractionPreviewProps> = ({
                 {/* Logo Display */}
                 {editedData.logoUrl && (
                     <div className="mb-6 flex justify-center">
-                        <div className={`p-4 rounded-2xl ${styles.bg} ${styles.shadowOut} inline-block`}>
+                        <div className={`p-4 rounded-2xl ${styles.bg} ${styles.shadowOut} inline-block relative group`}>
                             <img
                                 src={editedData.logoUrl}
                                 alt="Business Logo"
@@ -144,6 +144,13 @@ export const ExtractionPreview: React.FC<ExtractionPreviewProps> = ({
                                     (e.target as HTMLImageElement).style.display = 'none';
                                 }}
                             />
+                            <button
+                                onClick={() => updateField('logoUrl', undefined)}
+                                className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+                                title="Remove incorrect logo"
+                            >
+                                <X size={14} />
+                            </button>
                         </div>
                     </div>
                 )}
@@ -297,7 +304,7 @@ export const ExtractionPreview: React.FC<ExtractionPreviewProps> = ({
                     </div>
 
                     {/* Social handles */}
-                    {editedData.profile?.socials && editedData.profile.socials.length > 0 && (
+                    {editedData.profile?.socials && Array.isArray(editedData.profile.socials) && editedData.profile.socials.length > 0 && (
                         <div>
                             <label className={`block text-xs font-bold mb-2 ${styles.textSub} uppercase`}>
                                 Social Media
@@ -336,7 +343,7 @@ export const ExtractionPreview: React.FC<ExtractionPreviewProps> = ({
                         </div>
                     )}
 
-                    {editedData.voice?.tonePillsInferred && editedData.voice.tonePillsInferred.length > 0 && (
+                    {editedData.voice?.tonePillsInferred && Array.isArray(editedData.voice.tonePillsInferred) && editedData.voice.tonePillsInferred.length > 0 && (
                         <div>
                             <label className={`block text-xs font-bold mb-2 ${styles.textSub} uppercase`}>
                                 Tone (AI Suggested)
@@ -354,7 +361,7 @@ export const ExtractionPreview: React.FC<ExtractionPreviewProps> = ({
                         </div>
                     )}
 
-                    {editedData.voice?.keywords && editedData.voice.keywords.length > 0 && (
+                    {editedData.voice?.keywords && Array.isArray(editedData.voice.keywords) && editedData.voice.keywords.length > 0 && (
                         <div>
                             <label className={`block text-xs font-bold mb-2 ${styles.textSub} uppercase`}>
                                 Brand Keywords
@@ -375,7 +382,7 @@ export const ExtractionPreview: React.FC<ExtractionPreviewProps> = ({
             </Section>
 
             {/* Offerings Section */}
-            {editedData.offerings && editedData.offerings.length > 0 && (
+            {editedData.offerings && Array.isArray(editedData.offerings) && editedData.offerings.length > 0 && (
                 <Section
                     title={`Products/Services (${editedData.offerings.length} found)`}
                     icon={<ShoppingBag size={20} />}

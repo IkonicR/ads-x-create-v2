@@ -14,6 +14,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { useAuth } from './AuthContext';
 import {
     getBusinessSubscription,
+    getSubscriptionWithFeatures,
     deductCreditsForBusiness,
     refundCreditsForBusiness,
     SubscriptionWithFeatures
@@ -70,8 +71,15 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         }
 
         if (!currentBusinessId) {
-            // No business selected yet - wait
-            setSubscription(null);
+            // FALLBACK: No business selected - load user's OWN subscription
+            // This happens during first-business onboarding for new users
+            try {
+                const userSub = await getSubscriptionWithFeatures();
+                setSubscription(userSub);
+            } catch (err) {
+                console.warn('[SubscriptionContext] Could not load user subscription fallback:', err);
+                setSubscription(null);
+            }
             setLoading(false);
             return;
         }

@@ -33,34 +33,30 @@ export interface UserWithSubscription {
 
 export const AdminService = {
     /**
-     * Get all users who have subscriptions
-     * This includes beta testers and anyone with a subscription
+     * Get ALL users from profiles table
+     * Includes users with and without subscriptions
      */
     async getAllSubscriptionOwners(): Promise<UserWithSubscription[]> {
-        // Start from subscriptions - this is the source of truth for who pays/has access
-        const { data: subscriptions, error: subsError } = await supabase
-            .from('subscriptions')
-            .select('*');
-
-        if (subsError) {
-            console.error('[AdminService] Error fetching subscriptions:', subsError);
-            throw subsError;
-        }
-
-        if (!subscriptions || subscriptions.length === 0) return [];
-
-        const userIds = [...new Set(subscriptions.map(s => s.user_id))];
-
-        // Get profiles for these users
+        // Start from profiles - get ALL users
         const { data: profiles, error: profilesError } = await supabase
             .from('profiles')
-            .select('id, email, full_name, avatar_url, is_admin, updated_at')
-            .in('id', userIds);
+            .select('id, email, full_name, avatar_url, is_admin, updated_at, onboarding_completed')
+            .order('updated_at', { ascending: false });
 
         if (profilesError) {
             console.error('[AdminService] Error fetching profiles:', profilesError);
             throw profilesError;
         }
+
+        if (!profiles || profiles.length === 0) return [];
+
+        const userIds = profiles.map(p => p.id);
+
+        // Get subscriptions for these users (LEFT JOIN equivalent)
+        const { data: subscriptions } = await supabase
+            .from('subscriptions')
+            .select('*')
+            .in('user_id', userIds);
 
         // Get business counts - check BOTH sources
         // 1. Via business_members
@@ -88,12 +84,12 @@ export const AdminService = {
         });
 
         // Build subscription map
-        const subsMap: Record<string, typeof subscriptions[0]> = {};
+        const subsMap: Record<string, typeof subscriptions extends Array<infer T> ? T : never> = {};
         (subscriptions || []).forEach(s => {
             subsMap[s.user_id] = s;
         });
 
-        return (profiles || []).map(profile => {
+        return profiles.map(profile => {
             const sub = subsMap[profile.id];
             return {
                 id: profile.id,
@@ -241,6 +237,18 @@ export const AdminService = {
     },
 
     /**
+     * Set extra businesses for a user's subscription
+     */
+    async setExtraBusinesses(userId: string, count: number): Promise<void> {
+        const { error } = await supabase
+            .from('subscriptions')
+            .update({ extra_businesses: Math.max(0, count) })
+            .eq('user_id', userId);
+
+        if (error) throw error;
+    },
+
+    /**
      * Get plan info for display
      */
     getPlanInfo(planId: PlanId) {
@@ -248,48 +256,32 @@ export const AdminService = {
     },
 
     /**
-     * Delete a user and all their data (for testing purposes)
-     * DESTRUCTIVE: Removes profile, subscription, businesses, assets, tasks, and memberships
+     * Delete a user and all their data completely
+     * DESTRUCTIVE: Removes everything including auth.users (they cannot sign in again)
+     * Calls server-side API that has admin privileges
      */
     async deleteUser(userId: string): Promise<void> {
-        console.log('[AdminService] Deleting user:', userId);
+        console.log('[AdminService] Requesting full user deletion:', userId);
 
-        // 1. Get all businesses owned by this user
-        const { data: businesses } = await supabase
-            .from('businesses')
-            .select('id')
-            .eq('owner_id', userId);
-
-        const businessIds = (businesses || []).map(b => b.id);
-
-        // 2. Delete assets for their businesses
-        if (businessIds.length > 0) {
-            await supabase.from('assets').delete().in('business_id', businessIds);
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) {
+            throw new Error('Not authenticated');
         }
 
-        // 3. Delete tasks owned by this user
-        await supabase.from('tasks').delete().eq('owner_id', userId);
+        const response = await fetch('/api/admin/delete-user', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`
+            },
+            body: JSON.stringify({ userId })
+        });
 
-        // 4. Delete business_members entries (theirs and from their businesses)
-        await supabase.from('business_members').delete().eq('user_id', userId);
-        if (businessIds.length > 0) {
-            await supabase.from('business_members').delete().in('business_id', businessIds);
+        if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || 'Failed to delete user');
         }
 
-        // 5. Delete their businesses
-        await supabase.from('businesses').delete().eq('owner_id', userId);
-
-        // 6. Delete subscription
-        await supabase.from('subscriptions').delete().eq('user_id', userId);
-
-        // 7. Delete profile
-        const { error } = await supabase.from('profiles').delete().eq('id', userId);
-
-        if (error) {
-            console.error('[AdminService] Error deleting user:', error);
-            throw error;
-        }
-
-        console.log('[AdminService] User deleted successfully');
+        console.log('[AdminService] User fully deleted via API');
     },
 };

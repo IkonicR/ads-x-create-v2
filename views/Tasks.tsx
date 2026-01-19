@@ -225,9 +225,10 @@ const TasksInner: React.FC<TasksInnerProps> = ({ businessDesc, activeBusinessId,
 
   const handleSaveTask = async (task: Task) => {
     if (isNewTask) {
-      await addTask(task);
-      // Only close after creating a new task
-      setEditingTask(null);
+      // For new tasks, add to database and get back the task with generated ID
+      const createdTask = await addTask(task);
+      // Update editingTask with the real ID so uploads work
+      setEditingTask(createdTask);
       setIsNewTask(false);
     } else {
       // For updates, just save - don't close the panel

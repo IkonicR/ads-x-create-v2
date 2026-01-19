@@ -32,6 +32,7 @@ import DesignLab from './views/DesignLab';
 import BusinessManager from './views/BusinessManager';
 import AcceptInvite from './views/AcceptInvite';
 import AccessGate from './views/AccessGate';
+import SubscriptionGate from './views/SubscriptionGate';
 import TeamSettings from './views/TeamSettings';
 
 import SocialSettings from './views/SocialSettings';
@@ -113,6 +114,7 @@ const AppContent: React.FC = () => {
 
   const [pendingAssets, setPendingAssets] = useState<ExtendedAsset[]>([]);
   const [loadingData, setLoadingData] = useState(true);
+  const [hasSubscription, setHasSubscription] = useState<boolean | null>(null); // Gate 3: null = unchecked
   const reorderTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
   // Load initial data
@@ -177,6 +179,37 @@ const AppContent: React.FC = () => {
     };
     load();
   }, [authChecked, profileChecked, profile?.onboarding_completed, user?.id]); // Wait for auth + profile check
+
+  // GATE 3: Check subscription exists after profile is confirmed
+  useEffect(() => {
+    const checkSubscription = async () => {
+      // Only check if we have a fully onboarded user
+      if (!user || !profile || !profile.onboarding_completed) {
+        setHasSubscription(null);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('subscriptions')
+          .select('id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (error || !data) {
+          console.warn('[Gate 3] No subscription found for user:', user.id);
+          setHasSubscription(false);
+        } else {
+          setHasSubscription(true);
+        }
+      } catch (err) {
+        console.error('[Gate 3] Subscription check failed:', err);
+        setHasSubscription(false);
+      }
+    };
+
+    checkSubscription();
+  }, [user?.id, profile?.onboarding_completed]);
 
   // Check for pending team invites on login
   useEffect(() => {
@@ -366,6 +399,23 @@ const AppContent: React.FC = () => {
     return <AccessGate />;
   }
 
+  // GATE 3: User has profile but no subscription → force invite code entry
+  if (hasSubscription === null) {
+    // Still checking subscription status
+    return <GlobalLoader />;
+  }
+
+  if (hasSubscription === false) {
+    // User has profile but no subscription - show SubscriptionGate
+    return (
+      <SubscriptionGate
+        onSubscriptionCreated={() => {
+          setHasSubscription(true);
+        }}
+      />
+    );
+  }
+
   // Compute activeBusiness - if user has businesses but this is null, they need to go to onboarding
   const activeBusiness = businesses.find(b => b.id === activeBusinessId) || null;
 
@@ -374,6 +424,7 @@ const AppContent: React.FC = () => {
   if (businesses.length > 0 && !activeBusiness) {
     return <GlobalLoader />;
   }
+
 
   // The wrapper function for navigation context
   const handleSetView = (newView: ViewState) => {
@@ -394,14 +445,17 @@ const AppContent: React.FC = () => {
         .single();
 
       if (userSub) {
-        const baseBusinesses = 1; // All plans start with 1
-        const maxAllowed = baseBusinesses + (userSub.extra_businesses ?? 0);
+        // Import dynamically to avoid circular deps at top level
+        const { PLANS } = await import('./config/pricing');
+        const plan = PLANS[userSub.plan_id as keyof typeof PLANS];
+        const baseBusiness = plan?.features?.businesses ?? 1;
+        const maxAllowed = baseBusiness + (userSub.extra_businesses ?? 0);
 
         if (businesses.length >= maxAllowed) {
           notify({
             type: 'warning',
             title: 'Business Limit Reached',
-            message: `Your plan allows ${maxAllowed} business${maxAllowed > 1 ? 'es' : ''}. Upgrade to add more.`
+            message: `Your ${plan?.name || 'plan'} allows ${maxAllowed} business${maxAllowed > 1 ? 'es' : ''}. Upgrade to add more.`
           });
           navigate('/dashboard');
           return;
@@ -526,6 +580,16 @@ const AppContent: React.FC = () => {
       }
     }, 300);
   };
+
+  // FIRST BUSINESS: If user has 0 businesses, show full-screen onboarding (no sidebar/header)
+  // This provides a clean, focused experience for new users
+  if (businesses.length === 0) {
+    return (
+      <NavigationProvider currentView={ViewState.ONBOARDING} onNavigate={() => { }}>
+        <Onboarding onComplete={handleBusinessCreate} />
+      </NavigationProvider>
+    );
+  }
 
   return (
     <NavigationProvider currentView={currentView} onNavigate={handleSetView}>

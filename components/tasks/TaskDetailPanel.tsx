@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Task, TaskCategory, Subtask, TaskAttachment, Asset } from '../../types';
+import { Task, TaskCategory, Subtask, TaskAttachment, Asset, TaskTechSpecs, DimensionUnit, FileFormat } from '../../types';
 import { supabase } from '../../services/supabase';
 import { NeuCard, NeuButton, NeuInput, NeuTextArea, NeuDropdown, NeuCloseButton, useThemeStyles } from '../NeuComponents';
 import {
@@ -29,7 +29,8 @@ import {
     User,
     Bell,
     Mail as MailIcon,
-    Check
+    Check,
+    Ruler
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DatePicker } from '../DatePicker';
@@ -677,6 +678,140 @@ export const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
                                             </div>
                                         </div>
                                     </Section >
+
+                                    {/* Technical Specs section */}
+                                    <Section
+                                        title="Technical Specs"
+                                        icon={<Ruler size={12} />}
+                                        description="File format and dimension requirements"
+                                        badge={editedTask.techSpecs?.fileFormat || editedTask.techSpecs?.dimensions ? '✓' : undefined}
+                                    >
+                                        <div className="space-y-4">
+                                            {/* File Format */}
+                                            <div>
+                                                <label className={`text-xs font-medium ${styles.textSub} mb-1.5 block`}>File Format</label>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {(['PNG', 'JPG', 'PDF', 'SVG', 'WEBP', 'MP4', 'GIF'] as const).map(format => (
+                                                        <button
+                                                            key={format}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const updated = {
+                                                                    ...editedTask,
+                                                                    techSpecs: {
+                                                                        ...editedTask.techSpecs,
+                                                                        fileFormat: editedTask.techSpecs?.fileFormat === format ? undefined : format
+                                                                    }
+                                                                };
+                                                                setEditedTask(updated);
+                                                                onSave(updated);
+                                                            }}
+                                                            className={`text-xs px-2.5 py-1.5 rounded-md transition-all ${editedTask.techSpecs?.fileFormat === format
+                                                                ? `${styles.shadowIn} text-brand font-medium`
+                                                                : `${styles.shadowOut} ${styles.textSub} hover:text-brand`
+                                                                }`}
+                                                        >
+                                                            {format}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* Dimensions - Grid layout */}
+                                            <div className="grid grid-cols-3 gap-3">
+                                                {/* Width */}
+                                                <div>
+                                                    <label className={`text-xs font-medium ${styles.textSub} mb-1.5 block`}>Width</label>
+                                                    <NeuInput
+                                                        type="number"
+                                                        placeholder="0"
+                                                        value={editedTask.techSpecs?.dimensions?.width || ''}
+                                                        onChange={e => {
+                                                            const width = e.target.value ? parseFloat(e.target.value) : undefined;
+                                                            const updated = {
+                                                                ...editedTask,
+                                                                techSpecs: {
+                                                                    ...editedTask.techSpecs,
+                                                                    dimensions: width || editedTask.techSpecs?.dimensions?.height ? {
+                                                                        width: width || 0,
+                                                                        height: editedTask.techSpecs?.dimensions?.height || 0,
+                                                                        unit: editedTask.techSpecs?.dimensions?.unit || 'cm'
+                                                                    } : undefined
+                                                                }
+                                                            };
+                                                            setEditedTask(updated);
+                                                        }}
+                                                        onBlur={triggerAutoSave}
+                                                    />
+                                                </div>
+
+                                                {/* Height */}
+                                                <div>
+                                                    <label className={`text-xs font-medium ${styles.textSub} mb-1.5 block`}>Height</label>
+                                                    <NeuInput
+                                                        type="number"
+                                                        placeholder="0"
+                                                        value={editedTask.techSpecs?.dimensions?.height || ''}
+                                                        onChange={e => {
+                                                            const height = e.target.value ? parseFloat(e.target.value) : undefined;
+                                                            const updated = {
+                                                                ...editedTask,
+                                                                techSpecs: {
+                                                                    ...editedTask.techSpecs,
+                                                                    dimensions: editedTask.techSpecs?.dimensions?.width || height ? {
+                                                                        width: editedTask.techSpecs?.dimensions?.width || 0,
+                                                                        height: height || 0,
+                                                                        unit: editedTask.techSpecs?.dimensions?.unit || 'cm'
+                                                                    } : undefined
+                                                                }
+                                                            };
+                                                            setEditedTask(updated);
+                                                        }}
+                                                        onBlur={triggerAutoSave}
+                                                    />
+                                                </div>
+
+                                                {/* Unit Dropdown */}
+                                                <div>
+                                                    <label className={`text-xs font-medium ${styles.textSub} mb-1.5 block`}>Unit</label>
+                                                    <NeuDropdown
+                                                        value={editedTask.techSpecs?.dimensions?.unit || 'cm'}
+                                                        onChange={value => {
+                                                            const unit = value as 'px' | 'cm' | 'mm' | 'in';
+                                                            const updated = {
+                                                                ...editedTask,
+                                                                techSpecs: {
+                                                                    ...editedTask.techSpecs,
+                                                                    dimensions: {
+                                                                        width: editedTask.techSpecs?.dimensions?.width || 0,
+                                                                        height: editedTask.techSpecs?.dimensions?.height || 0,
+                                                                        unit
+                                                                    }
+                                                                }
+                                                            };
+                                                            setEditedTask(updated);
+                                                            onSave(updated);
+                                                        }}
+                                                        options={[
+                                                            { value: 'px', label: 'px' },
+                                                            { value: 'cm', label: 'cm' },
+                                                            { value: 'mm', label: 'mm' },
+                                                            { value: 'in', label: 'in' }
+                                                        ]}
+                                                        overlay
+                                                        compact
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Summary line */}
+                                            {editedTask.techSpecs?.dimensions && (editedTask.techSpecs.dimensions.width > 0 || editedTask.techSpecs.dimensions.height > 0) && (
+                                                <p className={`text-xs ${styles.textSub} opacity-70`}>
+                                                    Output: {editedTask.techSpecs.dimensions.width} × {editedTask.techSpecs.dimensions.height} {editedTask.techSpecs.dimensions.unit}
+                                                </p>
+                                            )}
+                                        </div>
+                                    </Section>
 
                                     {/* Attachments section */}
                                     <Section title="Attachments" icon={<Paperclip size={12} />} description="Upload briefs, reference images, or documents" badge={editedTask.attachments?.length ? `${editedTask.attachments.length}` : undefined}>

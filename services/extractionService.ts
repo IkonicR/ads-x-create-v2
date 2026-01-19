@@ -113,6 +113,92 @@ export interface DiscoveredPage {
     title: string;
 }
 
+// ============================================================================
+// DATA NORMALIZATION LAYER
+// Sanitizes AI responses to ensure type safety before data reaches UI
+// ============================================================================
+
+/**
+ * Ensure a value is an array. Handles:
+ * - Already an array → return as-is
+ * - String → split by delimiter
+ * - Object → wrap in array
+ * - Null/undefined → return empty array
+ */
+function ensureArray<T>(value: T[] | string | T | undefined | null, delimiter = ','): T[] {
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string') {
+        return value.split(delimiter).map(s => (s as string).trim()).filter(Boolean) as T[];
+    }
+    return [value]; // Wrap single object
+}
+
+/**
+ * Normalize extracted business data to ensure type safety.
+ * Converts strings to arrays where arrays are expected.
+ * Call this before passing data to any UI component.
+ */
+export function normalizeExtractedData(data: ExtractedBusinessData): ExtractedBusinessData {
+    const normalized = { ...data };
+
+    // --- Voice fields ---
+    if (normalized.voice) {
+        normalized.voice = {
+            ...normalized.voice,
+            tonePillsInferred: ensureArray(normalized.voice.tonePillsInferred),
+            keywords: ensureArray(normalized.voice.keywords),
+        };
+    }
+
+    // --- Profile fields ---
+    if (normalized.profile) {
+        normalized.profile = {
+            ...normalized.profile,
+            socials: ensureArray(normalized.profile.socials),
+        };
+    }
+
+    // --- Strategy fields ---
+    if (normalized.strategy) {
+        normalized.strategy = {
+            ...normalized.strategy,
+            competitors: ensureArray(normalized.strategy.competitors),
+        };
+        if (normalized.strategy.coreCustomerProfile) {
+            normalized.strategy.coreCustomerProfile = {
+                ...normalized.strategy.coreCustomerProfile,
+                painPoints: ensureArray(normalized.strategy.coreCustomerProfile.painPoints),
+                desires: ensureArray(normalized.strategy.coreCustomerProfile.desires),
+            };
+        }
+    }
+
+    // --- Brand Kit fields ---
+    if (normalized.brandKit) {
+        normalized.brandKit = {
+            ...normalized.brandKit,
+            visualMotifs: ensureArray(normalized.brandKit.visualMotifs),
+        };
+    }
+
+    // --- Content fields ---
+    if (normalized.content) {
+        normalized.content = {
+            ...normalized.content,
+            teamMembers: ensureArray(normalized.content.teamMembers),
+            locations: ensureArray(normalized.content.locations),
+            testimonials: ensureArray(normalized.content.testimonials),
+        };
+    }
+
+    // --- Top-level array fields ---
+    normalized.usps = ensureArray(normalized.usps);
+    normalized.offerings = ensureArray(normalized.offerings);
+
+    return normalized;
+}
+
 /**
  * Discover pages on a website for user selection
  */
@@ -227,7 +313,9 @@ export async function extractWebsite(
 
         const result: ExtractionResult = await response.json();
 
+        // Normalize data to ensure type safety before UI receives it
         if (result.success && result.data) {
+            result.data = normalizeExtractedData(result.data);
             onProgress?.({
                 progress: 'complete',
                 message: 'Extraction complete!',

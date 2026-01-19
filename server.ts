@@ -1001,13 +1001,35 @@ Do your best to extract all available information while respecting the Hallucina
             };
         }
 
-        if (branding.logo) {
+        // Logo validation heuristics - reject likely hero/banner images
+        const isLikelyLogo = (url: string): boolean => {
+            const lowerUrl = url.toLowerCase();
+
+            // Negative signals (likely hero/banner images)
+            const isHeroImage = /hero|banner|bg|background|cover|featured|slide/i.test(lowerUrl);
+            const isLargeImage = /\d{4}x\d{3,4}|w=\d{4}|h=\d{3,4}|width=\d{4}|height=\d{3,4}/i.test(lowerUrl);
+            const isStockPhoto = /unsplash|pexels|shutterstock|istock|depositphotos/i.test(lowerUrl);
+            const isContentImage = /blog|post|article|news|gallery|product-image/i.test(lowerUrl);
+
+            // Reject if negative signals found
+            if (isHeroImage || isLargeImage || isStockPhoto || isContentImage) {
+                console.log('[Server] Rejected likely non-logo image:', url.slice(0, 100));
+                return false;
+            }
+
+            return true;
+        };
+
+        if (branding.logo && isLikelyLogo(branding.logo)) {
             extractedData.logoUrl = branding.logo;
         }
 
         // Fallback: check branding.images.logo if top-level logo is missing
         if (!extractedData.logoUrl && (branding as any).images?.logo) {
-            extractedData.logoUrl = (branding as any).images.logo;
+            const fallbackLogo = (branding as any).images.logo;
+            if (isLikelyLogo(fallbackLogo)) {
+                extractedData.logoUrl = fallbackLogo;
+            }
         }
 
         // Convert SVG logos to PNG for Gemini compatibility
@@ -2486,6 +2508,101 @@ app.post('/api/invite/delete', async (req, res) => {
     res.json({ success: true });
 });
 
+// ============================================================================
+// ADMIN API ROUTES
+// ============================================================================
+
+// Admin: Delete user completely (including auth.users)
+app.post('/api/admin/delete-user', async (req, res) => {
+    console.log('[Admin] Delete User Request');
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+
+    const token = authHeader.split(' ')[1];
+    const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+        res.status(401).json({ error: 'Invalid token' });
+        return;
+    }
+
+    // Check admin
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_admin')
+        .eq('id', user.id)
+        .single();
+
+    if (!profile?.is_admin) {
+        res.status(403).json({ error: 'Admin access required' });
+        return;
+    }
+
+    const { userId } = req.body;
+    if (!userId) {
+        res.status(400).json({ error: 'userId is required' });
+        return;
+    }
+
+    // Prevent self-deletion
+    if (userId === user.id) {
+        res.status(400).json({ error: 'Cannot delete yourself' });
+        return;
+    }
+
+    try {
+        // 1. Get all businesses owned by this user
+        const { data: businesses } = await supabase
+            .from('businesses')
+            .select('id')
+            .eq('owner_id', userId);
+
+        const businessIds = (businesses || []).map(b => b.id);
+
+        // 2. Delete assets for their businesses
+        if (businessIds.length > 0) {
+            await supabase.from('assets').delete().in('business_id', businessIds);
+        }
+
+        // 3. Delete tasks owned by this user
+        await supabase.from('tasks').delete().eq('owner_id', userId);
+
+        // 4. Delete business_members entries
+        await supabase.from('business_members').delete().eq('user_id', userId);
+        if (businessIds.length > 0) {
+            await supabase.from('business_members').delete().in('business_id', businessIds);
+        }
+
+        // 5. Delete their businesses
+        await supabase.from('businesses').delete().eq('owner_id', userId);
+
+        // 6. Delete subscription
+        await supabase.from('subscriptions').delete().eq('user_id', userId);
+
+        // 7. Delete profile
+        await supabase.from('profiles').delete().eq('id', userId);
+
+        // 8. DELETE AUTH USER (the key new step!)
+        const { error: authDeleteError } = await supabase.auth.admin.deleteUser(userId);
+        if (authDeleteError) {
+            console.error('[Admin] Auth delete error:', authDeleteError);
+            // Continue even if auth delete fails - user data is already removed
+        }
+
+        console.log('[Admin] User fully deleted:', userId);
+        res.json({ success: true });
+
+    } catch (error: any) {
+        console.error('[Admin] Delete user error:', error);
+        res.status(500).json({ error: 'Failed to delete user', details: error.message });
+    }
+});
+
 // --- TEAM API ROUTES ---
 import { Resend } from 'resend';
 // NOTE: Using pure TypeScript email templates instead of React Email components
@@ -3541,22 +3658,39 @@ const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
     fileFilter: (_req, file, cb) => {
-        const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf', 'text/plain'];
+        const allowed = [
+            // Images
+            'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
+            // Documents
+            'application/pdf',
+            'text/plain',
+            'application/msword', // .doc
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+        ];
         if (allowed.includes(file.mimetype)) {
             cb(null, true);
         } else {
-            cb(new Error('File type not allowed'));
+            console.log('[Tasks] File type rejected:', file.mimetype, file.originalname);
+            cb(new Error(`File type not allowed: ${file.mimetype}`));
         }
     }
 });
 
 app.post('/api/tasks/upload', upload.single('file'), async (req, res) => {
     console.log('[Tasks] Upload Request Received');
+    console.log('[Tasks] Body keys:', Object.keys(req.body));
+    console.log('[Tasks] taskId:', req.body.taskId);
+    console.log('[Tasks] businessId:', req.body.businessId);
+    console.log('[Tasks] File present:', !!req.file);
+    if (req.file) {
+        console.log('[Tasks] File details:', { name: req.file.originalname, type: req.file.mimetype, size: req.file.size });
+    }
 
     const { taskId, businessId } = req.body;
     const file = req.file;
 
     if (!taskId || !businessId || !file) {
+        console.log('[Tasks] ❌ Missing required fields:', { taskId: !!taskId, businessId: !!businessId, file: !!file });
         res.status(400).json({ error: 'taskId, businessId, and file are required' });
         return;
     }

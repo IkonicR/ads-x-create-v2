@@ -52,8 +52,18 @@ interface SelectionCardProps {
 }
 
 const SelectionCard: React.FC<SelectionCardProps> = ({ icon, title, description, selected, onClick }) => {
-  const { styles } = useThemeStyles();
+  const { styles, theme } = useThemeStyles();
   const variants = useNeuAnimations();
+  const isDark = theme === 'dark';
+
+  // Shadow values - EXACT match from index.css design system tokens
+  const shadowOut = isDark
+    ? "4px 4px 8px #060709, -3px -3px 6px #181b21, inset 1px 1px 1px rgba(255, 255, 255, 0.1), inset -1px -1px 2px rgba(0, 0, 0, 0.5)"
+    : "3px 3px 4px rgba(136, 158, 177, 0.4), -2px -2px 4px rgba(255, 255, 255, 1), 6px 6px 12px rgba(136, 158, 177, 0.2), inset 1px 1px 2px rgba(255, 255, 255, 1), inset -1px -1px 2px rgba(136, 158, 177, 0.3)";
+
+  const shadowIn = isDark
+    ? "-4px -4px 8px #060709, 3px 3px 6px #181b21, inset -1px -1px 1px rgba(255, 255, 255, 0.1), inset 1px 1px 2px rgba(0, 0, 0, 0.5)"
+    : "-3px -3px 4px rgba(136, 158, 177, 0.4), 2px 2px 4px rgba(255, 255, 255, 1), -6px -6px 12px rgba(136, 158, 177, 0.2), inset -1px -1px 2px rgba(255, 255, 255, 1), inset 1px 1px 2px rgba(136, 158, 177, 0.3)";
 
   return (
     <motion.button
@@ -62,15 +72,12 @@ const SelectionCard: React.FC<SelectionCardProps> = ({ icon, title, description,
       initial="initial"
       whileHover={selected ? undefined : "hover"}
       whileTap={selected ? undefined : "pressed"}
+      animate={{ boxShadow: selected ? shadowIn : shadowOut }}
+      transition={{ type: "tween", ease: "easeOut", duration: 0.15 }}
       className={`w-full p-4 rounded-2xl text-left transition-colors duration-200 group relative
-        ${selected
-          ? `${styles.bg} ${styles.shadowIn} ring-2 ring-brand/50`
-          : `${styles.bg}`
-        }
+        ${styles.bg}
+        ${selected ? 'ring-2 ring-brand/50' : ''}
       `}
-      style={!selected ? {
-        boxShadow: styles.shadowOutValue || undefined
-      } : undefined}
     >
       <div className="flex items-start gap-4">
         <div className={`p-3 rounded-xl transition-all ${selected
@@ -429,12 +436,18 @@ const UserOnboarding: React.FC = () => {
               (currentStep === 'referral' && !formData.referral_source) ||
               loading
             }
-            className="px-8 py-3 flex items-center gap-2"
+            className={`px-8 py-3 flex items-center gap-2 transition-opacity ${((currentStep === 'welcome' && !formData.full_name) ||
+              (currentStep === 'role' && !formData.role) ||
+              (currentStep === 'company' && (!formData.company_size || !formData.primary_goal)) ||
+              (currentStep === 'referral' && !formData.referral_source))
+              ? 'opacity-50 cursor-not-allowed'
+              : ''
+              }`}
           >
             {loading ? (
               'Setting up...'
             ) : currentStep === 'referral' ? (
-              <>Complete Setup <Sparkles size={18} /></>
+              <><Sparkles size={18} /> Complete Setup</>
             ) : (
               <>Next Step <ArrowRight size={18} /></>
             )}

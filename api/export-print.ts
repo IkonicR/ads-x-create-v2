@@ -18,6 +18,10 @@ interface ExportRequest {
     paperSize?: string;
     fitMode?: 'fit' | 'fill' | 'stretch';
     shareToken?: string; // Optional: for public share downloads
+    customWidthPx?: number; // Custom pixel width
+    customHeightPx?: number; // Custom pixel height
+    cropOffsetX?: number; // 0=left, 0.5=center, 1=right
+    cropOffsetY?: number; // 0=top, 0.5=center, 1=bottom
 }
 
 // Rate limit: 10 downloads per hour per token
@@ -101,6 +105,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             paperSize = 'custom',
             fitMode = 'fit',
             shareToken,
+            customWidthPx,
+            customHeightPx,
+            cropOffsetX = 0.5, // 0=left, 0.5=center, 1=right
+            cropOffsetY = 0.5, // 0=top, 0.5=center, 1=bottom
         } = req.body as ExportRequest;
 
         if (!imageUrl) {
@@ -174,8 +182,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         let targetWidth = originalWidth;
         let targetHeight = originalHeight;
         const paper = PAPER_SIZES[paperSize];
+        const useCustomPx = customWidthPx && customHeightPx && customWidthPx > 0 && customHeightPx > 0;
 
-        if (paper && paper.widthMm > 0 && paper.heightMm > 0) {
+        if (useCustomPx) {
+            // Priority 1: Custom pixel dimensions (from ad size presets or manual input)
+            targetWidth = customWidthPx;
+            targetHeight = customHeightPx;
+        } else if (paper && paper.widthMm > 0 && paper.heightMm > 0) {
+            // Priority 2: Paper sizes (mm, converted to px)
             targetWidth = mmToPx(paper.widthMm, dpi);
             targetHeight = mmToPx(paper.heightMm, dpi);
         }
@@ -186,13 +200,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Start Sharp pipeline
         let pipeline = sharp(imageBuffer);
 
-        // Apply fit mode if paper size is specified
-        if (paperSize !== 'custom' && paper && paper.widthMm > 0) {
+        // Apply fit mode if target dimensions differ from original
+        const needsResize = useCustomPx || (paperSize !== 'custom' && paper && paper.widthMm > 0);
+        if (needsResize) {
             if (fitMode === 'fill') {
-                // Cover: Resize to cover the target, then crop
-                pipeline = pipeline.resize(targetWidth, targetHeight, {
-                    fit: 'cover',
-                    position: 'center',
+                // Cover: Resize to cover the target, then extract at custom position
+                // First, get the original image dimensions
+                const metadata = await sharp(imageBuffer).metadata();
+                const origW = metadata.width || targetWidth;
+                const origH = metadata.height || targetHeight;
+                const origAspect = origW / origH;
+                const targetAspect = targetWidth / targetHeight;
+
+                // Calculate the resize dimensions to cover the target
+                let resizeW: number, resizeH: number;
+                if (origAspect > targetAspect) {
+                    // Image is wider - resize to match height, excess width
+                    resizeH = targetHeight;
+                    resizeW = Math.round(targetHeight * origAspect);
+                } else {
+                    // Image is taller - resize to match width, excess height
+                    resizeW = targetWidth;
+                    resizeH = Math.round(targetWidth / origAspect);
+                }
+
+                // Resize to cover
+                pipeline = pipeline.resize(resizeW, resizeH, { fit: 'fill' });
+
+                // Calculate extract position based on offset
+                const excessW = resizeW - targetWidth;
+                const excessH = resizeH - targetHeight;
+                const extractLeft = Math.round(excessW * cropOffsetX);
+                const extractTop = Math.round(excessH * cropOffsetY);
+
+                // Extract the target area
+                pipeline = pipeline.extract({
+                    left: extractLeft,
+                    top: extractTop,
+                    width: targetWidth,
+                    height: targetHeight,
                 });
             } else if (fitMode === 'stretch') {
                 // Stretch: Force resize to exact dimensions

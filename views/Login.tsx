@@ -22,6 +22,7 @@ const Login: React.FC = () => {
   const [codeValidating, setCodeValidating] = useState(false);
   const [codeValid, setCodeValid] = useState<boolean | null>(null);
   const [codeError, setCodeError] = useState('');
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   // Auto-format invite code input
   const handleCodeChange = (value: string) => {
@@ -63,9 +64,10 @@ const Login: React.FC = () => {
         localStorage.setItem('pending_invite_code', inviteCode);
 
         // Auto-trigger Google OAuth after short delay for visual feedback
+        setIsRedirecting(true);
         setTimeout(() => {
           signInWithGoogle();
-        }, 400);
+        }, 800);
       } else {
         setCodeValid(false);
         setCodeError(data.error || 'Invalid code');
@@ -143,10 +145,15 @@ const Login: React.FC = () => {
         {/* Primary Action: Sign In Button (always visible) */}
         <NeuButton
           onClick={handleGoogleSignIn}
+          disabled={isRedirecting}
           className="w-full flex items-center justify-center gap-3 py-4 text-base font-bold"
           forceTheme="dark"
         >
-          <Chrome size={20} /> Continue with Google
+          {isRedirecting ? (
+            <><Loader2 size={20} className="animate-spin" /> Redirecting to Google...</>
+          ) : (
+            <><Chrome size={20} /> Continue with Google</>
+          )}
         </NeuButton>
 
         {/* Collapsible invite code section (for new users who have a code) */}
@@ -216,7 +223,7 @@ const Login: React.FC = () => {
 
                     {codeValid && (
                       <p className="text-green-400 text-xs text-center">
-                        ✓ Code saved. Click "Continue with Google" to proceed.
+                        ✓ Code validated! Redirecting...
                       </p>
                     )}
                   </div>

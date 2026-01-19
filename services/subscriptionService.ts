@@ -111,7 +111,7 @@ export async function getSubscription(): Promise<Subscription | null> {
         .from('subscriptions')
         .select('*')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
     if (error) {
         // Not an error if user is a team member (they don't have subscriptions)
@@ -220,7 +220,7 @@ export async function refundCredits(amount: number): Promise<number | null> {
         .from('subscriptions')
         .select('credits_remaining')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
     if (!subscription) return null;
 

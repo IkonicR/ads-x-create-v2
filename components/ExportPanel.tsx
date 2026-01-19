@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useThemeStyles, NeuButton, NeuTabs } from './NeuComponents';
+import { useThemeStyles, NeuButton, NeuTabs, NeuDropdown } from './NeuComponents';
 import { Download, Loader2, FileImage, FileType, Image, X, Save, ChevronDown, AlertTriangle, Trash2, Settings } from 'lucide-react';
 
 // ============================================================================
@@ -26,6 +26,16 @@ export interface ExportPreset {
     isSystem?: boolean;
 }
 
+// Preview state passed to parent for left image overlay
+export interface ExportPreviewState {
+    hasPreview: boolean;
+    targetWidthPx: number;
+    targetHeightPx: number;
+    fitMode: 'fit' | 'fill' | 'stretch';
+    cropOffsetX: number;
+    cropOffsetY: number;
+}
+
 interface ExportPanelProps {
     imageUrl: string;
     imageAspectRatio?: number; // width / height
@@ -34,6 +44,13 @@ interface ExportPanelProps {
     savedPresets?: ExportPreset[];
     onSavePreset?: (preset: ExportPreset) => void;
     onDeletePreset?: (id: string) => void;
+    /** Callback to expose preview state (for left image overlay) */
+    onPreviewStateChange?: (state: ExportPreviewState) => void;
+    /** Callback when crop offset changes (for drag-to-reposition) */
+    onCropOffsetChange?: (x: number, y: number) => void;
+    /** External crop offset (controlled by parent for drag) */
+    cropOffsetX?: number;
+    cropOffsetY?: number;
 }
 
 // ============================================================================
@@ -50,17 +67,67 @@ const formatOptions: { value: ExportFormat; label: string; icon: React.ReactNode
 const dpiOptions = [72, 150, 300, 600];
 const bleedOptions = [0, 3, 5];
 
-// Paper sizes with dimensions in mm
-const PAPER_SIZES: Record<string, { name: string; widthMm: number; heightMm: number; category: string }> = {
-    'custom': { name: 'Original Size', widthMm: 0, heightMm: 0, category: 'Default' },
-    'a4-portrait': { name: 'A4 Portrait', widthMm: 210, heightMm: 297, category: 'Print' },
-    'a4-landscape': { name: 'A4 Landscape', widthMm: 297, heightMm: 210, category: 'Print' },
-    'a5-portrait': { name: 'A5 Portrait', widthMm: 148, heightMm: 210, category: 'Print' },
-    'letter-portrait': { name: 'US Letter', widthMm: 216, heightMm: 279, category: 'Print' },
-    'instagram-square': { name: 'Instagram Square', widthMm: 108, heightMm: 108, category: 'Social' }, // 1080px @ 254 DPI ≈ 108mm
-    'instagram-story': { name: 'Instagram Story', widthMm: 108, heightMm: 192, category: 'Social' },
-    'facebook-post': { name: 'Facebook Post', widthMm: 120, heightMm: 63, category: 'Social' }, // 1200x630
+// ============================================================================
+// UNIFIED EXPORT PRESETS
+// ============================================================================
+
+type DimensionUnit = 'px' | 'mm' | 'cm' | 'in';
+
+interface ExportSizePreset {
+    id: string;
+    name: string;
+    width: number;
+    height: number;
+    unit: DimensionUnit;
+    category: 'Custom' | 'Digital' | 'Print';
+    defaultDpi: number;
+}
+
+// Unified presets for all export formats
+const EXPORT_PRESETS: ExportSizePreset[] = [
+    // Custom / Original
+    { id: 'original', name: 'Original Size', width: 0, height: 0, unit: 'px', category: 'Custom', defaultDpi: 72 },
+    { id: 'custom', name: 'Custom Dimensions', width: 0, height: 0, unit: 'px', category: 'Custom', defaultDpi: 72 },
+    // Digital (pixels)
+    { id: 'facebook-ad', name: 'Facebook Ad', width: 1200, height: 628, unit: 'px', category: 'Digital', defaultDpi: 72 },
+    { id: 'instagram-square', name: 'Instagram Square', width: 1080, height: 1080, unit: 'px', category: 'Digital', defaultDpi: 72 },
+    { id: 'instagram-story', name: 'Instagram Story', width: 1080, height: 1920, unit: 'px', category: 'Digital', defaultDpi: 72 },
+    { id: 'linkedin-ad', name: 'LinkedIn Ad', width: 1200, height: 627, unit: 'px', category: 'Digital', defaultDpi: 72 },
+    { id: 'leaderboard', name: 'Leaderboard', width: 728, height: 90, unit: 'px', category: 'Digital', defaultDpi: 72 },
+    { id: 'skyscraper', name: 'Skyscraper', width: 160, height: 600, unit: 'px', category: 'Digital', defaultDpi: 72 },
+    { id: 'wide-skyscraper', name: 'Wide Skyscraper', width: 300, height: 600, unit: 'px', category: 'Digital', defaultDpi: 72 },
+    { id: 'medium-rectangle', name: 'Medium Rectangle', width: 300, height: 250, unit: 'px', category: 'Digital', defaultDpi: 72 },
+    { id: 'billboard', name: 'Billboard', width: 970, height: 250, unit: 'px', category: 'Digital', defaultDpi: 72 },
+    // Print (mm)
+    { id: 'a4-portrait', name: 'A4 Portrait', width: 210, height: 297, unit: 'mm', category: 'Print', defaultDpi: 300 },
+    { id: 'a4-landscape', name: 'A4 Landscape', width: 297, height: 210, unit: 'mm', category: 'Print', defaultDpi: 300 },
+    { id: 'a5-portrait', name: 'A5 Portrait', width: 148, height: 210, unit: 'mm', category: 'Print', defaultDpi: 300 },
+    { id: 'letter-portrait', name: 'US Letter', width: 216, height: 279, unit: 'mm', category: 'Print', defaultDpi: 300 },
+    { id: 'a3-portrait', name: 'A3 Portrait', width: 297, height: 420, unit: 'mm', category: 'Print', defaultDpi: 300 },
+];
+
+// Unit conversion utilities
+const unitToPixels = (value: number, unit: DimensionUnit, dpi: number): number => {
+    switch (unit) {
+        case 'px': return Math.round(value);
+        case 'mm': return Math.round((value / 25.4) * dpi);
+        case 'cm': return Math.round((value / 2.54) * dpi);
+        case 'in': return Math.round(value * dpi);
+        default: return Math.round(value);
+    }
 };
+
+const pixelsToUnit = (px: number, unit: DimensionUnit, dpi: number): number => {
+    switch (unit) {
+        case 'px': return px;
+        case 'mm': return Math.round((px / dpi) * 25.4 * 10) / 10;
+        case 'cm': return Math.round((px / dpi) * 2.54 * 10) / 10;
+        case 'in': return Math.round((px / dpi) * 100) / 100;
+        default: return px;
+    }
+};
+
+const UNIT_LABELS: Record<DimensionUnit, string> = { px: 'px', mm: 'mm', cm: 'cm', in: 'in' };
 
 // System presets (always available)
 const SYSTEM_PRESETS: ExportPreset[] = [
@@ -81,6 +148,10 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
     savedPresets = [],
     onSavePreset,
     onDeletePreset,
+    onPreviewStateChange,
+    onCropOffsetChange,
+    cropOffsetX: externalCropOffsetX,
+    cropOffsetY: externalCropOffsetY,
 }) => {
     const { styles, theme } = useThemeStyles();
     const isDark = theme === 'dark';
@@ -89,13 +160,32 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
     const [format, setFormat] = useState<ExportFormat>('png');
     const [pdfType, setPdfType] = useState<PDFType>('digital');
     const [colorSpace, setColorSpace] = useState<ColorSpace>('rgb');
-    const [dpi, setDpi] = useState(300);
     const [bleedMm, setBleedMm] = useState(0);
     const [customBleed, setCustomBleed] = useState('');
     const [cropMarks, setCropMarks] = useState(false);
-    const [paperSize, setPaperSize] = useState('custom');
     const [fitMode, setFitMode] = useState<FitMode>('fit');
     const [isExporting, setIsExporting] = useState(false);
+
+    // Unified dimension state
+    const [selectedPreset, setSelectedPreset] = useState<string>('original');
+    const [dimensionWidth, setDimensionWidth] = useState('');
+    const [dimensionHeight, setDimensionHeight] = useState('');
+    const [dimensionUnit, setDimensionUnit] = useState<DimensionUnit>('px');
+    // Use external offset if provided, else internal state
+    const [internalCropOffsetX, setInternalCropOffsetX] = useState(0.5);
+    const [internalCropOffsetY, setInternalCropOffsetY] = useState(0.5);
+    const cropOffsetX = externalCropOffsetX ?? internalCropOffsetX;
+    const cropOffsetY = externalCropOffsetY ?? internalCropOffsetY;
+    const setCropOffsetX = onCropOffsetChange
+        ? (x: number) => onCropOffsetChange(x, cropOffsetY)
+        : setInternalCropOffsetX;
+    const setCropOffsetY = onCropOffsetChange
+        ? (y: number) => onCropOffsetChange(cropOffsetX, y)
+        : setInternalCropOffsetY;
+
+    // Default DPI based on format: PDF=300, others=72
+    const defaultDpi = format === 'pdf' ? 300 : 72;
+    const [dpi, setDpi] = useState(defaultDpi);
 
     // Preset state
     const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
@@ -106,14 +196,36 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
     const allPresets = useMemo(() => [...SYSTEM_PRESETS, ...savedPresets], [savedPresets]);
     const isPrintReady = format === 'pdf' && pdfType === 'print-ready';
     const effectiveBleed = customBleed ? parseInt(customBleed, 10) : bleedMm;
-    const showPaperSize = format === 'pdf';
 
-    // Calculate aspect ratio mismatch
-    const selectedPaper = PAPER_SIZES[paperSize];
-    const paperAspectRatio = selectedPaper?.widthMm && selectedPaper?.heightMm
-        ? selectedPaper.widthMm / selectedPaper.heightMm
-        : imageAspectRatio;
-    const aspectMismatch = paperSize !== 'custom' && Math.abs(imageAspectRatio - paperAspectRatio) > 0.05;
+    // Calculate target dimensions in pixels
+    const targetWidthPx = useMemo(() => {
+        const w = parseFloat(dimensionWidth);
+        if (!w || w <= 0) return 0;
+        return unitToPixels(w, dimensionUnit, dpi);
+    }, [dimensionWidth, dimensionUnit, dpi]);
+
+    const targetHeightPx = useMemo(() => {
+        const h = parseFloat(dimensionHeight);
+        if (!h || h <= 0) return 0;
+        return unitToPixels(h, dimensionUnit, dpi);
+    }, [dimensionHeight, dimensionUnit, dpi]);
+
+    // Check if we have valid dimensions set
+    const hasTargetDimensions = targetWidthPx > 0 && targetHeightPx > 0;
+    const targetAspectRatio = hasTargetDimensions ? targetWidthPx / targetHeightPx : imageAspectRatio;
+    const aspectMismatch = hasTargetDimensions && Math.abs(imageAspectRatio - targetAspectRatio) > 0.05;
+
+    // Notify parent of preview state changes (for left image overlay)
+    useEffect(() => {
+        onPreviewStateChange?.({
+            hasPreview: aspectMismatch,
+            targetWidthPx,
+            targetHeightPx,
+            fitMode,
+            cropOffsetX,
+            cropOffsetY,
+        });
+    }, [aspectMismatch, targetWidthPx, targetHeightPx, fitMode, cropOffsetX, cropOffsetY, onPreviewStateChange]);
 
     // Load preset
     const loadPreset = (preset: ExportPreset) => {
@@ -123,7 +235,6 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
         if (preset.dpi) setDpi(preset.dpi);
         if (preset.bleedMm !== undefined) setBleedMm(preset.bleedMm);
         if (preset.cropMarks !== undefined) setCropMarks(preset.cropMarks);
-        if (preset.paperSize) setPaperSize(preset.paperSize);
         if (preset.fitMode) setFitMode(preset.fitMode);
         setSelectedPresetId(preset.id);
         setShowPresetDropdown(false);
@@ -139,11 +250,10 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
             format,
             pdfType: format === 'pdf' ? pdfType : undefined,
             colorSpace: isPrintReady ? colorSpace : undefined,
-            dpi: isPrintReady ? dpi : undefined,
+            dpi: dpi,
             bleedMm: isPrintReady ? effectiveBleed : undefined,
             cropMarks: isPrintReady ? cropMarks : undefined,
-            paperSize: showPaperSize ? paperSize : undefined,
-            fitMode: showPaperSize && paperSize !== 'custom' ? fitMode : undefined,
+            fitMode: hasTargetDimensions ? fitMode : undefined,
         };
 
         onSavePreset(preset);
@@ -164,11 +274,17 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
                     format,
                     pdfType: format === 'pdf' ? pdfType : 'digital',
                     colorSpace: isPrintReady ? colorSpace : 'rgb',
-                    dpi: isPrintReady ? dpi : 150,
+                    dpi,
                     bleedMm: isPrintReady ? effectiveBleed : 0,
                     cropMarks: isPrintReady ? cropMarks : false,
-                    paperSize: showPaperSize ? paperSize : 'custom',
-                    fitMode: showPaperSize && paperSize !== 'custom' ? fitMode : 'fit',
+                    fitMode: hasTargetDimensions ? fitMode : 'fit',
+                    // Pass pixel dimensions (already calculated above)
+                    ...(hasTargetDimensions && {
+                        customWidthPx: targetWidthPx,
+                        customHeightPx: targetHeightPx,
+                        cropOffsetX: fitMode === 'fill' ? (1 - cropOffsetX) : 0.5,
+                        cropOffsetY: fitMode === 'fill' ? (1 - cropOffsetY) : 0.5,
+                    }),
                 }),
             });
 
@@ -179,7 +295,11 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
             const a = document.createElement('a');
             a.href = url;
             const ext = format === 'pdf' ? 'pdf' : format;
-            a.download = `${businessName || 'export'}${paperSize !== 'custom' ? `-${paperSize}` : ''}.${ext}`;
+            // Include dimensions in filename when using custom sizes
+            const dimensionSuffix = hasTargetDimensions
+                ? `-${targetWidthPx}x${targetHeightPx}`
+                : (selectedPreset !== 'original' ? `-${selectedPreset}` : '');
+            a.download = `${businessName || 'export'}${dimensionSuffix}.${ext}`;
             a.click();
             URL.revokeObjectURL(url);
 
@@ -308,65 +428,134 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
                     </div>
                 </div>
 
-                {/* Paper Size (PDF only) */}
-                <AnimatePresence>
-                    {showPaperSize && (
-                        <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                        >
-                            <label className={`text-xs font-bold uppercase tracking-wider mb-2 block ${styles.textSub}`}>
-                                Paper Size
-                            </label>
-                            <select
-                                value={paperSize}
-                                onChange={(e) => { setPaperSize(e.target.value); setSelectedPresetId(null); }}
-                                className={`w-full py-2 px-3 rounded-xl text-xs font-bold ${styles.shadowIn} ${styles.textMain} bg-transparent`}
-                            >
-                                {Object.entries(PAPER_SIZES).map(([key, size]) => (
-                                    <option key={key} value={key}>
-                                        {size.name}{size.widthMm ? ` (${size.widthMm}×${size.heightMm}mm)` : ''}
-                                    </option>
-                                ))}
-                            </select>
+                {/* Unified Target Size Section */}
+                <div className="space-y-3">
+                    <label className={`text-xs font-bold uppercase tracking-wider block ${styles.textSub}`}>
+                        Target Size
+                    </label>
 
-                            {/* Aspect Ratio Warning + Fit Options */}
-                            <AnimatePresence>
-                                {aspectMismatch && (
-                                    <motion.div
-                                        initial={{ height: 0, opacity: 0 }}
-                                        animate={{ height: 'auto', opacity: 1 }}
-                                        exit={{ height: 0, opacity: 0 }}
-                                        className="mt-3 space-y-2"
-                                    >
-                                        <div className={`flex items-center gap-2 text-xs ${isDark ? 'text-amber-400' : 'text-amber-600'}`}>
-                                            <AlertTriangle size={14} />
-                                            <span>Image aspect ratio differs from paper size</span>
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <NeuTabs
-                                                tabs={(['fit', 'fill', 'stretch'] as FitMode[]).map(mode => ({
-                                                    id: mode,
-                                                    label: mode.charAt(0).toUpperCase() + mode.slice(1)
-                                                }))}
-                                                activeTab={fitMode}
-                                                onChange={(id) => setFitMode(id as FitMode)}
-                                                className="w-full"
-                                                layoutId="fitMode"
-                                            />
-                                        </div>
-                                        <p className={`text-xs ${styles.textSub}`}>
-                                            {fitMode === 'fit' && 'Image will be fully visible with background fill.'}
-                                            {fitMode === 'fill' && 'Image will cover the area, edges may be cropped.'}
-                                            {fitMode === 'stretch' && 'Image will be stretched to fit (may distort).'}
-                                        </p>
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
-                        </motion.div>
+                    {/* Preset Selector - using NeuDropdown */}
+                    <NeuDropdown
+                        options={EXPORT_PRESETS.map(p => ({
+                            value: p.id,
+                            label: p.width > 0
+                                ? `${p.name} (${p.width}×${p.height}${p.unit})`
+                                : p.name
+                        }))}
+                        value={selectedPreset}
+                        onChange={(id) => {
+                            setSelectedPreset(id);
+                            setSelectedPresetId(null);
+                            // Auto-fill dimensions from preset
+                            const preset = EXPORT_PRESETS.find(p => p.id === id);
+                            if (preset && preset.width > 0) {
+                                setDimensionWidth(preset.width.toString());
+                                setDimensionHeight(preset.height.toString());
+                                setDimensionUnit(preset.unit);
+                                setDpi(preset.defaultDpi);
+                            } else {
+                                setDimensionWidth('');
+                                setDimensionHeight('');
+                            }
+                        }}
+                        placeholder="Select size..."
+                        overlay
+                    />
+
+                    {/* Custom dimension inputs with unit selector */}
+                    <div className="flex gap-2 items-center">
+                        <input
+                            type="number"
+                            placeholder="Width"
+                            value={dimensionWidth}
+                            onChange={(e) => {
+                                setDimensionWidth(e.target.value);
+                                setSelectedPreset('custom');
+                                setSelectedPresetId(null);
+                            }}
+                            className={`flex-1 py-2 px-3 rounded-xl text-xs text-center ${styles.shadowIn} ${styles.textMain} bg-transparent`}
+                        />
+                        <span className={`text-xs ${styles.textSub}`}>×</span>
+                        <input
+                            type="number"
+                            placeholder="Height"
+                            value={dimensionHeight}
+                            onChange={(e) => {
+                                setDimensionHeight(e.target.value);
+                                setSelectedPreset('custom');
+                                setSelectedPresetId(null);
+                            }}
+                            className={`flex-1 py-2 px-3 rounded-xl text-xs text-center ${styles.shadowIn} ${styles.textMain} bg-transparent`}
+                        />
+                        {/* Unit selector - NeuDropdown compact */}
+                        <NeuDropdown
+                            options={[
+                                { value: 'px', label: 'px' },
+                                { value: 'mm', label: 'mm' },
+                                { value: 'cm', label: 'cm' },
+                                { value: 'in', label: 'in' },
+                            ]}
+                            value={dimensionUnit}
+                            onChange={(newUnit) => {
+                                const oldUnit = dimensionUnit;
+                                const w = parseFloat(dimensionWidth);
+                                const h = parseFloat(dimensionHeight);
+                                // Convert values when changing units (preserve visual size)
+                                if (w > 0 && h > 0) {
+                                    const wPx = unitToPixels(w, oldUnit, dpi);
+                                    const hPx = unitToPixels(h, oldUnit, dpi);
+                                    const newW = pixelsToUnit(wPx, newUnit as DimensionUnit, dpi);
+                                    const newH = pixelsToUnit(hPx, newUnit as DimensionUnit, dpi);
+                                    setDimensionWidth(newW.toString());
+                                    setDimensionHeight(newH.toString());
+                                }
+                                setDimensionUnit(newUnit as DimensionUnit);
+                            }}
+                            overlay
+                            compact
+                            className="w-20"
+                        />
+                    </div>
+
+                    {/* Real-time pixel output display */}
+                    {hasTargetDimensions && (
+                        <p className={`text-xs ${styles.textSub}`}>
+                            Output: <span className={`font-bold ${styles.textMain}`}>{targetWidthPx}×{targetHeightPx}px</span> @ {dpi} DPI
+                        </p>
                     )}
-                </AnimatePresence>
+
+                    {/* Fit mode selector (show when dimensions set and aspect differs) */}
+                    <AnimatePresence>
+                        {aspectMismatch && (
+                            <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                className="space-y-2"
+                            >
+                                <div className={`flex items-center gap-2 text-xs ${isDark ? 'text-amber-400' : 'text-amber-600'}`}>
+                                    <AlertTriangle size={14} />
+                                    <span>Aspect ratio differs from image</span>
+                                </div>
+                                <NeuTabs
+                                    tabs={(['fit', 'fill', 'stretch'] as FitMode[]).map(mode => ({
+                                        id: mode,
+                                        label: mode.charAt(0).toUpperCase() + mode.slice(1)
+                                    }))}
+                                    activeTab={fitMode}
+                                    onChange={(id) => setFitMode(id as FitMode)}
+                                    className="w-full"
+                                    layoutId="fitModeUnified"
+                                />
+                                <p className={`text-xs ${styles.textSub}`}>
+                                    {fitMode === 'fit' && 'Image will be fully visible with background fill.'}
+                                    {fitMode === 'fill' && 'Image will cover the area, edges may be cropped.'}
+                                    {fitMode === 'stretch' && 'Image will be stretched to fit (may distort).'}
+                                </p>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                </div>
 
                 {/* PDF Type */}
                 <AnimatePresence>
@@ -508,7 +697,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
                     ) : (
                         <>
                             <Download size={18} />
-                            Export {format.toUpperCase()}{paperSize !== 'custom' ? ` (${PAPER_SIZES[paperSize]?.name})` : ''}
+                            Export {format.toUpperCase()}{hasTargetDimensions ? ` (${targetWidthPx}×${targetHeightPx})` : ''}
                         </>
                     )}
                 </NeuButton>

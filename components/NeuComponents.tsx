@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect, useId } from 'react';
+import React, { useState, useRef, useEffect, useId, useLayoutEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { motion, HTMLMotionProps, AnimatePresence, LayoutGroup } from 'framer-motion';
@@ -622,6 +623,8 @@ interface NeuDropdownProps {
   label?: string;
   /** If true, dropdown options overlay instead of pushing content down */
   overlay?: boolean;
+  /** If true, use smaller padding for inline usage */
+  compact?: boolean;
 }
 
 export const NeuDropdown: React.FC<NeuDropdownProps> = ({
@@ -631,23 +634,64 @@ export const NeuDropdown: React.FC<NeuDropdownProps> = ({
   placeholder = "Select an option",
   className,
   label,
-  overlay = false
+  overlay = false,
+  compact = false
 }) => {
   const { theme } = useTheme();
   const styles = THEMES[theme];
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
 
-  // Close on click outside
+  // Position state for portal-based overlay
+  const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  // Calculate position when opening in overlay mode
+  const updatePosition = useCallback(() => {
+    if (overlay && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + 8, // 8px gap below trigger
+        left: rect.left,
+        width: rect.width,
+      });
+    }
+  }, [overlay]);
+
+  // Update position on open and scroll/resize
+  useLayoutEffect(() => {
+    if (isOpen && overlay) {
+      updatePosition();
+
+      // Update on scroll/resize
+      const handleUpdate = () => updatePosition();
+      window.addEventListener('scroll', handleUpdate, true);
+      window.addEventListener('resize', handleUpdate);
+
+      return () => {
+        window.removeEventListener('scroll', handleUpdate, true);
+        window.removeEventListener('resize', handleUpdate);
+      };
+    }
+  }, [isOpen, overlay, updatePosition]);
+
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close on click outside (check both container and portal dropdown)
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      const isOutsideContainer = containerRef.current && !containerRef.current.contains(target);
+      const isOutsideDropdown = dropdownRef.current && !dropdownRef.current.contains(target);
+
+      // Close if click is outside both the container AND the portal dropdown
+      if (isOutsideContainer && (!overlay || isOutsideDropdown)) {
         setIsOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [overlay]);
 
   const selectedOption = options.find(opt => opt.value === value);
 
@@ -680,6 +724,35 @@ export const NeuDropdown: React.FC<NeuDropdownProps> = ({
     visible: { opacity: 1, x: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
   };
 
+  // Shared dropdown content
+  const dropdownContent = (
+    <div className="p-2 space-y-1">
+      {options.map((option) => (
+        <motion.button
+          key={option.value}
+          variants={itemVariants}
+          onClick={(e) => {
+            e.stopPropagation();
+            onChange(option.value);
+            setIsOpen(false);
+          }}
+          whileTap={{ scale: 0.98, x: 5 }}
+          className={cn(
+            "w-full text-left px-3 py-2 rounded-lg text-sm transition-colors",
+            option.value === value
+              ? "bg-brand/10 text-brand font-bold"
+              : `hover:bg-black/5 dark:hover:bg-white/5 ${styles.textMain}`
+          )}
+        >
+          <span className="flex items-center gap-2">
+            {option.icon}
+            {option.label}
+          </span>
+        </motion.button>
+      ))}
+    </div>
+  );
+
   return (
     <div className={cn("space-y-2", className)} ref={containerRef}>
       {label && (
@@ -688,7 +761,7 @@ export const NeuDropdown: React.FC<NeuDropdownProps> = ({
         </label>
       )}
 
-      <div className="relative">
+      <div className="relative" ref={triggerRef}>
         {/* Trigger button with neumorphic styling */}
         <motion.div
           className={cn(
@@ -700,7 +773,8 @@ export const NeuDropdown: React.FC<NeuDropdownProps> = ({
           <button
             onClick={() => setIsOpen(!isOpen)}
             className={cn(
-              "w-full flex items-center justify-between px-4 py-3 outline-none text-left",
+              "w-full flex items-center justify-between outline-none text-left",
+              compact ? "px-3 py-2 text-xs" : "px-4 py-3",
               styles.textMain
             )}
           >
@@ -717,51 +791,59 @@ export const NeuDropdown: React.FC<NeuDropdownProps> = ({
           </button>
         </motion.div>
 
-        {/* Dropdown Content - overlay or push-down based on prop */}
-        <AnimatePresence>
-          {isOpen && (
-            <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.15 }}
-              onClick={(e) => e.stopPropagation()}
-              className={cn(
-                "mt-2 rounded-xl border border-black/5 dark:border-white/5",
-                styles.bg,
-                styles.shadowOut,
-                overlay && "absolute top-full left-0 right-0 z-50"
-              )}
-            >
-              <div className="p-2 space-y-1">
-                {options.map((option) => (
-                  <motion.button
-                    key={option.value}
-                    variants={itemVariants}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onChange(option.value);
-                      setIsOpen(false);
-                    }}
-                    whileTap={{ scale: 0.98, x: 5 }}
-                    className={cn(
-                      "w-full text-left px-3 py-2 rounded-lg text-sm transition-colors",
-                      option.value === value
-                        ? "bg-brand/10 text-brand font-bold"
-                        : `hover:bg-black/5 dark:hover:bg-white/5 ${styles.textMain}`
-                    )}
-                  >
-                    <span className="flex items-center gap-2">
-                      {option.icon}
-                      {option.label}
-                    </span>
-                  </motion.button>
-                ))}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* Dropdown Content - push-down mode (non-overlay) renders inline */}
+        {!overlay && (
+          <AnimatePresence>
+            {isOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.15 }}
+                onClick={(e) => e.stopPropagation()}
+                className={cn(
+                  "mt-2 rounded-xl border border-black/5 dark:border-white/5",
+                  styles.bg,
+                  styles.shadowOut
+                )}
+              >
+                {dropdownContent}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        )}
       </div>
+
+      {/* Portal-based overlay dropdown - escapes overflow:hidden containers */}
+      {overlay && isOpen && dropdownPosition && createPortal(
+        <AnimatePresence>
+          <motion.div
+            ref={dropdownRef}
+            data-portal-dropdown="true"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.15 }}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{
+              position: 'fixed',
+              top: dropdownPosition.top,
+              left: dropdownPosition.left,
+              width: dropdownPosition.width,
+              zIndex: 9999,
+            }}
+            className={cn(
+              "rounded-xl border border-black/5 dark:border-white/5",
+              styles.bg,
+              styles.shadowOut
+            )}
+          >
+            {dropdownContent}
+          </motion.div>
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 };

@@ -13,7 +13,7 @@ interface TaskContextValue {
     userId: string;
 
     // CRUD Operations
-    addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'sortOrder'>) => Promise<void>;
+    addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'sortOrder'>) => Promise<Task>;
     updateTask: (task: Task) => Promise<void>;
     deleteTask: (taskId: string) => Promise<void>;
 
@@ -119,7 +119,7 @@ export const TaskProvider: React.FC<TaskProviderProps> = ({ children, userId }) 
     const generateId = () => `task_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
     // Add new task
-    const addTask = useCallback(async (taskData: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'sortOrder'>) => {
+    const addTask = useCallback(async (taskData: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'sortOrder'>): Promise<Task> => {
         const now = new Date().toISOString();
         const maxSortOrder = Math.max(...tasks.map(t => t.sortOrder), -1);
 
@@ -135,6 +135,7 @@ export const TaskProvider: React.FC<TaskProviderProps> = ({ children, userId }) 
         setTasks(prev => [...prev, newTask]);
 
         await StorageService.saveTask(newTask, userId);
+        return newTask;  // Return the created task with ID
     }, [tasks, userId, pushUndo]);
 
     // Update existing task
