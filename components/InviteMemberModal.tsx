@@ -92,7 +92,12 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
                 })
             });
 
-            const data = await response.json();
+            let data;
+            try {
+                data = await response.json();
+            } catch {
+                throw new Error(`Server error (${response.status})`);
+            }
 
             if (!response.ok) {
                 throw new Error(data.error || 'Failed to generate invite link');
@@ -143,7 +148,12 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
                 })
             });
 
-            const data = await response.json();
+            let data;
+            try {
+                data = await response.json();
+            } catch {
+                throw new Error(`Server error (${response.status})`);
+            }
 
             if (!response.ok) {
                 throw new Error(data.error || 'Failed to send invitation');

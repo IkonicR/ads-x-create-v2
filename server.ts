@@ -2607,8 +2607,7 @@ app.post('/api/admin/delete-user', async (req, res) => {
 import { Resend } from 'resend';
 // NOTE: Using pure TypeScript email templates instead of React Email components
 // because TSX can't be dynamically processed at runtime in Express/Node.
-import { generateInviteEmailHtml } from './api/team/inviteEmailTemplate';
-import { generateShareAssetEmailHtml } from './api/team/shareAssetEmailTemplate';
+import { generateInviteEmailHtml, generateShareAssetEmailHtml } from './lib/email-templates';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 

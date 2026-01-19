@@ -1,11 +1,11 @@
 /**
- * Task Assignment Email Template
+ * Task Email Templates
  * 
- * Sent when a user is assigned a task.
+ * Templates for task assignment and reminder emails.
  * Design matches the existing team invite email style.
  */
 
-import { EmailTheme } from '../team/inviteEmailTemplate';
+import { EmailTheme } from './theme';
 
 interface TaskAssignmentEmailProps {
     assigneeName: string;

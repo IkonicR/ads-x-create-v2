@@ -9,7 +9,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
-import { generateTaskAssignmentEmailHtml, generateTaskReminderEmailHtml } from './taskEmailTemplates';
+import { generateTaskAssignmentEmailHtml, generateTaskReminderEmailHtml } from '../../lib/email-templates';
 
 const supabase = createClient(
     process.env.VITE_SUPABASE_URL!,
