@@ -10,12 +10,12 @@
 export const AI_MODELS = {
   // TEXT GENERATION (Vercel AI Gateway)
   // Used for: Website Extraction, Social Captions, Server-side Chat
-  text: 'google/gemini-3-flash' as const,
+  text: 'google/gemini-3-flash-preview' as const,
 
   // TEXT GENERATION (Direct Google SDK - Client-side)
   // Used for: Browser chat, client-side AI calls
   // Note: Direct SDK requires model name WITHOUT 'google/' prefix
-  textDirect: 'gemini-3-flash' as const,
+  textDirect: 'gemini-3-flash-preview' as const,
 
   // IMAGE GENERATION (Direct Google GenAI SDK)
   // Used for: Ad Studio, Image Generator
