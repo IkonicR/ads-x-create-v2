@@ -16,7 +16,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { randomUUID } from 'crypto';
-import { generateInviteEmailHtml } from '../../lib/email-templates';
+import { generateInviteEmailHtml } from '../../lib/email-templates/index.js';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
