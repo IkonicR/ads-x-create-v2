@@ -27,3 +27,4 @@ dist-ssr
 
 # Backups
 *.zip
+.agent/

@@ -8,6 +8,7 @@ import { GalaxyHeading } from '../components/GalaxyHeading';
 import { useAssets } from '../context/AssetContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import { useTaskContext } from '../context/TaskContext';
+import { useAuth } from '../context/AuthContext';
 
 interface DashboardProps {
   business: Business;
@@ -29,18 +30,153 @@ const Dashboard: React.FC<DashboardProps> = ({ business, onNavigate }) => {
   const { assets } = useAssets();
   const { creditsRemaining, planName, loading: subscriptionLoading } = useSubscription();
   const { tasks, isLoading: tasksLoading } = useTaskContext();
+  const { profile } = useAuth();
   const recentAssets = assets.slice(0, 4);
   const isDark = theme === 'dark';
+
+  // Smart Dashboard Header - context-aware heading + subtitle pairs
+  const getDashboardHeader = (): { heading: string; subtitle: string } => {
+    const firstName = profile?.full_name?.split(' ')[0] || 'there';
+    const now = new Date();
+    const hour = now.getHours();
+    const dayOfWeek = now.getDay();
+    const today = now.toDateString();
+
+    const timeGreeting = hour >= 5 && hour < 12 ? 'Morning'
+      : hour < 17 ? 'Afternoon'
+        : 'Evening';
+
+    const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+
+    // Data gathering
+    const assetsToday = assets.filter(a => new Date(a.createdAt).toDateString() === today);
+    const pendingTasks = tasks.filter(t => t.status !== 'Done');
+    const overdueTask = tasks.find(t => t.status !== 'Done' && t.dueDate && new Date(t.dueDate) < now);
+    const taskDueToday = tasks.find(t => t.status !== 'Done' && t.dueDate && new Date(t.dueDate).toDateString() === today);
+    const lastAsset = assets[0];
+    const daysSinceLastAsset = lastAsset
+      ? Math.floor((now.getTime() - new Date(lastAsset.createdAt).getTime()) / (1000 * 60 * 60 * 24))
+      : null;
+    const lastDayName = lastAsset
+      ? new Date(lastAsset.createdAt).toLocaleDateString('en-US', { weekday: 'long' })
+      : null;
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+    // 1. Late night (after 10pm)
+    if (hour >= 22) return pick([
+      { heading: `Night owl, ${firstName}`, subtitle: `Still at it? ${business.name} appreciates it.` },
+      { heading: `Late session, ${firstName}`, subtitle: `The best ideas come after hours.` }
+    ]);
+
+    // 2. Early bird (before 7am)
+    if (hour < 7 && hour >= 4) return pick([
+      { heading: `Early start, ${firstName}`, subtitle: `${business.name} is all yours.` },
+      { heading: `Up early, ${firstName}`, subtitle: `First mover advantage.` }
+    ]);
+
+    // 3. Overdue task
+    if (overdueTask) return pick([
+      { heading: `${timeGreeting}, ${firstName}`, subtitle: `"${overdueTask.title}" is overdue.` },
+      { heading: `Quick heads up, ${firstName}`, subtitle: `"${overdueTask.title}" slipped past due.` }
+    ]);
+
+    // 4. Task due today
+    if (taskDueToday) return pick([
+      { heading: `${timeGreeting}, ${firstName}`, subtitle: `"${taskDueToday.title}" is due today.` },
+      { heading: `Today's the day, ${firstName}`, subtitle: `"${taskDueToday.title}" needs attention.` }
+    ]);
+
+    // 5. Productive day (3+ assets)
+    if (assetsToday.length >= 3) return pick([
+      { heading: `Productive day, ${firstName}`, subtitle: `${assetsToday.length} assets created.` },
+      { heading: `On a roll, ${firstName}`, subtitle: `${assetsToday.length} new assets for ${business.name}.` }
+    ]);
+
+    // 6. High task backlog (5+ pending)
+    if (pendingTasks.length >= 5) return pick([
+      { heading: `${timeGreeting}, ${firstName}`, subtitle: `${pendingTasks.length} tasks in the queue.` },
+      { heading: `Busy board, ${firstName}`, subtitle: `${pendingTasks.length} tasks waiting.` }
+    ]);
+
+    // 7. Returning after absence (3+ days)
+    if (daysSinceLastAsset && daysSinceLastAsset >= 3) return pick([
+      { heading: `Been a minute, ${firstName}`, subtitle: `Last activity was ${lastDayName}. Welcome back.` },
+      { heading: `Welcome back, ${firstName}`, subtitle: `${daysSinceLastAsset} days since your last session.` }
+    ]);
+
+    // 8. Low credits
+    if (creditsRemaining < 15 && creditsRemaining > 0) return pick([
+      { heading: `${timeGreeting}, ${firstName}`, subtitle: `Running low — ${creditsRemaining} credits left.` },
+      { heading: `Heads up, ${firstName}`, subtitle: `Down to ${creditsRemaining} credits.` }
+    ]);
+
+    // 9. Monday morning
+    if (dayOfWeek === 1 && hour < 12) return pick([
+      { heading: `Monday, ${firstName}`, subtitle: `Fresh week for ${business.name}. What's first?` },
+      { heading: `New week, ${firstName}`, subtitle: `Clean slate. What are we building?` }
+    ]);
+
+    // 10. Friday evening
+    if (dayOfWeek === 5 && hour >= 17) return pick([
+      { heading: `Friday, ${firstName}`, subtitle: `${business.name} is in good shape.` },
+      { heading: `Weekend incoming, ${firstName}`, subtitle: `Finish strong or pick it up Monday?` }
+    ]);
+
+    // 11. Weekend
+    if (isWeekend) return pick([
+      { heading: `Weekend mode, ${firstName}`, subtitle: `No meetings. Just creating.` },
+      { heading: `${dayOfWeek === 6 ? 'Saturday' : 'Sunday'}, ${firstName}`, subtitle: `${business.name} doesn't stop.` }
+    ]);
+
+    // 12. New user (0 assets)
+    if (assets.length === 0) return pick([
+      { heading: `Welcome, ${firstName}`, subtitle: `Your first asset is one click away.` },
+      { heading: `Fresh start, ${firstName}`, subtitle: `Let's build ${business.name}'s first asset.` }
+    ]);
+
+    // 13. Default pool
+    return pick([
+      { heading: `${timeGreeting}, ${firstName}`, subtitle: `${business.name} is ready when you are.` },
+      { heading: `${timeGreeting}, ${firstName}`, subtitle: `What's on the agenda?` },
+      { heading: `${timeGreeting}, ${firstName}`, subtitle: `Your move.` },
+      { heading: `${timeGreeting}, ${firstName}`, subtitle: `Let's make something.` },
+      { heading: `${timeGreeting}, ${firstName}`, subtitle: `Pick up where you left off?` }
+    ]);
+  };
+
+  // Session storage caching to prevent flickering on navigation
+  const getStableHeader = (): { heading: string; subtitle: string } => {
+    const hour = new Date().getHours();
+    const cacheKey = `dashboard_header_${hour}_${assets.length}_${tasks.length}_${creditsRemaining}`;
+
+    // Check for cached header with matching context
+    const cached = sessionStorage.getItem('dashboard_header_cache');
+    if (cached) {
+      try {
+        const { key, header } = JSON.parse(cached);
+        if (key === cacheKey) {
+          return header;
+        }
+      } catch { /* ignore parse errors */ }
+    }
+
+    // Generate new header and cache it
+    const header = getDashboardHeader();
+    sessionStorage.setItem('dashboard_header_cache', JSON.stringify({ key: cacheKey, header }));
+    return header;
+  };
+
+  const { heading, subtitle } = getStableHeader();
 
   return (
     <div className="space-y-8 pb-10">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <GalaxyHeading
-            text={`Good morning, ${business.role}`}
-            className="text-4xl md:text-5xl font-extrabold tracking-tight mb-1 pb-2"
+            text={heading}
+            className="text-5xl md:text-6xl font-extrabold tracking-tight mb-2 pb-2"
           />
-          <p className={styles.textSub}>Here's what's happening with {business.name}</p>
+          <p className={`text-lg ${styles.textSub}`}>{subtitle}</p>
         </div>
         <NeuButton variant="primary" onClick={() => onNavigate('GENERATOR')}>
           <Plus size={18} /> New Generation

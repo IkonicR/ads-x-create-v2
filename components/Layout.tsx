@@ -32,7 +32,7 @@ export const Layout: React.FC<LayoutProps> = ({
       {/* Main Content Area */}
       {/* Main Content Area */}
       {/* Main Content Area */}
-      <div className="fixed inset-0 overflow-y-auto custom-scrollbar px-4 md:pl-24 md:pr-4 pt-4 pb-24 md:py-8">
+      <div className="fixed inset-0 overflow-y-auto custom-scrollbar px-4 md:pl-32 md:pr-6 pt-4 pb-24 md:pt-6 md:pb-8">
         <div className="hidden md:block">
           <BusinessSelector
             business={business}
@@ -43,7 +43,7 @@ export const Layout: React.FC<LayoutProps> = ({
           />
         </div>
 
-        <div className="max-w-7xl mx-auto md:pt-16">
+        <div className="max-w-7xl mx-auto md:pt-8">
           {children || <Outlet />}
         </div>
       </div>

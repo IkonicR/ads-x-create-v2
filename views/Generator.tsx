@@ -16,23 +16,20 @@ import { StorageService } from '../services/storage';
 import { useAssets } from '../context/AssetContext';
 import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
+import { useJobs, BackgroundJob } from '../context/JobContext';
 import { CREDITS } from '../config/pricing';
 
 interface GeneratorProps {
   business: Business;
   deductCredit?: (amount: number) => void; // Deprecated
   updateCredits?: (newBalance: number) => void; // NEW
-  // Props for lifted state (so we don't lose generation progress on tab switch)
-  pendingAssets: ExtendedAsset[];
-  setPendingAssets: React.Dispatch<React.SetStateAction<ExtendedAsset[]>>;
+  // NOTE: pendingAssets/setPendingAssets removed - now derived from JobContext
   loadMoreAssets?: () => Promise<number>;
 }
 
 const Generator: React.FC<GeneratorProps> = ({
   business,
   updateCredits,
-  pendingAssets,
-  setPendingAssets,
   loadMoreAssets
 }) => {
   const { profile } = useAuth();
@@ -40,29 +37,53 @@ const Generator: React.FC<GeneratorProps> = ({
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const { styles, theme } = useThemeStyles();
 
-  // Track polling intervals by jobId for cleanup
-  const pollingIntervalsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  // NOTE: pollingIntervalsRef removed - JobContext handles polling
 
   // Strategy State removed - Strategy tab removed
   const { assets, addAsset, deleteAsset, loadAssets, hasMore, loading } = useAssets();
   const { creditsRemaining, deductCredits: deductSubscriptionCredits, refundCredits } = useSubscription();
+  const { jobs, addJob, removeJob, updateJob } = useJobs();
+
+  // Convert BackgroundJob → ExtendedAsset for display compatibility
+  const jobToExtendedAsset = useCallback((job: BackgroundJob): ExtendedAsset => ({
+    id: job.id,
+    jobId: job.id,
+    type: 'image',
+    content: job.result || '',
+    prompt: job.prompt || '',
+    createdAt: new Date(job.createdAt).toISOString(),
+    localStatus: job.status === 'complete' ? 'complete' : 'generating',
+    aspectRatio: job.aspectRatio,
+    styleId: job.styleId,
+    subjectId: job.subjectId,
+    modelTier: job.modelTier,
+    animationPhase: job.animationPhase || 'warmup',
+    progress: job.progress,
+    stylePreset: job.styleName
+  }), []);
+
+  // Derive pendingAssets from JobContext instead of props
+  // Shows ALL jobs for this business (both 'generator' and 'chat' origins)
+  const pendingAssets = useMemo(() =>
+    jobs
+      .filter(j => j.businessId === business.id)
+      .map(jobToExtendedAsset),
+    [jobs, business.id, jobToExtendedAsset]
+  );
 
   // Progress tracking for first pending job (piped to generate button)
   const [firstJobProgress, setFirstJobProgress] = useState(0);
 
   // Update first job progress when called from GeneratorCard
-  // Update progress for each job in the pendingAssets list (for parent tracking and durability)
   const handleProgressUpdate = useCallback((assetId: string, progress: number) => {
     // 1. Sync for the generate button (first job only)
     if (pendingAssets[0]?.id === assetId) {
       setFirstJobProgress(progress);
     }
 
-    // 2. Persist in the main state for tab-switch durability (Debounce if performance issues)
-    setPendingAssets(prev => prev.map(a =>
-      a.id === assetId ? { ...a, progress } : a
-    ));
-  }, [pendingAssets, setPendingAssets]);
+    // 2. Persist in JobContext for tab-switch durability
+    updateJob(assetId, { progress });
+  }, [pendingAssets, updateJob]);
 
   // Load more assets via context pagination
   const handleLoadMore = useCallback(async () => {
@@ -82,92 +103,8 @@ const Generator: React.FC<GeneratorProps> = ({
     loadConfig();
   }, []);
 
-  // Load Pending Jobs on Mount (for page refresh recovery)
-  useEffect(() => {
-    if (!business.id) return;
 
-    const loadPendingJobs = async () => {
-      try {
-        const jobs = await getPendingJobs(business.id);
-
-        if (jobs.length > 0) {
-          console.log('[Generator] Found', jobs.length, 'pending jobs to resume');
-
-          // Convert jobs to pending assets - mark with animationPhase so they resume properly
-          const pendingFromJobs: ExtendedAsset[] = jobs.map(job => ({
-            id: job.id,
-            jobId: job.id,
-            type: 'image' as const,
-            content: '',
-            prompt: job.prompt,
-            createdAt: job.created_at,
-            localStatus: 'generating' as const,
-            aspectRatio: job.aspect_ratio,
-            styleId: job.style_id,
-            subjectId: job.subject_id,
-            modelTier: job.model_tier,
-            animationPhase: 'cruise' as const // Resume in cruise, not warmup
-          }));
-
-          setPendingAssets(prev => {
-            // Merge without duplicates - check BOTH id AND jobId
-            const existingIds = new Set(prev.map(a => a.id));
-            const existingJobIds = new Set(prev.map(a => a.jobId).filter(Boolean));
-            const newJobs = pendingFromJobs.filter(j =>
-              !existingIds.has(j.id) && !existingJobIds.has(j.id)
-            );
-            return [...newJobs, ...prev];
-          });
-
-          // Resume polling for each job
-          jobs.forEach(job => {
-            const pollInterval = setInterval(async () => {
-              try {
-                const status = await pollJobStatus(job.id);
-
-                if (status.status === 'completed' && status.asset) {
-                  console.log(`[Generator] ✅ Job ${job.id} COMPLETED.`);
-                  clearInterval(pollInterval);
-                  pollingIntervalsRef.current.delete(job.id);
-                  setPendingAssets(prev => prev.map(a =>
-                    a.id === job.id
-                      ? { ...a, localStatus: 'complete', content: status.asset.content }
-                      : a
-                  ));
-                } else if (status.status === 'failed') {
-                  console.error(`[Generator] ❌ Job ${job.id} FAILED:`, status.errorMessage);
-                  clearInterval(pollInterval);
-                  pollingIntervalsRef.current.delete(job.id);
-                  setPendingAssets(prev => prev.filter(a => a.id !== job.id));
-                  alert(status.errorMessage || 'A background generation failed.');
-                }
-              } catch (err) {
-                console.error(`[Generator] Poll error for job ${job.id}:`, err);
-                // If 404, job was deleted - stop polling
-                if ((err as Error).message?.includes('Failed to fetch')) {
-                  clearInterval(pollInterval);
-                  pollingIntervalsRef.current.delete(job.id);
-                }
-              }
-            }, 2000);
-
-            // Track this interval
-            pollingIntervalsRef.current.set(job.id, pollInterval);
-
-            // Safety timeout
-            setTimeout(() => {
-              clearInterval(pollInterval);
-              pollingIntervalsRef.current.delete(job.id);
-            }, 5 * 60 * 1000);
-          });
-        }
-      } catch (error) {
-        console.error('[Generator] Failed to load pending jobs:', error);
-      }
-    };
-
-    loadPendingJobs();
-  }, [business.id, setPendingAssets]);
+  // NOTE: loadPendingJobs removed - JobContext now handles server load and polling
 
   // State for Ultra Confirm Modal
   const [showUltraConfirm, setShowUltraConfirm] = useState(false);
@@ -272,15 +209,11 @@ const Generator: React.FC<GeneratorProps> = ({
     return items;
   }, [business]);
 
-  // Self-healing: Ensure pending assets are removed if they exist in the main assets list
+  // Self-healing: Remove jobs from context when they appear in assets
   useEffect(() => {
     const assetIds = new Set(assets.map(a => a.id));
-    const toRemove = pendingAssets.filter(p => assetIds.has(p.id));
-
-    if (toRemove.length > 0) {
-      setPendingAssets(prev => prev.filter(p => !assetIds.has(p.id)));
-    }
-  }, [assets, pendingAssets, setPendingAssets]);
+    pendingAssets.filter(p => assetIds.has(p.id)).forEach(p => removeJob(p.id));
+  }, [assets, pendingAssets, removeJob]);
 
   // Combine pending and completed assets for display
   // Pending assets go first
@@ -329,25 +262,6 @@ const Generator: React.FC<GeneratorProps> = ({
     const stylePreset = aestheticStyles.find(s => s.id === styleId);
     const subject = subjects.find(s => s.id === subjectId);
 
-    // Create pending asset with stable ID (used as React key)
-    const stableId = `pending_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const newPendingAsset: ExtendedAsset = {
-      id: stableId,
-      type: 'image',
-      content: '',
-      prompt: prompt,
-      createdAt: new Date().toISOString(),
-      localStatus: 'generating',
-      aspectRatio: ratio,
-      stylePreset: stylePreset?.name,
-      styleId: styleId,
-      subjectId: subjectId,
-      modelTier: modelTier
-    };
-
-    // Card appears INSTANTLY
-    setPendingAssets(prev => [newPendingAsset, ...prev]);
-
     try {
       // 1. Call API - now runs SYNCHRONOUSLY and may return completed status
       const response = await generateImage(
@@ -367,94 +281,58 @@ const Generator: React.FC<GeneratorProps> = ({
 
       const { jobId, status: responseStatus, resultAssetId, error } = response as any;
 
-      // 2. Store jobId (but DON'T change the id - that's the React key!)
-      setPendingAssets(prev => prev.map(a =>
-        a.id === stableId ? { ...a, jobId: jobId } : a
-      ));
-
-      // 3. Handle synchronous completion (new pattern - server awaits generation)
+      // 2. Handle synchronous completion (new pattern - server awaits generation)
       if (responseStatus === 'completed' && resultAssetId) {
         console.log(`[Generator] ✅ Job ${jobId} completed SYNCHRONOUSLY`);
-        // Fetch the asset
+        // Fetch the asset and add as complete
         const statusData = await pollJobStatus(jobId);
         if (statusData.asset) {
-          setPendingAssets(prev => prev.map(a =>
-            a.id === stableId
-              ? { ...a, localStatus: 'complete', content: statusData.asset.content }
-              : a
-          ));
+          addJob({
+            id: jobId,
+            type: 'generator',
+            businessId: business.id,
+            prompt,
+            aspectRatio: ratio,
+            styleId,
+            styleName: stylePreset?.name,
+            subjectId,
+            modelTier,
+            result: statusData.asset.content,
+            createdAt: Date.now()
+          });
+          // Immediately update to complete (will trigger reveal)
+          updateJob(jobId, { status: 'complete', result: statusData.asset.content });
         }
         return; // No polling needed
       }
 
       if (responseStatus === 'failed') {
         console.error(`[Generator] ❌ Job ${jobId} failed SYNCHRONOUSLY:`, error);
-        setPendingAssets(prev => prev.filter(a => a.id !== stableId));
         refundCredits(cost);
         alert(error || 'Generation failed. Credits have been refunded.');
         return; // No polling needed
       }
 
-      // 4. If still processing, start polling (fallback for async mode)
-      let poll404Retries = 0; // Allow a few 404s due to race conditions
-      const pollInterval = setInterval(async () => {
-        try {
-          const status = await pollJobStatus(jobId);
-          poll404Retries = 0; // Reset on success
-
-          if (status.status === 'completed' && status.asset) {
-            clearInterval(pollInterval);
-            pollingIntervalsRef.current.delete(jobId);
-
-            // Update pending asset with URL and set to complete
-            setPendingAssets(prev => prev.map(a =>
-              a.id === stableId
-                ? { ...a, localStatus: 'complete', content: status.asset.content }
-                : a
-            ));
-
-          } else if (status.status === 'failed') {
-            console.error(`[Generator] ❌ Job ${jobId} FAILED:`, status.errorMessage);
-            clearInterval(pollInterval);
-            pollingIntervalsRef.current.delete(jobId);
-
-            // Remove pending and refund
-            setPendingAssets(prev => prev.filter(a => a.id !== stableId));
-            refundCredits(cost);
-            alert(status.errorMessage || 'Generation failed. Credits have been refunded.');
-          }
-          // If still 'processing' or 'pending', keep polling
-        } catch (pollError) {
-          console.error(`[Generator] Poll error for job ${jobId}:`, pollError);
-          // Allow up to 3 retries for 404s (race condition with job creation)
-          if ((pollError as Error).message?.includes('Failed to fetch')) {
-            poll404Retries++;
-            if (poll404Retries >= 3) {
-              console.log(`[Generator] Job ${jobId} not found after 3 retries, stopping poll`);
-              clearInterval(pollInterval);
-              pollingIntervalsRef.current.delete(jobId);
-            }
-          }
-        }
-      }, 2000); // Poll every 2 seconds
-
-      // Track this interval
-      pollingIntervalsRef.current.set(jobId, pollInterval);
-
-      // Safety: Stop polling after 5 minutes
-      setTimeout(() => {
-        clearInterval(pollInterval);
-        pollingIntervalsRef.current.delete(jobId);
-      }, 5 * 60 * 1000);
-
+      // 3. Register job with JobContext - it handles polling
+      addJob({
+        id: jobId,
+        type: 'generator',
+        businessId: business.id,
+        prompt,
+        aspectRatio: ratio,
+        styleId,
+        styleName: stylePreset?.name,
+        subjectId,
+        modelTier,
+        createdAt: Date.now()
+      });
 
     } catch (error) {
       console.error("Generation Error", error);
-      setPendingAssets(prev => prev.filter(a => a.id !== stableId));
       refundCredits(cost);
       alert("An unexpected error occurred. Credits have been refunded.");
     }
-  }, [business, creditsRemaining, deductSubscriptionCredits, refundCredits, addAsset, setPendingAssets, subjects, aestheticStyles]);
+  }, [business, creditsRemaining, deductSubscriptionCredits, refundCredits, addJob, updateJob, subjects, aestheticStyles]);
 
   const handleGenerate = useCallback(async (
     prompt: string,
@@ -526,64 +404,48 @@ const Generator: React.FC<GeneratorProps> = ({
     // Add to main list
     addAsset(finalAsset);
 
-    // Remove from pending list
-    setPendingAssets(prev => prev.filter(a => a.id !== id));
-  }, [pendingAssets, addAsset, setPendingAssets]);
+    // Remove from JobContext
+    removeJob(id);
+  }, [pendingAssets, addAsset, removeJob]);
 
   const handleKillJob = useCallback(async (assetId: string) => {
     const asset = pendingAssets.find(a => a.id === assetId);
     if (!asset) return;
 
-    const jobId = asset.jobId;
+    const jobId = asset.jobId || asset.id;
 
-    // Clear the polling interval immediately
-    if (jobId) {
-      const interval = pollingIntervalsRef.current.get(jobId);
-      if (interval) {
-        clearInterval(interval);
-        pollingIntervalsRef.current.delete(jobId);
-      }
-    }
-
-    // If no jobId yet (still creating), just remove from UI
-    if (!jobId) {
-      setPendingAssets(prev => prev.filter(a => a.id !== assetId));
+    // If no jobId yet (still creating), just remove from context
+    if (!asset.jobId) {
+      removeJob(assetId);
       return;
     }
 
     const ok = await killJob(jobId);
     if (ok) {
-      setPendingAssets(prev => prev.filter(a => a.id !== assetId && a.jobId !== jobId));
+      removeJob(assetId);
     } else {
       alert("Failed to kill job. Try again or check logs.");
     }
-  }, [pendingAssets, setPendingAssets]);
+  }, [pendingAssets, removeJob]);
 
 
   const handleClearAllPending = useCallback(async () => {
     if (!confirm("Are you sure you want to kill ALL pending jobs? This cannot be undone.")) return;
 
-    // Clear all polling intervals first
-    pollingIntervalsRef.current.forEach((interval, jobId) => {
-      clearInterval(interval);
-    });
-    pollingIntervalsRef.current.clear();
-
     const jobsToKill = pendingAssets.filter(a => !!a.jobId).map(a => a.jobId as string);
 
-    // Parallel kill
+    // Parallel kill on server
     await Promise.all(jobsToKill.map(id => killJob(id)));
 
-    setPendingAssets([]);
-  }, [pendingAssets, setPendingAssets]);
+    // Remove all from context
+    pendingAssets.forEach(a => removeJob(a.id));
+  }, [pendingAssets, removeJob]);
 
 
   // Handle animation phase changes from GeneratorCard
   const handlePhaseChange = useCallback((id: string, phase: 'warmup' | 'cruise' | 'deceleration' | 'revealed') => {
-    setPendingAssets(prev => prev.map(a =>
-      a.id === id ? { ...a, animationPhase: phase } : a
-    ));
-  }, [setPendingAssets]);
+    updateJob(id, { animationPhase: phase });
+  }, [updateJob]);
 
   const handleReuse = useCallback((asset: Asset, mode: 'prompt_only' | 'all') => {
     if (mode === 'prompt_only') {

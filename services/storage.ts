@@ -838,9 +838,18 @@ export const StorageService = {
   },
 
   async updateUserProfile(profile: Partial<UserProfile> & { id: string }): Promise<void> {
+    // Title case normalization for full_name
+    const toTitleCase = (str: string) =>
+      str.toLowerCase().replace(/\b\w/g, char => char.toUpperCase());
+
+    const normalizedProfile = {
+      ...profile,
+      full_name: profile.full_name ? toTitleCase(profile.full_name.trim()) : profile.full_name
+    };
+
     const { error } = await supabase
       .from('profiles')
-      .upsert(profile);
+      .upsert(normalizedProfile);
 
     if (error) {
       console.error('Error updating user profile:', error);

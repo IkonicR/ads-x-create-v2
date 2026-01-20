@@ -11,6 +11,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { AssetProvider, useAssets } from './context/AssetContext';
 import { SocialProvider, useSocial } from './context/SocialContext';
 import { SubscriptionProvider, useSubscription } from './context/SubscriptionContext';
+import { JobProvider } from './context/JobContext';
 import Layout from './components/Layout';
 import Onboarding from './views/Onboarding';
 import UserOnboarding from './views/UserOnboarding';
@@ -111,8 +112,8 @@ const AppContent: React.FC = () => {
   const currentView = getViewStateFromPath(location.pathname);
 
   // Tasks state removed - now managed by TaskContext at workspace level
+  // NOTE: pendingAssets removed - now managed by JobContext
 
-  const [pendingAssets, setPendingAssets] = useState<ExtendedAsset[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [hasSubscription, setHasSubscription] = useState<boolean | null>(null); // Gate 3: null = unchecked
   const reorderTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
@@ -592,106 +593,106 @@ const AppContent: React.FC = () => {
   }
 
   return (
-    <NavigationProvider currentView={currentView} onNavigate={handleSetView}>
-      <MainLayout
-        business={activeBusiness}
-        businesses={businesses}
-        switchBusiness={handleSwitchBusiness}
-        toggleNewBusiness={() => navigate('/onboarding')}
-        onReorder={handleReorderBusinesses}
-      >
-        <Routes>
-          <Route path="/onboarding" element={<Onboarding onComplete={handleBusinessCreate} />} />
+    <JobProvider businessId={activeBusinessId}>
+      <NavigationProvider currentView={currentView} onNavigate={handleSetView}>
+        <MainLayout
+          business={activeBusiness}
+          businesses={businesses}
+          switchBusiness={handleSwitchBusiness}
+          toggleNewBusiness={() => navigate('/onboarding')}
+          onReorder={handleReorderBusinesses}
+        >
+          <Routes>
+            <Route path="/onboarding" element={<Onboarding onComplete={handleBusinessCreate} />} />
 
-          {/* Protected Routes - Only render if activeBusiness exists */}
-          {activeBusiness && (
-            <>
-              <Route path="/dashboard" element={
-                <TaskProvider userId={user.id}>
-                  <Dashboard
+            {/* Protected Routes - Only render if activeBusiness exists */}
+            {activeBusiness && (
+              <>
+                <Route path="/dashboard" element={
+                  <TaskProvider userId={user.id}>
+                    <Dashboard
+                      business={activeBusiness}
+                      onNavigate={handleSetView}
+                    />
+                  </TaskProvider>
+                } />
+                <Route path="/profile" element={
+                  <BusinessProfile business={activeBusiness} updateBusiness={updateBusiness} />
+                } />
+                <Route path="/offerings" element={
+                  <Offerings business={activeBusiness} updateBusiness={updateBusiness} />
+                } />
+                <Route path="/brand-kit" element={
+                  <BrandKit business={activeBusiness} updateBusiness={updateBusiness} />
+                } />
+                <Route path="/generator" element={
+                  <Generator
                     business={activeBusiness}
-                    onNavigate={handleSetView}
+                    deductCredit={deductCredit}
+                    updateCredits={updateCredits}
                   />
-                </TaskProvider>
-              } />
-              <Route path="/profile" element={
-                <BusinessProfile business={activeBusiness} updateBusiness={updateBusiness} />
-              } />
-              <Route path="/offerings" element={
-                <Offerings business={activeBusiness} updateBusiness={updateBusiness} />
-              } />
-              <Route path="/brand-kit" element={
-                <BrandKit business={activeBusiness} updateBusiness={updateBusiness} />
-              } />
-              <Route path="/generator" element={
-                <Generator
-                  business={activeBusiness}
-                  deductCredit={deductCredit}
-                  updateCredits={updateCredits}
-                  pendingAssets={pendingAssets}
-                  setPendingAssets={setPendingAssets}
-                />
-              } />
-              <Route path="/tasks" element={
-                <Tasks
-                  userId={user.id}
-                  businessDesc={activeBusiness.description}
-                  activeBusinessId={activeBusiness.id}
-                  businesses={businesses.map(b => ({ id: b.id, name: b.name }))}
-                />
-              } />
-              <Route path="/library" element={
-                <Library businessId={activeBusiness.id} />
-              } />
-              <Route path="/planner" element={
-                <Planner business={activeBusiness} />
-              } />
-              <Route path="/social" element={
-                <Social business={activeBusiness} updateBusiness={updateBusiness} />
-              } />
-              {/* Redirect old route for backward compatibility */}
-              <Route path="/social-settings" element={<Navigate to="/social" replace />} />
-              <Route path="/chat" element={
-                <ChatInterface business={activeBusiness} />
-              } />
-            </>
-          )}
+                } />
+                <Route path="/tasks" element={
+                  <Tasks
+                    userId={user.id}
+                    businessDesc={activeBusiness.description}
+                    activeBusinessId={activeBusiness.id}
+                    businesses={businesses.map(b => ({ id: b.id, name: b.name }))}
+                  />
+                } />
+                <Route path="/library" element={
+                  <Library businessId={activeBusiness.id} />
+                } />
+                <Route path="/planner" element={
+                  <Planner business={activeBusiness} />
+                } />
+                <Route path="/social" element={
+                  <Social business={activeBusiness} updateBusiness={updateBusiness} />
+                } />
+                {/* Redirect old route for backward compatibility */}
+                <Route path="/social-settings" element={<Navigate to="/social" replace />} />
+                <Route path="/chat" element={
+                  <ChatInterface business={activeBusiness} />
+                } />
+              </>
+            )}
 
-          {/* Admin Route - Protected for super admins only */}
-          <Route path="/admin" element={
-            profile?.is_admin ? <AdminDashboard onBusinessUpdated={handleExternalBusinessUpdate} /> : <Navigate to="/dashboard" replace />
-          } />
-          <Route path="/account" element={<UserProfile />} />
-          {/* Redirect old route for backward compatibility */}
-          <Route path="/user-profile" element={<Navigate to="/account" replace />} />
-          <Route path="/business-manager" element={<BusinessManager />} />
-          <Route path="/design-lab" element={<DesignLab />} />
-          <Route path="/invite/:token" element={<AcceptInvite />} />
-
-          {/* Public Routes (No Auth Required) */}
-          <Route path="/print/:token" element={<PrinterDownload />} />
-
-          {/* Team Settings - account-level view */}
-          {businesses.length > 0 && (
-            <Route path="/team" element={
-              <TeamSettings
-                allBusinesses={businesses.map(b => ({ id: b.id, name: b.name }))}
-                onMembershipChange={() => {
-                  if (user) StorageService.getBusinesses(user.id).then(setBusinesses);
-                }}
-              />
+            {/* Admin Route - Protected for super admins only */}
+            <Route path="/admin" element={
+              profile?.is_admin ? <AdminDashboard onBusinessUpdated={handleExternalBusinessUpdate} /> : <Navigate to="/dashboard" replace />
             } />
-          )}
+            <Route path="/account" element={<UserProfile />} />
+            {/* Redirect old route for backward compatibility */}
+            <Route path="/user-profile" element={<Navigate to="/account" replace />} />
+            <Route path="/business-manager" element={<BusinessManager />} />
+            <Route path="/design-lab" element={<DesignLab />} />
+            <Route path="/invite/:token" element={<AcceptInvite />} />
+
+            {/* Public Routes (No Auth Required) */}
+            <Route path="/print/:token" element={<PrinterDownload />} />
+
+            {/* Team Settings - account-level view */}
+            {businesses.length > 0 && (
+              <Route path="/team" element={
+                <TeamSettings
+                  allBusinesses={businesses.map(b => ({ id: b.id, name: b.name }))}
+                  onMembershipChange={() => {
+                    if (user) StorageService.getBusinesses(user.id).then(setBusinesses);
+                  }}
+                />
+              } />
+            )}
 
 
 
-          {/* Fallback: If still loading data, show nothing. Otherwise redirect based on business state */}
-          <Route path="*" element={
-            loadingData ? <GlobalLoader /> : <Navigate to={activeBusiness ? "/dashboard" : "/onboarding"} replace />
-          } />
-        </Routes>
-      </MainLayout>
-    </NavigationProvider>
+            {/* Fallback: If still loading data, show nothing. Otherwise redirect based on business state */}
+            <Route path="*" element={
+              loadingData ? <GlobalLoader /> : <Navigate to={activeBusiness ? "/dashboard" : "/onboarding"} replace />
+            } />
+          </Routes>
+        </MainLayout>
+      </NavigationProvider>
+    </JobProvider>
   );
 };
 

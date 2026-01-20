@@ -10,7 +10,9 @@ import { SubjectPicker } from '../components/SubjectPicker';
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
 import { QuickActionPills, QuickEditInput } from '../components/QuickActionPills';
 import { ChatHistoryPopover } from '../components/ChatHistoryPopover';
+import { GeneratingIndicator } from '../components/GeneratingIndicator';
 import * as chatService from '../services/chatService';
+import { useJobs } from '../context/JobContext';
 import { ChatSession } from '../services/chatService';
 
 interface ChatInterfaceProps {
@@ -19,6 +21,7 @@ interface ChatInterfaceProps {
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
   const { styles } = useThemeStyles();
+  const { jobs, addJob, removeJob, updateJob } = useJobs();
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
@@ -31,6 +34,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
   const [resizeMode, setResizeMode] = useState<string | null>(null); // Phase 8: Resize interactions
   const [showHistory, setShowHistory] = useState(false);  // History popover
   const [allSessions, setAllSessions] = useState<ChatSession[]>([]);
+  const [generationMeta, setGenerationMeta] = useState<{
+    total: number;
+    aspectRatio?: string;
+    styleName?: string;
+  } | null>(null);  // Generation feedback metadata
 
   // Generate the welcome message
   const getWelcomeMessage = useCallback((): ChatMessage => ({
@@ -101,16 +109,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
         const dbMessages = await chatService.loadMessages(session.id);
 
         if (dbMessages.length > 0) {
-          const loadedMessages: ChatMessage[] = dbMessages.map(m => ({
-            id: m.id,
-            role: m.role,
-            text: m.content,
-            timestamp: new Date(m.created_at),
-            attachment: m.attachment_url ? {
-              type: 'image' as const,
-              content: m.attachment_url
-            } : undefined
-          }));
+          // Hydrate attachments for each message
+          const loadedMessages: ChatMessage[] = await Promise.all(
+            dbMessages.map(async m => {
+              const attachments = await chatService.getAttachments(m.id);
+              return {
+                id: m.id,
+                role: m.role,
+                text: m.content,
+                timestamp: new Date(m.created_at),
+                attachments: attachments.length > 0
+                  ? attachments.map(a => ({ type: 'image' as const, content: a.url }))
+                  : undefined
+              };
+            })
+          );
           setMessages(loadedMessages);
           updateCache(loadedMessages, session.id);
         } else {
@@ -126,6 +139,38 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
 
     syncWithDatabase();
   }, [business.id, getWelcomeMessage, updateCache]);
+
+  // Cross-tab sync: Listen for updates from other tabs
+  useEffect(() => {
+    const unsubscribe = chatService.onChatUpdate(async (data) => {
+      if (data.businessId !== business.id) return;
+
+      // Reload messages from DB when another tab updates
+      if (sessionId) {
+        const dbMessages = await chatService.loadMessages(sessionId);
+        if (dbMessages.length > 0) {
+          const loadedMessages: ChatMessage[] = await Promise.all(
+            dbMessages.map(async m => {
+              const attachments = await chatService.getAttachments(m.id);
+              return {
+                id: m.id,
+                role: m.role,
+                text: m.content,
+                timestamp: new Date(m.created_at),
+                attachments: attachments.length > 0
+                  ? attachments.map(a => ({ type: 'image' as const, content: a.url }))
+                  : undefined
+              };
+            })
+          );
+          setMessages(loadedMessages);
+          updateCache(loadedMessages, sessionId);
+        }
+      }
+    });
+
+    return unsubscribe;
+  }, [business.id, sessionId, updateCache]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -148,6 +193,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
           // Phase 6: Store for AI vision
           setRecentGeneratedImage(status.asset.content);
 
+          // Get job metadata for persistence
+          const job = jobs.find(j => j.id === jobId);
+          const attachmentMetadata = {
+            prompt: job?.prompt,
+            aspectRatio: job?.aspectRatio,
+            styleName: job?.styleName,
+            styleId: job?.styleId,
+            modelTier: job?.modelTier,
+            subjectId: job?.subjectId,
+          };
+
           if (isBatch) {
             // Phase 5: Batch mode - add to attachments array
             setMessages(prev => prev.map(m => {
@@ -159,20 +215,29 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
                 imageUrl: status.asset.content  // Store for AI vision
               };
             }));
+
+            // Persist to new chat_attachments table with metadata
+            chatService.saveAttachment(messageId, business.id, status.asset.content, attachmentMetadata);
+
             // Remove this job from pending
             setPendingJobIds(prev => prev.filter(id => id !== jobId));
+            removeJob(jobId);
           } else {
-            // Single mode - use attachment
             setMessages(prev => prev.map(m =>
               m.id === messageId
                 ? {
                   ...m,
-                  attachment: { type: 'image', content: status.asset.content },
+                  attachments: [{ type: 'image' as const, content: status.asset.content }],
                   imageUrl: status.asset.content  // Phase 6: Store for AI vision
                 }
                 : m
             ));
             setPendingJobId(null);
+            setGenerationMeta(null);
+
+            // Persist to new chat_attachments table with metadata
+            chatService.saveAttachment(messageId, business.id, status.asset.content, attachmentMetadata);
+            removeJob(jobId);
           }
 
           // Update cache with image
@@ -220,6 +285,73 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
 
     poll();
   }, [sessionId, updateCache]);
+
+  // Sync pendingJobId/pendingJobIds state from JobContext
+  // JobContext handles polling; we just need to track which jobs are ours
+  useEffect(() => {
+    const chatJobs = jobs.filter(j => j.type === 'chat' && j.businessId === business.id);
+
+    if (chatJobs.length === 0) {
+      // No pending chat jobs
+      if (pendingJobId || pendingJobIds.length > 0) {
+        setPendingJobId(null);
+        setPendingJobIds([]);
+        setGenerationMeta(null);
+      }
+      return;
+    }
+
+    // UNIFIED PATH: Handle all jobs the same way (1, 3, or 100 images)
+    const pendingJobs = chatJobs.filter(j => j.status === 'polling');
+    const completedJobs = chatJobs.filter(j => j.status === 'complete' && j.result);
+
+    // Handle completed jobs with batch fix
+    if (completedJobs.length > 0) {
+      // Step 1: Group attachments by messageId
+      const newAttachmentsByMessage: Record<string, Array<{ type: 'image', content: string }>> = {};
+      for (const job of completedJobs) {
+        if (job.messageId && job.result) {
+          if (!newAttachmentsByMessage[job.messageId]) {
+            newAttachmentsByMessage[job.messageId] = [];
+          }
+          newAttachmentsByMessage[job.messageId].push({ type: 'image', content: job.result });
+        }
+      }
+
+      // Step 2: Apply ALL attachments in a single state update
+      if (Object.keys(newAttachmentsByMessage).length > 0) {
+        setMessages(prev => prev.map(m => {
+          const newAttachments = newAttachmentsByMessage[m.id];
+          if (!newAttachments) return m;
+
+          const existing = m.attachments || [];
+          return {
+            ...m,
+            attachments: [...existing, ...newAttachments],
+            imageUrl: newAttachments[newAttachments.length - 1].content
+          };
+        }));
+      }
+
+      // Step 3: Remove all completed jobs AFTER state update
+      for (const job of completedJobs) {
+        removeJob(job.id);
+      }
+    }
+
+    // Handle pending jobs
+    if (pendingJobs.length > 0) {
+      setPendingJobIds(pendingJobs.map(j => j.id));
+      setGenerationMeta({
+        total: pendingJobs.length,
+        aspectRatio: pendingJobs[0]?.aspectRatio,
+        styleName: pendingJobs[0]?.styleName
+      });
+    } else {
+      setPendingJobIds([]);
+      setGenerationMeta(null);
+    }
+  }, [jobs, business.id, removeJob]);
 
   const handleSend = async (overrideText?: string) => {
     const userText = overrideText || input.trim();
@@ -325,15 +457,33 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
 
       // Phase 3/5: Start polling if AI triggered image generation
       if (aiResponse.jobId) {
-        // Single image generation
+        // Single image generation - register with JobContext
+        addJob({
+          id: aiResponse.jobId,
+          type: 'chat',
+          businessId: business.id,
+          messageId: aiMsg.id,
+          aspectRatio: aiResponse.generationMeta?.aspectRatio || '1:1',
+          styleName: aiResponse.generationMeta?.styleName,
+          createdAt: Date.now()
+        });
         setPendingJobId(aiResponse.jobId);
-        pollForCompletion(aiResponse.jobId, aiMsg.id, false);
+        setGenerationMeta(aiResponse.generationMeta || { total: 1 });
       } else if (aiResponse.jobIds && aiResponse.jobIds.length > 0) {
-        // Phase 5: Batch generation - poll for each job
-        setPendingJobIds(aiResponse.jobIds);
+        // Phase 5: Batch generation - register each with JobContext
         for (const jobId of aiResponse.jobIds) {
-          pollForCompletion(jobId, aiMsg.id, true);
+          addJob({
+            id: jobId,
+            type: 'chat',
+            businessId: business.id,
+            messageId: aiMsg.id,
+            aspectRatio: aiResponse.generationMeta?.aspectRatio || '1:1',
+            styleName: aiResponse.generationMeta?.styleName,
+            createdAt: Date.now()
+          });
         }
+        setPendingJobIds(aiResponse.jobIds);
+        setGenerationMeta(aiResponse.generationMeta || { total: aiResponse.jobIds.length });
       }
 
     } catch (error) {
@@ -377,22 +527,26 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
   const handleLoadSession = async (session: ChatSession) => {
     setShowHistory(false);
     const messages = await chatService.loadMessages(session.id);
-    setMessages(messages.map(m => ({
-      id: m.id,
-      role: m.role,
-      text: m.content,
-      timestamp: new Date(m.created_at),
-      attachment: m.attachment_url ? { type: 'image' as const, content: m.attachment_url } : undefined
-    })));
+
+    // Hydrate attachments for each message
+    const loadedMessages = await Promise.all(
+      messages.map(async m => {
+        const attachments = await chatService.getAttachments(m.id);
+        return {
+          id: m.id,
+          role: m.role,
+          text: m.content,
+          timestamp: new Date(m.created_at),
+          attachments: attachments.length > 0
+            ? attachments.map(a => ({ type: 'image' as const, content: a.url }))
+            : undefined
+        };
+      })
+    );
+
+    setMessages(loadedMessages);
     setSessionId(session.id);
-    // Update cache
-    updateCache(messages.map(m => ({
-      id: m.id,
-      role: m.role,
-      text: m.content,
-      timestamp: new Date(m.created_at),
-      attachment: m.attachment_url ? { type: 'image' as const, content: m.attachment_url } : undefined
-    })), session.id);
+    updateCache(loadedMessages, session.id);
   };
 
   // New chat from history popover
@@ -486,38 +640,38 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
                   )}
                 </div>
 
-                {/* Image Attachment */}
-                {msg.attachment && msg.attachment.type === 'image' && (
-                  <div className={`mt-4 rounded-2xl overflow-hidden p-2 ${styles.bg} ${styles.shadowOut} animate-fade-in max-w-sm`}>
-                    <div className="relative group">
+                {/* Image Attachment - only show if no batch attachments */}
+                {msg.attachment && msg.attachment.type === 'image' && (!msg.attachments || msg.attachments.length === 0) && (
+                  <div className={`mt-4 rounded-2xl overflow-hidden p-3 ${styles.bg} ${styles.shadowOut} animate-fade-in max-w-sm group`}>
+                    <div className="relative">
                       <img src={msg.attachment.content} alt="Generated" className="w-full h-auto rounded-xl" />
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl">
                         <button className="bg-white text-black p-2 rounded-full font-bold flex items-center gap-2 text-xs">
-                          <Download size={14} /> Save to Library
+                          <Download size={14} />
                         </button>
                       </div>
                     </div>
-                    <div className={`mt-2 px-2 flex justify-between items-center ${styles.textSub} text-xs`}>
+                    <div className={`mt-2 px-1 flex justify-between items-center ${styles.textSub} text-xs`}>
                       <span className="font-bold">AI GENERATED</span>
                       <Sparkles size={12} className="text-brand" />
                     </div>
 
-                    {/* Phase 8: Quick Action Pills */}
+                    {/* Action Pills (always visible) */}
                     <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800">
                       <QuickActionPills
                         isEditMode={editMode === msg.id}
                         onVariations={() => {
                           setRecentGeneratedImage(msg.attachment!.content);
-                          handleSend("Generate 3 variations of this image");
+                          setInput("Generate 3 variations of this image");
                         }}
                         onEdit={() => setEditMode(editMode === msg.id ? null : msg.id)}
                         onDifferentStyle={() => {
                           setRecentGeneratedImage(msg.attachment!.content);
-                          handleSend("Keep the same subject but try a completely different artistic style");
+                          setInput("Try a different style: ");
                         }}
                         onResize={() => {
                           setRecentGeneratedImage(msg.attachment!.content);
-                          handleSend("Resize this to 9:16 Story format");
+                          setInput("Resize this to: ");
                         }}
                         onSave={() => {
                           console.log("Save clicked");
@@ -540,12 +694,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
                   </div>
                 )}
 
-                {/* Phase 5: Multiple Image Attachments (Grid) */}
+                {/* Phase 5: Multiple Image Attachments (Responsive Grid) */}
                 {msg.attachments && msg.attachments.length > 0 && (
-                  <div className={`mt-4 grid ${msg.attachments.length === 1 ? 'grid-cols-1' : 'grid-cols-2'} gap-2 max-w-md`}>
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 max-w-3xl">
                     {msg.attachments.map((att, i) => (
-                      <div key={i} className={`rounded-2xl overflow-hidden p-2 ${styles.bg} ${styles.shadowOut} animate-fade-in`}>
-                        <div className="relative group">
+                      <div key={i} className={`rounded-2xl overflow-hidden p-3 ${styles.bg} ${styles.shadowOut} animate-fade-in group`}>
+                        <div className="relative">
                           <img src={att.content} alt={`Generated ${i + 1}`} className="w-full h-auto rounded-xl" />
                           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl">
                             <button className="bg-white text-black p-2 rounded-full font-bold flex items-center gap-2 text-xs">
@@ -553,39 +707,57 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
                             </button>
                           </div>
                         </div>
-                        <div className={`mt-1 px-2 flex justify-between items-center ${styles.textSub} text-xs`}>
-                          <span className="font-bold">#{i + 1}</span>
+                        <div className={`mt-2 px-1 flex justify-between items-center ${styles.textSub} text-xs`}>
+                          <span className="font-bold">AI GENERATED #{i + 1}</span>
                           <Sparkles size={10} className="text-brand" />
+                        </div>
+
+                        {/* Action Pills (always visible) */}
+                        <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+                          <QuickActionPills
+                            isEditMode={editMode === `${msg.id}-${i}`}
+                            onVariations={() => {
+                              setRecentGeneratedImage(att.content);
+                              setInput(`Generate 3 variations of image #${i + 1}`);
+                            }}
+                            onEdit={() => setEditMode(editMode === `${msg.id}-${i}` ? null : `${msg.id}-${i}`)}
+                            onDifferentStyle={() => {
+                              setRecentGeneratedImage(att.content);
+                              setInput(`Try a different style for image #${i + 1}: `);
+                            }}
+                            onResize={() => {
+                              setRecentGeneratedImage(att.content);
+                              setInput(`Resize image #${i + 1} to: `);
+                            }}
+                            onSave={() => {
+                              console.log("Save clicked for image", i + 1);
+                            }}
+                          />
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
 
-                {/* Generating Indicator - shows while polling for single image */}
-                {pendingJobId && msg.role === 'ai' && !msg.attachment && msg.text.includes('Creating your image') && (
-                  <div className={`mt-4 rounded-2xl overflow-hidden p-4 ${styles.bg} ${styles.shadowIn} max-w-sm`}>
-                    <div className="flex items-center gap-3">
-                      <div className="w-5 h-5 border-2 border-brand border-t-transparent rounded-full animate-spin" />
-                      <span className={`text-sm font-medium ${styles.textSub}`}>Generating image...</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Phase 5: Batch Generating Indicator */}
-                {pendingJobIds.length > 0 && msg.role === 'ai' && msg.text.includes('Creating') && msg.text.includes('images') && (
-                  <div className={`mt-4 rounded-2xl overflow-hidden p-4 ${styles.bg} ${styles.shadowIn} max-w-sm`}>
-                    <div className="flex items-center gap-3">
-                      <div className="w-5 h-5 border-2 border-brand border-t-transparent rounded-full animate-spin" />
-                      <span className={`text-sm font-medium ${styles.textSub}`}>
-                        Generating {pendingJobIds.length} image{pendingJobIds.length > 1 ? 's' : ''}...
-                      </span>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           ))}
+
+          {/* Generation Status Bubble - separate from AI messages */}
+          {(pendingJobId || pendingJobIds.length > 0) && generationMeta && (
+            <div className="flex gap-4">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-brand/10 text-brand`}>
+                <Sparkles size={20} />
+              </div>
+              <div className={`p-4 rounded-2xl ${styles.bg} ${styles.shadowOut}`}>
+                <GeneratingIndicator
+                  total={generationMeta.total}
+                  aspectRatio={generationMeta.aspectRatio}
+                  styleName={generationMeta.styleName}
+                />
+              </div>
+            </div>
+          )}
 
           {loading && (
             <div className="flex gap-4">
@@ -658,8 +830,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
             </NeuIconButton>
           </div>
         </div>
-      </NeuCard>
-    </div>
+      </NeuCard >
+    </div >
   );
 };
 

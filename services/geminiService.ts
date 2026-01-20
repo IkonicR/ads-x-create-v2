@@ -4,6 +4,69 @@ import { PromptFactory } from './prompts';
 import { getSymbolFromCurrency } from '../utils/currency';
 import { supabase } from './supabase';
 import { AI_MODELS } from '../config/ai-models';
+import { StorageService } from './storage';
+
+/**
+ * Clean function call artifacts from AI text output.
+ * The model sometimes outputs f{generate_marketing_image(...)} as plain text
+ * instead of making an actual function call. This removes those artifacts.
+ */
+const cleanFunctionCallArtifacts = (text: string): string => {
+  // Pattern explanation:
+  // - f?\{ matches optional 'f' followed by '{'
+  // - generate_marketing_image\( matches the function name
+  // - [\s\S]*? matches any content (including newlines) non-greedy
+  // - \)\} matches closing ')}'
+  return text
+    .replace(/f?\{generate_marketing_image\([\s\S]*?\)\}/g, '')
+    .replace(/\n{3,}/g, '\n\n')  // Collapse 3+ newlines to 2
+    .trim();
+};
+
+interface ParsedFunctionCall {
+  prompt: string;
+  styleId?: string;
+  aspectRatio?: string;
+  modelTier?: 'pro' | 'ultra';
+}
+
+/**
+ * Parse f{generate_marketing_image(...)} from text when SDK doesn't detect function calls.
+ * Returns an array of parsed function call parameters.
+ */
+const parseTextFunctionCalls = (text: string): ParsedFunctionCall[] => {
+  const calls: ParsedFunctionCall[] = [];
+
+  // Match all f{generate_marketing_image(...)} patterns
+  const pattern = /f?\{generate_marketing_image\(([\s\S]*?)\)\}/g;
+  let match;
+
+  while ((match = pattern.exec(text)) !== null) {
+    const argsStr = match[1];
+
+    // Extract prompt="..."
+    const promptMatch = argsStr.match(/prompt\s*=\s*"([^"]+)"/);
+    if (!promptMatch) continue;
+
+    const parsed: ParsedFunctionCall = {
+      prompt: promptMatch[1]
+    };
+
+    // Extract optional parameters
+    const styleIdMatch = argsStr.match(/styleId\s*=\s*"([^"]+)"/);
+    if (styleIdMatch) parsed.styleId = styleIdMatch[1];
+
+    const aspectRatioMatch = argsStr.match(/aspectRatio\s*=\s*"([^"]+)"/);
+    if (aspectRatioMatch) parsed.aspectRatio = aspectRatioMatch[1];
+
+    const modelTierMatch = argsStr.match(/modelTier\s*=\s*"(pro|ultra)"/);
+    if (modelTierMatch) parsed.modelTier = modelTierMatch[1] as 'pro' | 'ultra';
+
+    calls.push(parsed);
+  }
+
+  return calls;
+};
 
 // Helper to get the client.
 const getAiClient = () => {
@@ -239,7 +302,13 @@ export const sendChatMessage = async (
   newMessage: string,
   subjectContext?: { id: string; name: string; type: 'product' | 'person'; imageUrl?: string },
   recentImageUrl?: string
-): Promise<{ text: string; image?: string; jobId?: string; jobIds?: string[] }> => {
+): Promise<{
+  text: string;
+  image?: string;
+  jobId?: string;
+  jobIds?: string[];
+  generationMeta?: { total: number; aspectRatio?: string; styleName?: string };
+}> => {
   const ai = getAiClient();
 
   if (!ai) {
@@ -358,21 +427,80 @@ export const sendChatMessage = async (
       }
     }
 
-    const chat = ai.chats.create({
+    // =========================================================================
+    // TWO-TURN CONVERSATION PATTERN
+    // Turn 1: Get conversational response (NO tools, NO tool instructions)
+    // Turn 2: Execute generation (WITH tools, full CMO prompt)
+    // =========================================================================
+
+    // TURN 1 SYSTEM INSTRUCTION: Conversational only, no function calling
+    const turn1SystemInstruction = `
+You are the Creative Director for "${business.name}".
+Today: ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}.
+Tone: ${business.voice.tone || 'professional'}.
+
+COMMUNICATION STYLE:
+- Be natural and conversational. Match the user's energy.
+- Casual request → casual response. Deep brainstorm → detailed discussion.
+- When confirming what you're generating, just state it clearly.
+
+BANNED PHRASES (never use these):
+- "It is my pleasure..."
+- "At x Create, we thrive on..."
+- "I'm going to push our generative engines to the limit..."
+- "Get ready to see your [X] transformed into..."
+- Any "building anticipation" language or theatrical preambles
+
+CRITICAL RULES:
+- DO NOT output any JSON, code, or function calls
+- DO NOT use curly braces {} or brackets []
+- DO NOT write "action" or "action_input"
+- The actual image generation happens in a separate step after this response
+`;
+
+    // TURN 1: Conversational response
+    const textChat = ai.chats.create({
       model: AI_MODELS.textDirect,
       config: {
-        systemInstruction: systemInstruction,
-        tools: [{ functionDeclarations: [imageGenTool] }],
+        systemInstruction: turn1SystemInstruction,
+        tools: [],  // No tools
       },
       history: multimodalHistory
     });
 
-    // @ts-ignore - The SDK types might be slightly off for the beta 'message' param with parts
-    const response = await chat.sendMessage({
+    // @ts-ignore
+    const textResponse = await textChat.sendMessage({
       message: messageParts
     });
 
-    const functionCalls = response.candidates?.[0]?.content?.parts?.filter(p => p.functionCall).map(p => p.functionCall);
+    // Clean any accidental JSON/function syntax from Turn 1
+    let conversationalText = textResponse.text || '';
+    conversationalText = conversationalText
+      .replace(/\{[\s\S]*?"action"[\s\S]*?\}/g, '')  // LangChain JSON
+      .replace(/f?\{generate_marketing_image[\s\S]*?\}/g, '')  // f{} syntax
+      .replace(/\{\s*"prompt"[\s\S]*?\}/g, '')  // Raw JSON
+      .trim();
+
+    // TURN 2: Action execution (with full CMO prompt and tools)
+    const actionChat = ai.chats.create({
+      model: AI_MODELS.textDirect,
+      config: {
+        systemInstruction: systemInstruction,  // Full CMO prompt with tool instructions
+        tools: [{ functionDeclarations: [imageGenTool] }],
+      },
+      history: [
+        ...multimodalHistory,
+        { role: 'user', parts: messageParts },
+        { role: 'model', parts: [{ text: conversationalText }] }
+      ]
+    });
+
+    // @ts-ignore - Explicit trigger for function execution
+    const actionResponse = await actionChat.sendMessage({
+      message: [{ text: 'Now execute the image generation based on what I just described. Call the generate_marketing_image function.' }]
+    });
+
+    const functionCalls = actionResponse.candidates?.[0]?.content?.parts?.filter(p => p.functionCall).map(p => p.functionCall);
 
     if (functionCalls && functionCalls.length > 0) {
       // Phase 5: Filter for all image generation calls
@@ -381,6 +509,8 @@ export const sendChatMessage = async (
       if (imageGenCalls.length > 0) {
         const jobIds: string[] = [];
         const descriptions: string[] = [];
+        const aspectRatios: string[] = [];
+        const styleNames: string[] = [];
 
         // Process ALL image generation calls (not just the first)
         for (const call of imageGenCalls) {
@@ -413,29 +543,36 @@ export const sendChatMessage = async (
 
           jobIds.push(jobId);
           descriptions.push(stylePreset?.name || `${aspectRatio} image`);
+          aspectRatios.push(aspectRatio);
+          styleNames.push(stylePreset?.name || '');
         }
 
         // Build response based on single vs multiple images
         const isBatch = jobIds.length > 1;
-        const headerText = isBatch
-          ? `Creating ${jobIds.length} images now...`
-          : `Creating your image now...`;
 
-        const descList = isBatch
-          ? '\n\n' + descriptions.map((d, i) => `${i + 1}. ${d}`).join('\n')
-          : descriptions[0] ? ` in **${descriptions[0]}**` : '';
-
-        // Return with jobId (single) or jobIds (batch)
+        // Return with Turn 1's conversational text + generation jobs
         return {
-          text: `${headerText}${descList}`,
+          text: conversationalText,  // Always use Turn 1's text - guaranteed to exist
           image: undefined,
           jobId: isBatch ? undefined : jobIds[0],
-          jobIds: isBatch ? jobIds : undefined
+          jobIds: isBatch ? jobIds : undefined,
+          generationMeta: {
+            total: jobIds.length,
+            descriptions,
+            aspectRatios,
+            styleNames,
+            aspectRatio: aspectRatios[0] || '1:1',
+            styleName: styleNames.find(s => s) || undefined
+          }
         };
       }
     }
 
-    return { text: response.text || "I'm out of ideas right now." };
+    // No function calls - return just the conversational text from Turn 1
+    return {
+      text: conversationalText,
+      image: undefined
+    };
 
   } catch (error) {
     console.error("Chat Error:", error);

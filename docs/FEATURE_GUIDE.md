@@ -467,31 +467,69 @@ Credits and subscriptions are tied to the business owner:
 ## 💳 12. Subscription & Credits
 
 ### Overview
-Flexible credit-based system for usage-based billing.
+Flexible credit-based system with owner-based billing. Subscriptions are tied to business owners — team members inherit access from the owner's plan.
 
 ### 12.1 Plans
 
-| Plan | Price | Businesses | Credits/mo | Key Features |
-|------|-------|------------|------------|--------------|
-| **Starter** | $69/mo | 1 | 50 | Brand Kit, 25+ Styles, Exports |
-| **Pro** | $69 + $39/extra | 1-10+ | 50/business | Social Scheduling, Team, Custom Styles |
-| **Agency** | Custom | 10-100+ | Volume | White-label, Dedicated Support |
+| Plan | Monthly | Annual | Target Audience |
+|------|:-------:|:------:|-----------------|
+| **Creator** | $39 | $390 | Solopreneurs & influencers |
+| **Growth** | $89 | $890 | Small businesses & power users |
+| **Agency** | $299 | $2,990 | Marketing agencies |
+| **Beta** | Free | Free | Invite-only testers |
 
-### 12.2 Credit Economics
-- 1 credit = 1 image (2K resolution)
-- 2 credits = 1 image (4K resolution)
-- 10 credits = Flash generation
-- 40 credits = Pro generation
-- 80 credits = Ultra 4K generation
+### 12.2 Business Scaling Model
 
-### 12.3 Credit Safety
+| Plan | Base Businesses | Max | Extra Business Cost |
+|------|:---------------:|:---:|:-------------------:|
+| **Creator** | 1 | 1 | — (cannot expand) |
+| **Growth** | 1 | 10 | +$29/mo each |
+| **Agency** | 10 | 100 | +$19/mo each |
+| **Beta** | 1 | 10 | Admin grants (no cost) |
+
+**Examples:**
+- Growth with 5 businesses: $89 + (4 × $29) = **$205/mo**
+- Agency with 25 businesses: $299 + (15 × $19) = **$584/mo**
+
+### 12.3 Credit Allocations
+
+| Plan | Monthly Credits | Scaling |
+|------|:---------------:|---------|
+| **Creator** | 40 | Fixed |
+| **Growth** | 150 + 50/extra biz | Credits grow with each business |
+| **Agency** | 750 | **Global pool** shared across all businesses |
+| **Beta** | 0 | One-time grant via invite code |
+
+**Credit Costs:**
+- 2K image = 1 credit
+- 4K image = 2 credits
+- Rollover: Up to 2× monthly limit, expires after 1 month
+
+### 12.4 Feature Access by Plan
+
+| Feature | Creator | Growth | Agency | Beta |
+|---------|:-------:|:------:|:------:|:----:|
+| Social Scheduling | ❌ | ✅ | ✅ | ✅ |
+| Custom Styles | ❌ | ✅ | ✅ | ✅ |
+| Team Seats | 0 | 3 | Unlimited | 0 |
+| White Label | ❌ | ❌ | ✅ | ❌ |
+| Beta Features | ❌ | ❌ | ✅ | ✅ |
+| Priority Support | ❌ | ✅ | ✅ | ❌ |
+| Dedicated Manager | ❌ | ❌ | ✅ | ❌ |
+
+### 12.5 Credit Packs (Overage)
+
+| Credits | Price | Per Credit |
+|:-------:|:-----:|:----------:|
+| 50 | $15 | $0.30 |
+| 100 | $25 | $0.25 |
+| 500 | $100 | $0.20 |
+
+### 12.6 Credit Safety
 **Server-Authoritative System:**
 - Credits only deducted after successful generation
 - Failed generations = 0 credits lost
 - Automatic refunds on processing errors
-
-### 12.4 Extra Credits
-$0.25/image for overage (approximate)
 
 ---
 

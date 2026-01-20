@@ -8,7 +8,7 @@ interface GalaxyHeadingProps {
 }
 
 // Default "Hero" styles for the Galaxy Heading system
-const DEFAULT_CLASSES = "text-3xl md:text-5xl lg:text-6xl font-extrabold tracking-tight pb-2 leading-tight";
+const DEFAULT_CLASSES = "text-2xl md:text-3xl font-bold tracking-tight leading-tight";
 
 // Helper to generate a random starfield texture data URL
 const generateStarTexture = (
