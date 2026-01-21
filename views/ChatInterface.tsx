@@ -12,6 +12,7 @@ import { QuickActionPills, QuickEditInput } from '../components/QuickActionPills
 import { ChatHistoryPopover } from '../components/ChatHistoryPopover';
 import { GeneratingIndicator } from '../components/GeneratingIndicator';
 import * as chatService from '../services/chatService';
+import { supabase } from '../services/supabase';
 import { useJobs } from '../context/JobContext';
 import { ChatSession } from '../services/chatService';
 
@@ -40,6 +41,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
     styleName?: string;
   } | null>(null);  // Generation feedback metadata
 
+  // Track which job IDs we've already processed to prevent duplicate saves
+  const processedJobIds = useRef<Set<string>>(new Set());
+
   // Generate the welcome message
   const getWelcomeMessage = useCallback((): ChatMessage => ({
     id: 'welcome',
@@ -57,7 +61,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
         role: m.role,
         text: m.text,
         timestamp: new Date(m.timestamp),
-        attachment: m.attachment
+        attachments: m.attachments
       }));
     }
     // No cache - return welcome message immediately
@@ -81,7 +85,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
         role: m.role,
         text: m.text,
         timestamp: m.timestamp.toISOString(),
-        attachment: m.attachment
+        attachments: m.attachments
       })),
       lastSyncedAt: new Date().toISOString()
     });
@@ -97,15 +101,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
 
         setSessionId(session.id);
 
-        // Check if cache matches this session
-        const cached = chatService.getCachedChat(business.id);
-
-        if (cached?.sessionId === session.id) {
-          // Cache is for correct session - just update sessionId, no need to reload
-          return;
-        }
-
-        // Session mismatch or no cache - load from DB
+        // Always load from database - it's the source of truth for attachments
+        // Cache is only an optimization layer for initial render
         const dbMessages = await chatService.loadMessages(session.id);
 
         if (dbMessages.length > 0) {
@@ -129,7 +126,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
         } else {
           // New session - save welcome message
           const welcome = getWelcomeMessage();
-          await chatService.saveMessage(session.id, 'ai', welcome.text);
+          await chatService.saveMessage(session.id, 'ai', welcome.text, undefined, undefined, business.id);
           updateCache([welcome], session.id);
         }
       } catch (error) {
@@ -140,13 +137,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
     syncWithDatabase();
   }, [business.id, getWelcomeMessage, updateCache]);
 
-  // Cross-tab sync: Listen for updates from other tabs
+  // Supabase Realtime: Cross-device sync (filtered to THIS session only)
   useEffect(() => {
-    const unsubscribe = chatService.onChatUpdate(async (data) => {
-      if (data.businessId !== business.id) return;
+    if (!sessionId) return;
 
-      // Reload messages from DB when another tab updates
-      if (sessionId) {
+    let isLoading = false;  // Guard against concurrent reloads
+    let debounceTimer: NodeJS.Timeout | null = null;
+
+    const reloadMessages = async () => {
+      if (isLoading) return;  // Prevent concurrent loads
+      isLoading = true;
+
+      try {
         const dbMessages = await chatService.loadMessages(sessionId);
         if (dbMessages.length > 0) {
           const loadedMessages: ChatMessage[] = await Promise.all(
@@ -166,11 +168,49 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
           setMessages(loadedMessages);
           updateCache(loadedMessages, sessionId);
         }
+      } finally {
+        isLoading = false;
       }
-    });
+    };
 
-    return unsubscribe;
-  }, [business.id, sessionId, updateCache]);
+    // Debounced reload to prevent rapid-fire updates
+    const debouncedReload = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(reloadMessages, 300);  // 300ms debounce
+    };
+
+    const channel = supabase
+      .channel(`chat-sync-${sessionId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_messages',
+          filter: `session_id=eq.${sessionId}`  // CRITICAL: Filter to THIS session only
+        },
+        debouncedReload
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_attachments'
+          // Note: chat_attachments doesn't have session_id, but it's linked to messages
+          // We'll debounce to prevent loops
+        },
+        debouncedReload
+      )
+      .subscribe();
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      supabase.removeChannel(channel);
+    };
+  }, [sessionId, updateCache]);
+
+  // NOTE: BroadcastChannel removed - Supabase Realtime handles cross-device sync
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -304,12 +344,38 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
     // UNIFIED PATH: Handle all jobs the same way (1, 3, or 100 images)
     const pendingJobs = chatJobs.filter(j => j.status === 'polling');
     const completedJobs = chatJobs.filter(j => j.status === 'complete' && j.result);
+    const failedJobs = chatJobs.filter(j => j.status === 'failed');
+
+    // Handle failed jobs - show error message and remove
+    if (failedJobs.length > 0) {
+      for (const job of failedJobs) {
+        // Add error message to chat
+        const errorMsg: ChatMessage = {
+          id: `error-${job.id}`,
+          role: 'ai',
+          text: `⚠️ Image generation failed: ${job.errorMessage || 'The AI model is overloaded. Please try again in a moment.'}`,
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, errorMsg]);
+        removeJob(job.id);
+      }
+    }
 
     // Handle completed jobs with batch fix
     if (completedJobs.length > 0) {
+      // Filter out jobs we've already processed to prevent duplicate saves
+      const unprocessedJobs = completedJobs.filter(j => !processedJobIds.current.has(j.id));
+      if (unprocessedJobs.length === 0) {
+        // All jobs already processed, just remove them
+        for (const job of completedJobs) {
+          removeJob(job.id);
+        }
+        return;
+      }
+
       // Step 1: Group attachments by messageId
       const newAttachmentsByMessage: Record<string, Array<{ type: 'image', content: string }>> = {};
-      for (const job of completedJobs) {
+      for (const job of unprocessedJobs) {
         if (job.messageId && job.result) {
           if (!newAttachmentsByMessage[job.messageId]) {
             newAttachmentsByMessage[job.messageId] = [];
@@ -333,8 +399,23 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
         }));
       }
 
+      // Step 2.5: PERSIST to database (critical for refresh survival)
+      for (const job of unprocessedJobs) {
+        if (job.messageId && job.result) {
+          // Mark as processed BEFORE async save to prevent race conditions
+          processedJobIds.current.add(job.id);
+          chatService.saveAttachment(job.messageId, business.id, job.result, {
+            prompt: job.prompt,
+            aspectRatio: job.aspectRatio,
+            styleName: job.styleName,
+            styleId: job.styleId,
+            modelTier: job.modelTier,
+          });
+        }
+      }
+
       // Step 3: Remove all completed jobs AFTER state update
-      for (const job of completedJobs) {
+      for (const job of unprocessedJobs) {
         removeJob(job.id);
       }
     }
@@ -382,13 +463,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
           currentSessionId = newSession.id;
           setSessionId(newSession.id);
           // Save welcome message too
-          await chatService.saveMessage(newSession.id, 'ai', getWelcomeMessage().text);
+          await chatService.saveMessage(newSession.id, 'ai', getWelcomeMessage().text, undefined, undefined, business.id);
         }
       }
 
       // Save user message to DB
       if (currentSessionId) {
-        const savedUserMsg = await chatService.saveMessage(currentSessionId, 'user', userText);
+        const savedUserMsg = await chatService.saveMessage(currentSessionId, 'user', userText, undefined, undefined, business.id);
         if (savedUserMsg) {
           setMessages(prev => prev.map(m =>
             m.id === userMsg.id ? { ...m, id: savedUserMsg.id } : m
@@ -442,7 +523,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
           'ai',
           aiResponse.text,
           aiResponse.image ? 'image' : undefined,
-          aiResponse.image
+          aiResponse.image,
+          business.id
         );
         if (savedAiMsg) {
           aiMsg.id = savedAiMsg.id;
@@ -512,7 +594,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
     const newSession = await chatService.resetSession(business.id);
     if (newSession) {
       setSessionId(newSession.id);
-      await chatService.saveMessage(newSession.id, 'ai', welcome.text);
+      await chatService.saveMessage(newSession.id, 'ai', welcome.text, undefined, undefined, business.id);
       updateCache([welcome], newSession.id);
     }
   };

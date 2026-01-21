@@ -36,6 +36,7 @@ export interface BackgroundJob {
     // Progress and result
     progress?: number;
     result?: string;               // Image URL when complete
+    errorMessage?: string;         // Error message when failed
     animationPhase?: 'warmup' | 'cruise' | 'deceleration' | 'revealed';
 
     createdAt: number;
@@ -266,7 +267,12 @@ export const JobProvider: React.FC<{
                     clearInterval(interval);
                     pollingRefs.current.delete(jobId);
 
-                    setJobs(prev => prev.filter(j => j.id !== jobId));
+                    // Mark as failed with error message so UI can display it
+                    setJobs(prev => prev.map(j =>
+                        j.id === jobId
+                            ? { ...j, status: 'failed' as const, errorMessage: status.errorMessage || 'Generation failed' }
+                            : j
+                    ));
                 }
             } catch (error) {
                 console.error('[JobContext] Poll error:', jobId, error);

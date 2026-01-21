@@ -31,7 +31,7 @@ interface ChatCache {
         role: 'user' | 'ai';
         text: string;
         timestamp: string;
-        attachment?: { type: string; content: string };
+        attachments?: { type: string; content: string }[];
     }>;
     lastSyncedAt: string;
 }
@@ -188,7 +188,8 @@ export async function saveMessage(
     role: 'user' | 'ai',
     content: string,
     attachmentType?: string,
-    attachmentUrl?: string
+    attachmentUrl?: string,
+    businessId?: string  // Optional: for cross-tab sync
 ): Promise<ChatMessage | null> {
     const { data, error } = await supabase
         .from('chat_messages')
@@ -212,6 +213,11 @@ export async function saveMessage(
         .from('chat_sessions')
         .update({ updated_at: new Date().toISOString() })
         .eq('id', sessionId);
+
+    // Cross-tab sync: notify other tabs (only if businessId provided)
+    if (businessId) {
+        notifyChatUpdate(businessId, 'message');
+    }
 
     return data as ChatMessage;
 }
@@ -351,6 +357,11 @@ export async function saveAttachment(
         .single();
 
     if (error) {
+        // Ignore unique constraint violation (duplicate) - this is expected with multi-tab sync
+        if (error.code === '23505') {
+            console.log('[ChatService] Attachment already exists (duplicate ignored)');
+            return null;
+        }
         console.error('[ChatService] Failed to save attachment:', error);
         return null;
     }

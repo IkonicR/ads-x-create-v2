@@ -121,7 +121,7 @@ const Section: React.FC<{
                         transition={{ duration: 0.2, ease: 'easeInOut' }}
                         className="overflow-hidden"
                     >
-                        <div className="pt-3 px-4 pb-3">
+                        <div className="pt-3 px-6 pb-4">
                             {children}
                         </div>
                     </motion.div>
@@ -424,7 +424,7 @@ export const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
 
                                     {/* Repeat section - show if due date is set */}
                                     {editedTask.dueDate && (
-                                        <div className={`flex items-center gap-3 py-2 px-3 rounded-lg ${styles.bgAccent}`}>
+                                        <div className="flex items-center gap-3 py-2 px-4">
                                             <span className={`text-xs ${styles.textSub}`}>Repeat:</span>
                                             <div className="flex gap-1.5">
                                                 {(['none', 'daily', 'weekly', 'monthly'] as const).map(opt => (
@@ -470,7 +470,7 @@ export const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
                                             description="Tag this task to a specific business"
                                             badge={editedTask.businessId ? businesses.find(b => b.id === editedTask.businessId)?.name : undefined}
                                         >
-                                            <div className="flex flex-wrap gap-2 max-h-[120px] overflow-y-auto">
+                                            <div className="flex flex-wrap gap-2 p-1.5">
                                                 <button
                                                     type="button"
                                                     onClick={() => {
@@ -479,7 +479,7 @@ export const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
                                                         onSave(updated);
                                                     }}
                                                     className={`text-xs px-3 py-1.5 rounded-lg transition-all ${!editedTask.businessId
-                                                        ? `${styles.bgAccent} ${styles.shadowIn} text-brand font-medium`
+                                                        ? `${styles.bg} ${styles.shadowIn} text-brand font-medium`
                                                         : `${styles.bg} ${styles.shadowOut} ${styles.textSub} hover:text-brand`
                                                         }`}
                                                 >
@@ -495,7 +495,7 @@ export const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
                                                             onSave(updated);
                                                         }}
                                                         className={`text-xs px-3 py-1.5 rounded-lg transition-all truncate max-w-[140px] ${editedTask.businessId === b.id
-                                                            ? `${styles.bgAccent} ${styles.shadowIn} text-brand font-medium`
+                                                            ? `${styles.bg} ${styles.shadowIn} text-brand font-medium`
                                                             : `${styles.bg} ${styles.shadowOut} ${styles.textSub} hover:text-brand`
                                                             }`}
                                                         title={b.name}
@@ -517,7 +517,7 @@ export const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
                                         >
                                             <div className="space-y-3">
                                                 {/* Team member pills */}
-                                                <div className="flex flex-wrap gap-2 max-h-[120px] overflow-y-auto">
+                                                <div className="flex flex-wrap gap-2 p-1.5">
                                                     <button
                                                         type="button"
                                                         onClick={() => {
@@ -526,7 +526,7 @@ export const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
                                                             onSave(updated);
                                                         }}
                                                         className={`text-xs px-3 py-1.5 rounded-lg transition-all ${!editedTask.assigneeId
-                                                            ? `${styles.bgAccent} ${styles.shadowIn} text-brand font-medium`
+                                                            ? `${styles.bg} ${styles.shadowIn} text-brand font-medium`
                                                             : `${styles.bg} ${styles.shadowOut} ${styles.textSub} hover:text-brand`
                                                             }`}
                                                     >
@@ -542,7 +542,7 @@ export const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
                                                                 onSave(updated);
                                                             }}
                                                             className={`text-xs px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${editedTask.assigneeId === m.userId
-                                                                ? `${styles.bgAccent} ${styles.shadowIn} text-brand font-medium`
+                                                                ? `${styles.bg} ${styles.shadowIn} text-brand font-medium`
                                                                 : `${styles.bg} ${styles.shadowOut} ${styles.textSub} hover:text-brand`
                                                                 }`}
                                                             title={m.userName}

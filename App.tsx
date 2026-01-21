@@ -281,6 +281,28 @@ const AppContent: React.FC = () => {
     return () => clearTimeout(timer);
   }, [loading, loadingData]);
 
+  // --- CROSS-TAB BUSINESS SYNC ---
+  // When another tab changes lastBusinessId, sync this tab
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'lastBusinessId' && e.newValue && e.newValue !== activeBusinessId) {
+        const newBusinessId = e.newValue;
+        // Verify this business exists in our list
+        if (businesses.find(b => b.id === newBusinessId)) {
+          console.log('[App] Cross-tab sync: Switching to business', newBusinessId);
+          setActiveBusinessId(newBusinessId);
+          setBusinessId(newBusinessId);
+          setSubscriptionBusinessId(newBusinessId);
+          setSocialBusinessId(newBusinessId);
+          loadSocialPosts(newBusinessId, true);
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [activeBusinessId, businesses, setBusinessId, setSubscriptionBusinessId, setSocialBusinessId, loadSocialPosts]);
+
   const handleRetry = () => {
     setConnectionError(false);
     window.location.reload();
