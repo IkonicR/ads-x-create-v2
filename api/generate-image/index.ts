@@ -520,15 +520,18 @@ ${styleInstructions ? `=== STYLE INSTRUCTIONS ===\n${styleInstructions}` : ''}
 
     } catch (error: any) {
         console.error(`[Generate] Job ${jobId} failed:`, error.message);
-        await supabase
-            .from('generation_jobs')
-            .update({
-                status: 'failed',
-                error_message: error.message || 'Background failure',
-                updated_at: new Date().toISOString()
-            })
-            .eq('id', jobId)
-            .catch((e: any) => console.error("Could not persist fail state", e));
+        try {
+            await supabase
+                .from('generation_jobs')
+                .update({
+                    status: 'failed',
+                    error_message: error.message || 'Background failure',
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', jobId);
+        } catch (e: any) {
+            console.error("Could not persist fail state", e);
+        }
     }
 }
 
