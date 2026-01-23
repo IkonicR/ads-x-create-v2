@@ -36,9 +36,6 @@ export const createFreedomModePrompt = (
     // Extract brand colors
     const palette = buildPaletteString(business.colors || {});
 
-    // Get slogan if available
-    const slogan = business.voice?.slogan || '';
-
     // Build the prompt
     const prompt = `
 ## CREATIVE FREEDOM MODE
@@ -50,7 +47,6 @@ ${userPrompt}
 
 ### BRAND CONTEXT
 - **Color Palette:** ${palette}
-${slogan ? `- **Slogan:** "${slogan}"` : ''}
 ${business.logoUrl ? `- **Logo:** Brand logo is provided as an input image.` : ''}
 
 ### GUIDELINES
@@ -58,7 +54,7 @@ ${business.logoUrl ? `- **Logo:** Brand logo is provided as an input image.` : '
 - **Logo integration:** The logo must look like part of the design — not pasted on afterwards. Match the visual treatment (color grading, texture, lighting) of the rest of the piece.
 - All text must be diegetic (part of the scene) and spelled correctly.
 - The user's prompt is the priority.
-- No contact info, business hours, address, or compliance text unless the user asks for it.
+- No contact info, business hours, address, slogan, or compliance text unless the user explicitly asks for it.
 `.trim();
 
     return prompt;

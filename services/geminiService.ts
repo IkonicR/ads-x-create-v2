@@ -1,5 +1,5 @@
 import { GoogleGenAI, GenerateContentResponse, Chat, FunctionDeclaration, Type, Part } from "@google/genai";
-import { Business, StylePreset, GenerationStrategy } from '../types';
+import { Business, StylePreset, GenerationStrategy, Task } from '../types';
 import { PromptFactory } from './prompts';
 import { getSymbolFromCurrency } from '../utils/currency';
 import { supabase } from './supabase';
@@ -300,14 +300,25 @@ export const sendChatMessage = async (
   business: Business,
   history: { role: 'user' | 'ai'; text: string; imageUrl?: string }[],
   newMessage: string,
-  subjectContext?: { id: string; name: string; type: 'product' | 'person'; imageUrl?: string },
+  creativeContext: {
+    subject: { id: string; name: string; type: 'product' | 'person'; imageUrl?: string } | null;
+    isFreedomMode: boolean;
+    overrides: { tone?: string; audience?: string };
+  } = { subject: null, isFreedomMode: false, overrides: {} },
   recentImageUrl?: string
 ): Promise<{
   text: string;
   image?: string;
   jobId?: string;
   jobIds?: string[];
-  generationMeta?: { total: number; aspectRatio?: string; styleName?: string };
+  generationMeta?: {
+    total: number;
+    aspectRatio?: string;
+    styleName?: string;
+    descriptions?: string[];
+    aspectRatios?: string[];
+    styleNames?: string[];
+  };
 }> => {
   const ai = getAiClient();
 
@@ -324,9 +335,33 @@ export const sendChatMessage = async (
 
     const availableStyles = stylesData || [];
 
+    // Fetch Active Tasks for AI context (Phase 9: Task Awareness)
+    const { data: tasksData } = await supabase
+      .from('tasks')
+      .select('id, title, status, priority')
+      .eq('business_id', business.id)
+      .neq('status', 'Done')
+      .limit(10);
+
+    const activeTasks = tasksData || [];
+
+    // Inject Context Overrides into System Instruction
+    const businessWithOverrides = {
+      ...business,
+      voice: {
+        ...business.voice,
+        tone: creativeContext.overrides.tone || business.voice?.tone
+      },
+      adPreferences: {
+        ...business.adPreferences,
+        targetAudience: creativeContext.overrides.audience || business.adPreferences?.targetAudience
+      }
+    };
+
     const systemInstruction = await PromptFactory.createChatSystemInstruction(
-      business,
-      availableStyles
+      businessWithOverrides,
+      availableStyles,
+      activeTasks
     );
 
     const imageGenTool: FunctionDeclaration = {
@@ -364,19 +399,19 @@ export const sendChatMessage = async (
     let contextMessage = newMessage;
     let imageGenContext: any = undefined;
 
-    if (subjectContext) {
-      contextMessage += `\n\n[User attached context: ${subjectContext.type.toUpperCase()} - ${subjectContext.name}]`;
+    if (creativeContext.subject) {
+      contextMessage += `\n\n[User attached context: ${creativeContext.subject.type.toUpperCase()} - ${creativeContext.subject.name}]`;
 
       // Hydrate context for image generation
       imageGenContext = {
-        type: subjectContext.type,
-        imageUrl: subjectContext.imageUrl || '',
-        preserveLikeness: subjectContext.type === 'person', // Default strict for people
+        type: creativeContext.subject.type,
+        imageUrl: creativeContext.subject.imageUrl || '',
+        preserveLikeness: creativeContext.subject.type === 'person', // Default strict for people
       };
 
       // If Product, try to find details
-      if (subjectContext.type === 'product') {
-        const offering = business.offerings.find(o => o.id === subjectContext.id);
+      if (creativeContext.subject.type === 'product') {
+        const offering = business.offerings.find(o => o.id === creativeContext.subject!.id);
         if (offering) {
           imageGenContext.promotion = offering.promotion;
           imageGenContext.benefits = offering.benefits;
@@ -384,6 +419,10 @@ export const sendChatMessage = async (
           imageGenContext.preserveLikeness = offering.preserveLikeness;
         }
       }
+    }
+
+    if (creativeContext.isFreedomMode) {
+      contextMessage += `\n\n[MODE: CREATIVE FREEDOM ON]`;
     }
 
     // Build multimodal history
@@ -433,37 +472,12 @@ export const sendChatMessage = async (
     // Turn 2: Execute generation (WITH tools, full CMO prompt)
     // =========================================================================
 
-    // TURN 1 SYSTEM INSTRUCTION: Conversational only, no function calling
-    const turn1SystemInstruction = `
-You are the Creative Director for "${business.name}".
-Today: ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}.
-Tone: ${business.voice.tone || 'professional'}.
-
-COMMUNICATION STYLE:
-- Be natural and conversational. Match the user's energy.
-- Casual request → casual response. Deep brainstorm → detailed discussion.
-- When confirming what you're generating, just state it clearly.
-
-BANNED PHRASES (never use these):
-- "It is my pleasure..."
-- "At x Create, we thrive on..."
-- "I'm going to push our generative engines to the limit..."
-- "Get ready to see your [X] transformed into..."
-- Any "building anticipation" language or theatrical preambles
-
-CRITICAL RULES:
-- DO NOT output any JSON, code, or function calls
-- DO NOT use curly braces {} or brackets []
-- DO NOT write "action" or "action_input"
-- The actual image generation happens in a separate step after this response
-`;
-
-    // TURN 1: Conversational response
+    // TURN 1: Conversational response (Rich Context, No Tools)
     const textChat = ai.chats.create({
       model: AI_MODELS.textDirect,
       config: {
-        systemInstruction: turn1SystemInstruction,
-        tools: [],  // No tools
+        systemInstruction: systemInstruction, // Use the FULL context (Tasks, Products, etc)
+        tools: [],  // No tools allowed in Turn 1
       },
       history: multimodalHistory
     });
@@ -482,6 +496,7 @@ CRITICAL RULES:
       .trim();
 
     // TURN 2: Action execution (with full CMO prompt and tools)
+    // Let the AI decide via native function calling whether to generate
     const actionChat = ai.chats.create({
       model: AI_MODELS.textDirect,
       config: {
@@ -495,12 +510,13 @@ CRITICAL RULES:
       ]
     });
 
-    // @ts-ignore - Explicit trigger for function execution
+    // Ask AI to decide if generation is needed based on conversation
+    // @ts-ignore 
     const actionResponse = await actionChat.sendMessage({
-      message: [{ text: 'Now execute the image generation based on what I just described. Call the generate_marketing_image function.' }]
+      message: [{ text: 'Based on what I just said, should you generate an image? If yes, call the generate_marketing_image function. If no, just respond with "NO_ACTION".' }]
     });
 
-    const functionCalls = actionResponse.candidates?.[0]?.content?.parts?.filter(p => p.functionCall).map(p => p.functionCall);
+    const functionCalls = actionResponse.candidates?.[0]?.content?.parts?.filter(p => p.functionCall).map(p => p.functionCall) || [];
 
     if (functionCalls && functionCalls.length > 0) {
       // Phase 5: Filter for all image generation calls
@@ -538,7 +554,10 @@ CRITICAL RULES:
             stylePreset,
             imageGenContext,
             aspectRatio,
-            modelTier
+            modelTier,
+            undefined,
+            undefined,
+            creativeContext.isFreedomMode // Pass freedom flag
           );
 
           jobIds.push(jobId);

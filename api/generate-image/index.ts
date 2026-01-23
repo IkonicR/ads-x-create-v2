@@ -104,7 +104,8 @@ export async function POST(req: Request) {
         modelTier = 'pro',
         strategy,
         subjectContext,
-        stylePreset
+        stylePreset,
+        isFreedomMode // NEW: Freedom Mode flag
     } = body;
 
     if (!businessId || !prompt) {
@@ -200,7 +201,8 @@ export async function POST(req: Request) {
                 mappedBusiness,
                 supabase,
                 host,
-                systemPrompts
+                systemPrompts,
+                isFreedomMode // Pass flag
             );
             console.log('[Generate] Generation completed successfully');
 
@@ -288,26 +290,55 @@ async function runGeneration(
     mappedBusiness: any,
     supabase: any,
     host: string,
-    systemPrompts: any
+    systemPrompts: any,
+    isFreedomMode?: boolean // Capture flag
 ) {
     try {
         // Update job status
         await supabase.from('generation_jobs').update({ error_message: 'Building prompt...' }).eq('id', jobId);
 
 
-        // Build robust prompt INLINE (PromptFactory can't be used in serverless)
-        let visualPrompt = prompt;
-        if (subjectContext) {
-            visualPrompt += `\nPRIMARY SUBJECT: ${subjectContext.type}. ${subjectContext.preserveLikeness ? 'Maintain strict visual likeness.' : ''}`;
-        }
+        let finalPrompt = '';
 
-        // Build comprehensive prompt inline
-        const businessName = mappedBusiness.name || 'Business';
-        const brandColors = mappedBusiness.colors?.palette?.join(', ') || '';
-        const voiceKeywords = (mappedBusiness.voice?.keywords || []).join(', ');
-        const styleInstructions = stylePreset?.config ? JSON.stringify(stylePreset.config) : '';
+        if (isFreedomMode) {
+            // === FREEDOM MODE ===
+            // Logo + Colors + User Prompt ONLY.
+            console.log('[Generate] Building FREEDOM MODE Prompt');
 
-        const finalPrompt = `
+            const businessName = mappedBusiness.name || 'Brand';
+            const brandColors = mappedBusiness.colors?.palette?.join(', ') || '';
+
+            finalPrompt = `
+=== CREATIVE FREEDOM MODE ===
+Business: ${businessName}
+Brand Colors: ${brandColors}
+
+=== VISUAL REQUEST ===
+${prompt}
+
+=== REQUIREMENTS ===
+- Include the logo naturally (if provided)
+- Match brand colors
+- NO compliance text
+- NO contact info
+- Aspect ratio: ${aspectRatio}
+`.trim();
+
+        } else {
+            // === STANDARD PROMPT (Legacy Logic) ===
+            // Build robust prompt INLINE (PromptFactory can't be used in serverless)
+            let visualPrompt = prompt;
+            if (subjectContext) {
+                visualPrompt += `\nPRIMARY SUBJECT: ${subjectContext.type}. ${subjectContext.preserveLikeness ? 'Maintain strict visual likeness.' : ''}`;
+            }
+
+            // Build comprehensive prompt inline
+            const businessName = mappedBusiness.name || 'Business';
+            const brandColors = mappedBusiness.colors?.palette?.join(', ') || '';
+            const voiceKeywords = (mappedBusiness.voice?.keywords || []).join(', ');
+            const styleInstructions = stylePreset?.config ? JSON.stringify(stylePreset.config) : '';
+
+            finalPrompt = `
 === BRAND IDENTITY ===
 Business: ${businessName}
 ${brandColors ? `Brand Colors: ${brandColors}` : ''}
@@ -328,6 +359,7 @@ ${styleInstructions ? `=== STYLE INSTRUCTIONS ===\n${styleInstructions}` : ''}
 - Include any text as DIEGETIC (part of the scene) where applicable
 - Aspect ratio: ${aspectRatio}
         `.trim();
+        }
 
         // Log full prompt for debugging
         console.log('[Generate] === PROMPT ===');

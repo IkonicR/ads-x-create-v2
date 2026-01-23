@@ -3,10 +3,10 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { Business, ChatMessage } from '../types';
 import { NeuCard, NeuButton, NeuIconButton, useThemeStyles } from '../components/NeuComponents';
-import { Send, Bot, User, Sparkles, Download, Box, X, History } from 'lucide-react';
+import { Send, Bot, User, Sparkles, Download, Box, X, History, Sliders } from 'lucide-react';
 import { sendChatMessage, pollJobStatus, generateChatTitle } from '../services/geminiService';
 import { GalaxyHeading } from '../components/GalaxyHeading';
-import { SubjectPicker } from '../components/SubjectPicker';
+import { CreativeControls, CreativeContext } from '../components/CreativeControls';
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
 import { QuickActionPills, QuickEditInput } from '../components/QuickActionPills';
 import { ChatHistoryPopover } from '../components/ChatHistoryPopover';
@@ -25,8 +25,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
   const { jobs, addJob, removeJob, updateJob } = useJobs();
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showPicker, setShowPicker] = useState(false);
-  const [attachedSubject, setAttachedSubject] = useState<{ id: string; name: string; type: 'product' | 'person'; imageUrl?: string } | null>(null);
+  const [showControls, setShowControls] = useState(false);
+  const [creativeContext, setCreativeContext] = useState<CreativeContext>({
+    subject: null,
+    isFreedomMode: false,
+    overrides: {}
+  });
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [pendingJobId, setPendingJobId] = useState<string | null>(null);
   const [pendingJobIds, setPendingJobIds] = useState<string[]>([]);  // Phase 5: Multiple jobs
@@ -40,6 +44,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
     aspectRatio?: string;
     styleName?: string;
   } | null>(null);  // Generation feedback metadata
+  const [sendCooldown, setSendCooldown] = useState(false); // Rate limiting: 2s cooldown
 
   // Track which job IDs we've already processed to prevent duplicate saves
   const processedJobIds = useRef<Set<string>>(new Set());
@@ -436,10 +441,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
 
   const handleSend = async (overrideText?: string) => {
     const userText = overrideText || input.trim();
-    if (!userText || loading) return;
+    if (!userText || loading || sendCooldown) return; // Rate limit check
 
     setInput('');
     setLoading(true);
+    setSendCooldown(true); // Start cooldown
+    setTimeout(() => setSendCooldown(false), 2000); // Reset after 2s
     setEditMode(null); // Clear edit mode if active
 
     // Optimistically add user message
@@ -498,10 +505,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
 
       // Call API with History (Phase 6: include imageUrl for multimodal context)
       const historyForApi = messages.map(m => ({ role: m.role, text: m.text, imageUrl: m.imageUrl }));
-      const aiResponse = await sendChatMessage(business, historyForApi, userText, attachedSubject || undefined, recentGeneratedImage || undefined);
+      const aiResponse = await sendChatMessage(business, historyForApi, userText, creativeContext, recentGeneratedImage || undefined);
 
-      // Clear attachment after sending
-      setAttachedSubject(null);
+      // Clear subject after sending (keep other context)
+      setCreativeContext(prev => ({ ...prev, subject: null }));
 
       // Create AI message
       const aiMsgId = `ai-${Date.now()}`;
@@ -637,6 +644,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
     await handleReset();
   };
 
+  // Delete session
+  const handleDeleteSession = async (sid: string) => {
+    const success = await chatService.deleteSession(sid);
+    if (success) {
+      // Refresh list
+      await loadAllSessions();
+      // If deleting active session, reset
+      if (sessionId === sid) {
+        await handleReset();
+      }
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -672,20 +692,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
               activeSessionId={sessionId}
               onSelect={handleLoadSession}
               onNewChat={handleNewChat}
+              onDelete={handleDeleteSession}
               onClose={() => setShowHistory(false)}
             />
           )}
         </div>
       </header>
 
-      {showPicker && (
-        <SubjectPicker
+      {showControls && (
+        <CreativeControls
           business={business}
-          onSelect={(subject) => {
-            setAttachedSubject(subject);
-            setShowPicker(false);
-          }}
-          onClose={() => setShowPicker(false)}
+          currentContext={creativeContext}
+          onApply={(ctx) => setCreativeContext(ctx)}
+          onClose={() => setShowControls(false)}
         />
       )}
 
@@ -861,31 +880,48 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
         {/* Input Area */}
         <div className="p-4">
           {/* Attached Subject Pill */}
-          {attachedSubject && (
+          {creativeContext.subject && (
             <div className="flex items-center gap-2 mb-3">
               <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg ${styles.bg} ${styles.shadowOut} border border-brand/20`}>
-                <span className="text-xs font-bold text-brand uppercase">{attachedSubject.type}</span>
-                <span className={`text-sm font-bold ${styles.textMain}`}>{attachedSubject.name}</span>
+                <span className="text-xs font-bold text-brand uppercase">{creativeContext.subject.type}</span>
+                <span className={`text-sm font-bold ${styles.textMain}`}>{creativeContext.subject.name}</span>
                 <button
-                  onClick={() => setAttachedSubject(null)}
+                  onClick={() => setCreativeContext(prev => ({ ...prev, subject: null }))}
                   className="ml-1 hover:text-red-500 transition-colors"
                 >
                   <X size={14} />
                 </button>
+              </div>
+              {/* Freedom Mode Badge */}
+              {creativeContext.isFreedomMode && (
+                <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-brand/10 text-brand text-xs font-bold`}>
+                  <Sparkles size={12} />
+                  Freedom
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Freedom Mode Badge (when no subject) */}
+          {!creativeContext.subject && creativeContext.isFreedomMode && (
+            <div className="flex items-center gap-2 mb-3">
+              <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-brand/10 text-brand text-xs font-bold`}>
+                <Sparkles size={12} />
+                Freedom Mode
               </div>
             </div>
           )}
 
           {/* Input Row: Button | Textarea | Send Button */}
           <div className="flex gap-3 items-stretch">
-            {/* Subject Picker Button */}
+            {/* Creative Controls Button */}
             <NeuIconButton
-              onClick={() => setShowPicker(true)}
+              onClick={() => setShowControls(true)}
               variant="brand"
               className="shrink-0 flex items-center"
-              title="Add Subject"
+              title="Creative Controls"
             >
-              <Box size={20} className={attachedSubject ? 'text-brand' : ''} />
+              <Sliders size={20} className={creativeContext.subject || creativeContext.isFreedomMode ? 'text-brand' : ''} />
             </NeuIconButton>
 
             {/* Textarea with sparkle */}

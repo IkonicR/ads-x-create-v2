@@ -435,3 +435,46 @@ export async function getBusinessAttachments(
         createdAt: a.created_at
     }));
 }
+
+/**
+ * Delete a chat session and all its messages/attachments
+ */
+export async function deleteSession(sessionId: string): Promise<boolean> {
+    try {
+        // Delete attachments first (they reference messages)
+        const { data: messages } = await supabase
+            .from('chat_messages')
+            .select('id')
+            .eq('session_id', sessionId);
+
+        if (messages && messages.length > 0) {
+            const messageIds = messages.map(m => m.id);
+            await supabase
+                .from('chat_attachments')
+                .delete()
+                .in('message_id', messageIds);
+        }
+
+        // Delete messages
+        await supabase
+            .from('chat_messages')
+            .delete()
+            .eq('session_id', sessionId);
+
+        // Delete session
+        const { error } = await supabase
+            .from('chat_sessions')
+            .delete()
+            .eq('id', sessionId);
+
+        if (error) {
+            console.error('[ChatService] Failed to delete session:', error);
+            return false;
+        }
+
+        return true;
+    } catch (error) {
+        console.error('[ChatService] Delete session error:', error);
+        return false;
+    }
+}

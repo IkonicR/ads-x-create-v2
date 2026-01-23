@@ -416,6 +416,9 @@ export const DEFAULT_CHAT_PROMPT = `
       - Brand Tone: {{TONE}}
       - Key Products: {{PRODUCTS}}
       
+      CURRENT MARKETING TASKS:
+      {{TASKS}}
+      
       YOUR MANDATES:
       1. Be proactive. Suggest ad ideas based on the current season/holidays if relevant.
       2. Write punchy, sales-oriented copy.
@@ -533,7 +536,8 @@ export const PromptFactory = {
    */
   createChatSystemInstruction: async (
     business: Business,
-    availableStyles?: { id: string; name: string; description?: string }[]
+    availableStyles?: { id: string; name: string; description?: string }[],
+    tasks?: any[] // Tasks injection
   ): Promise<string> => {
     const customPrompts = await StorageService.getSystemPrompts();
     const today = new Date().toLocaleDateString('en-US', {
@@ -564,6 +568,13 @@ export const PromptFactory = {
       ? availableStyles.map(s => `      - "${s.name}" (ID: ${s.id})`).join('\n')
       : '      - Various creative styles available';
 
+    // Format tasks for AI context
+    let tasksText = "No active marketing tasks.";
+    if (tasks && tasks.length > 0) {
+      tasksText = tasks.map(t => `- [${t.status}] ${t.title} (Priority: ${t.priority})`).join('\n      ');
+    }
+
+
     let template = customPrompts?.chatPersona || DEFAULT_CHAT_PROMPT;
 
     // Hydrate Template
@@ -577,7 +588,8 @@ export const PromptFactory = {
       .replace('{{TARGET_AUDIENCE}}', business.adPreferences.targetAudience)
       .replace('{{TONE}}', business.voice.tone)
       .replace('{{PRODUCTS}}', business.offerings.map(o => o.name).join(', '))
-      .replace('{{AVAILABLE_STYLES}}', stylesText);
+      .replace('{{AVAILABLE_STYLES}}', stylesText)
+      .replace('{{TASKS}}', tasksText);
   },
 
   /**

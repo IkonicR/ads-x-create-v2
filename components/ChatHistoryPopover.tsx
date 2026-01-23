@@ -1,10 +1,10 @@
 /**
  * ChatHistoryPopover - Floating popover for session history
  */
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, Plus, MessageSquare } from 'lucide-react';
-import { useThemeStyles, NeuButton } from './NeuComponents';
+import { Check, Plus, MessageSquare, Trash2 } from 'lucide-react';
+import { useThemeStyles, NeuButton, NeuIconButton } from './NeuComponents';
 import { ChatSession } from '../services/chatService';
 
 interface ChatHistoryPopoverProps {
@@ -12,6 +12,7 @@ interface ChatHistoryPopoverProps {
     activeSessionId: string | null;
     onSelect: (session: ChatSession) => void;
     onNewChat: () => void;
+    onDelete: (sessionId: string) => Promise<void>;
     onClose: () => void;
 }
 
@@ -49,10 +50,12 @@ export const ChatHistoryPopover: React.FC<ChatHistoryPopoverProps> = ({
     activeSessionId,
     onSelect,
     onNewChat,
+    onDelete,
     onClose
 }) => {
     const { styles } = useThemeStyles();
     const popoverRef = useRef<HTMLDivElement>(null);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
 
     // Click outside to close
     useEffect(() => {
@@ -65,6 +68,13 @@ export const ChatHistoryPopover: React.FC<ChatHistoryPopoverProps> = ({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [onClose]);
 
+    const handleDelete = async (e: React.MouseEvent, sessionId: string) => {
+        e.stopPropagation(); // Prevent selecting the session
+        setDeletingId(sessionId);
+        await onDelete(sessionId);
+        setDeletingId(null);
+    };
+
     const grouped = groupByDate(sessions);
 
     return (
@@ -76,7 +86,7 @@ export const ChatHistoryPopover: React.FC<ChatHistoryPopoverProps> = ({
             transition={{ duration: 0.15 }}
             className={`
         absolute top-full right-0 mt-2 z-50
-        w-72 max-h-80 overflow-hidden
+        w-80 max-h-80 overflow-hidden
         rounded-xl ${styles.bg} ${styles.shadowOut}
         border border-gray-200/50 dark:border-gray-700/50
       `}
@@ -94,23 +104,44 @@ export const ChatHistoryPopover: React.FC<ChatHistoryPopoverProps> = ({
                                 {group.label}
                             </div>
                             {group.sessions.map(session => (
-                                <button
+                                <div
                                     key={session.id}
-                                    onClick={() => onSelect(session)}
                                     className={`
-                    w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left text-sm
-                    transition-all hover:bg-brand/10
-                    ${session.id === activeSessionId ? 'bg-brand/5' : ''}
-                  `}
+                                        flex items-center gap-2 px-3 py-2 rounded-lg text-sm group
+                                        transition-all hover:bg-brand/10
+                                        ${session.id === activeSessionId ? 'bg-brand/5' : ''}
+                                        ${deletingId === session.id ? 'opacity-50' : ''}
+                                    `}
                                 >
-                                    <MessageSquare size={14} className={styles.textSub} />
-                                    <span className={`flex-1 truncate ${styles.textMain}`}>
-                                        {session.title}
-                                    </span>
-                                    {session.id === activeSessionId && (
-                                        <Check size={14} className="text-brand shrink-0" />
-                                    )}
-                                </button>
+                                    <button
+                                        onClick={() => onSelect(session)}
+                                        className="flex-1 flex items-center gap-2 text-left min-w-0"
+                                        disabled={deletingId === session.id}
+                                    >
+                                        <MessageSquare size={14} className={`${styles.textSub} shrink-0`} />
+                                        <span className={`flex-1 truncate ${styles.textMain}`}>
+                                            {session.title}
+                                        </span>
+                                        {session.id === activeSessionId && (
+                                            <Check size={14} className="text-brand shrink-0" />
+                                        )}
+                                    </button>
+                                    {/* Delete Button - visible on hover or if deleting */}
+                                    <button
+                                        onClick={(e) => handleDelete(e, session.id)}
+                                        disabled={deletingId === session.id}
+                                        className={`
+                                            shrink-0 p-1 rounded-md
+                                            opacity-0 group-hover:opacity-100 transition-opacity
+                                            hover:bg-red-100 dark:hover:bg-red-900/30
+                                            text-gray-400 hover:text-red-500
+                                            ${deletingId === session.id ? 'opacity-100 animate-pulse' : ''}
+                                        `}
+                                        title="Delete chat"
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                </div>
                             ))}
                         </div>
                     ))
