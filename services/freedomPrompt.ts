@@ -54,7 +54,7 @@ ${business.logoUrl ? `- **Logo:** Brand logo is provided as an input image.` : '
 - **Logo integration:** The logo must look like part of the design — not pasted on afterwards. Match the visual treatment (color grading, texture, lighting) of the rest of the piece.
 - All text must be diegetic (part of the scene) and spelled correctly.
 - The user's prompt is the priority.
-- No contact info, business hours, address, slogan, or compliance text unless the user explicitly asks for it.
+- **Be smart about copy:** Include bold headlines, taglines, or CTAs when appropriate — this is creative marketing, not abstract art (unless explicitly requested). Skip compliance text (contact info, hours, address) but keep punchy marketing copy.
 `.trim();
 
     return prompt;

@@ -66,7 +66,6 @@ const Generator: React.FC<GeneratorProps> = ({
   // Shows ALL jobs for this business (both 'generator' and 'chat' origins)
   const pendingAssets = useMemo(() => {
     const filtered = jobs.filter(j => j.businessId === business.id);
-    console.log('[Generator] Jobs in context:', jobs.length, '| For this business:', filtered.length, '| Business ID:', business.id);
     return filtered.map(jobToExtendedAsset);
   }, [jobs, business.id, jobToExtendedAsset]);
 

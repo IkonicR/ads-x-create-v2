@@ -128,6 +128,23 @@ export async function findActiveSession(businessId: string): Promise<ChatSession
 }
 
 /**
+ * Get a specific session by ID
+ */
+export async function getSessionById(sessionId: string): Promise<ChatSession | null> {
+    const { data, error } = await supabase
+        .from('chat_sessions')
+        .select('*')
+        .eq('id', sessionId)
+        .eq('is_active', true)
+        .maybeSingle();
+
+    if (data && !error) {
+        return data as ChatSession;
+    }
+    return null;
+}
+
+/**
  * Create a new session for business (explicit create)
  */
 export async function createSession(businessId: string): Promise<ChatSession | null> {

@@ -14,6 +14,7 @@ import { GeneratingIndicator } from '../components/GeneratingIndicator';
 import * as chatService from '../services/chatService';
 import { supabase } from '../services/supabase';
 import { useJobs } from '../context/JobContext';
+import { useSubscription } from '../context/SubscriptionContext';
 import { ChatSession } from '../services/chatService';
 
 interface ChatInterfaceProps {
@@ -23,6 +24,7 @@ interface ChatInterfaceProps {
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
   const { styles } = useThemeStyles();
   const { jobs, addJob, removeJob, updateJob } = useJobs();
+  const { deductCredits, refundCredits } = useSubscription();
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [showControls, setShowControls] = useState(false);
@@ -100,11 +102,32 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
   useEffect(() => {
     const syncWithDatabase = async () => {
       try {
-        // Only FIND existing session (don't create on mount)
-        const session = await chatService.findActiveSession(business.id);
+        // Priority order for session ID:
+        // 1. Cache's sessionId (what we just rendered)
+        // 2. localStorage (explicit user selection)
+        // 3. Most recent from database
+        const cached = chatService.getCachedChat(business.id);
+        const storageKey = `chat_session_${business.id}`;
+        const savedSessionId = localStorage.getItem(storageKey);
+
+        let sessionIdToLoad = cached?.sessionId || savedSessionId || null;
+        let session = null;
+
+        if (sessionIdToLoad) {
+          // Try to load the cached/saved session
+          session = await chatService.getSessionById(sessionIdToLoad);
+        }
+
+        // Fall back to most recent if session not found
+        if (!session) {
+          session = await chatService.findActiveSession(business.id);
+        }
+
         if (!session) return; // No session yet - will create on first message
 
         setSessionId(session.id);
+        // Persist to localStorage for future
+        localStorage.setItem(storageKey, session.id);
 
         // Always load from database - it's the source of truth for attachments
         // Cache is only an optimization layer for initial render
@@ -351,14 +374,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
     const completedJobs = chatJobs.filter(j => j.status === 'complete' && j.result);
     const failedJobs = chatJobs.filter(j => j.status === 'failed');
 
-    // Handle failed jobs - show error message and remove
+    // Handle failed jobs - show error message, refund credits, and remove
     if (failedJobs.length > 0) {
       for (const job of failedJobs) {
+        // Refund credit for failed generation (1 credit per job, pro tier default)
+        refundCredits(1);
+        console.log(`[ChatInterface] 💰 Refunded 1 credit for failed job: ${job.id}`);
+
         // Add error message to chat
         const errorMsg: ChatMessage = {
           id: `error-${job.id}`,
           role: 'ai',
-          text: `⚠️ Image generation failed: ${job.errorMessage || 'The AI model is overloaded. Please try again in a moment.'}`,
+          text: `⚠️ Image generation failed: ${job.errorMessage || 'The AI model is overloaded. Please try again in a moment.'} (Credit refunded)`,
           timestamp: new Date()
         };
         setMessages(prev => [...prev, errorMsg]);
@@ -541,7 +568,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
         } : undefined
       };
 
-      // Save AI response to DB
+      // Save AI response to DB - CRITICAL: We need the database ID for attachment persistence
+      let dbMessageId: string | undefined;
       if (sessionId) {
         const savedAiMsg = await chatService.saveMessage(
           sessionId,
@@ -553,6 +581,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
         );
         if (savedAiMsg) {
           aiMsg.id = savedAiMsg.id;
+          dbMessageId = savedAiMsg.id;
         }
       }
 
@@ -563,13 +592,35 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
       });
 
       // Phase 3/5: Start polling if AI triggered image generation
+      // CRITICAL: Only register jobs if we have a valid database messageId for attachment persistence
+      const effectiveMessageId = dbMessageId || aiMsg.id;
+      const isValidUuid = dbMessageId && !dbMessageId.startsWith('ai-');
+
+      if (!isValidUuid && (aiResponse.jobId || aiResponse.jobIds?.length)) {
+        console.warn('[ChatInterface] ⚠️ Message save failed - attachments may not persist. MessageId:', effectiveMessageId);
+      }
+
+      // CRITICAL: Deduct credits for chat-triggered image generations
+      // Default to 1 credit per image (pro tier) - chat uses pro by default
+      const jobCount = aiResponse.jobIds?.length || (aiResponse.jobId ? 1 : 0);
+      if (jobCount > 0) {
+        const creditCost = jobCount; // 1 credit per image (pro tier)
+        const success = await deductCredits(creditCost);
+        if (!success) {
+          console.error('[ChatInterface] ⚠️ Failed to deduct credits for', jobCount, 'jobs');
+          // Continue anyway - jobs are already submitted server-side
+        } else {
+          console.log(`[ChatInterface] 💳 Deducted ${creditCost} credits for ${jobCount} image(s)`);
+        }
+      }
+
       if (aiResponse.jobId) {
         // Single image generation - register with JobContext
         addJob({
           id: aiResponse.jobId,
           type: 'chat',
           businessId: business.id,
-          messageId: aiMsg.id,
+          messageId: effectiveMessageId,
           aspectRatio: aiResponse.generationMeta?.aspectRatio || '1:1',
           styleName: aiResponse.generationMeta?.styleName,
           createdAt: Date.now()
@@ -583,7 +634,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
             id: jobId,
             type: 'chat',
             businessId: business.id,
-            messageId: aiMsg.id,
+            messageId: effectiveMessageId,
             aspectRatio: aiResponse.generationMeta?.aspectRatio || '1:1',
             styleName: aiResponse.generationMeta?.styleName,
             createdAt: Date.now()
@@ -619,6 +670,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
     const newSession = await chatService.resetSession(business.id);
     if (newSession) {
       setSessionId(newSession.id);
+      // Persist this as the current session
+      localStorage.setItem(`chat_session_${business.id}`, newSession.id);
       await chatService.saveMessage(newSession.id, 'ai', welcome.text, undefined, undefined, business.id);
       updateCache([welcome], newSession.id);
     }
@@ -653,6 +706,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
 
     setMessages(loadedMessages);
     setSessionId(session.id);
+    // Persist this as the current session
+    localStorage.setItem(`chat_session_${business.id}`, session.id);
     updateCache(loadedMessages, session.id);
   };
 

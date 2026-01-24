@@ -19,6 +19,17 @@ const cleanFunctionCallArtifacts = (text: string): string => {
   // - \)\} matches closing ')}'
   return text
     .replace(/f?\{generate_marketing_image\([\s\S]*?\)\}/g, '')
+    // Clean up malformed function call JSON (when AI outputs as text instead of structured)
+    .replace(/calls"?\s*:\s*\[[\s\S]*?generate_marketing_image[\s\S]*?\]/g, '')
+    .replace(/function"?\s*:\s*"?generate_marketing_image[\s\S]*?\}/g, '')
+    // Clean up orphaned JSON fragments that sometimes leak through
+    .replace(/"?\s*args"?\s*:\s*\{[^}]*\}/g, '')  // Catches "args": {...}
+    .replace(/"\s*\}/g, '')  // Catches " }
+    .replace(/\{\s*"/g, '')  // Catches { "
+    .replace(/"\s*,?\s*$/gm, '')  // Catches trailing " or ", at end of lines
+    .replace(/^\s*\}\s*$/gm, '')  // Catches lines that are just }
+    .replace(/^\s*\[\s*$/gm, '')  // Catches lines that are just [
+    .replace(/^\s*\]\s*$/gm, '')  // Catches lines that are just ]
     .replace(/\n{3,}/g, '\n\n')  // Collapse 3+ newlines to 2
     .trim();
 };
@@ -382,7 +393,7 @@ export const sendChatMessage = async (
 
     const imageGenTool: FunctionDeclaration = {
       name: 'generate_marketing_image',
-      description: 'Generates a visual ad image with full control over style, format, and quality. Use when the user wants an image created.',
+      description: 'Production Engine. Use ONLY when user explicitly confirms a visual pitch or asks to create/generate. Do not use for brainstorming. Parameters: prompt (required), styleId, aspectRatio, modelTier, isEdit, isFreedomMode, offeringId.',
       parameters: {
         type: Type.OBJECT,
         properties: {
@@ -405,6 +416,14 @@ export const sendChatMessage = async (
           isEdit: {
             type: Type.BOOLEAN,
             description: 'Set to true if this is an edit of a previous image in the conversation.',
+          },
+          isFreedomMode: {
+            type: Type.BOOLEAN,
+            description: 'Set to true for creative exploration, abstract concepts, or unusual style requests that go beyond standard brand-adherent ads. Use when user wants you to "be creative", "surprise me", or asks for experimental/artistic visuals.',
+          },
+          offeringId: {
+            type: Type.STRING,
+            description: 'Optional. The ID of the product/offering to feature. Use when generating for a specific product - its actual image will be included as reference.',
           },
         },
         required: ['prompt'],
@@ -529,10 +548,59 @@ export const sendChatMessage = async (
     // Ask AI to decide if generation is needed based on conversation
     // @ts-ignore 
     const actionResponse = await actionChat.sendMessage({
-      message: [{ text: 'Based on what I just said, should you generate an image? If yes, call the generate_marketing_image function. If no, just respond with "NO_ACTION".' }]
+      message: [{
+        text: `### EXECUTION GATE (STRICT MODE)
+
+Review the Assistant's LAST response. Did it EXPLICITLY COMMIT to generating images RIGHT NOW?
+
+**GENERATE** if the Assistant said phrases like:
+- "Generating now", "Creating now", "On it"
+- "Here they come", "Whipping up X concepts"
+- "Generating X variations for you"
+
+**DO NOT GENERATE** if the Assistant:
+- Described ideas or concepts (e.g., "I'm envisioning...", "Here are two directions...")
+- Asked a question (e.g., "Which one?", "Want me to generate?", "Say the word")
+- Proposed options without committing (e.g., "We could do X or Y")
+
+If in doubt: **DO NOT GENERATE**. Respond with "NO_ACTION".
+
+The user said they wanted pitches first. Respect that.` }]
     });
 
+    // ========== DIAGNOSTIC LOGGING (Function Call Debug) ==========
+    console.log('[GeminiService] 🔍 FUNCTION CALL DIAGNOSTICS:');
+    console.log('  → Response type:', typeof actionResponse);
+    console.log('  → Has candidates:', !!actionResponse.candidates);
+    console.log('  → Candidates length:', actionResponse.candidates?.length);
+
+    const candidate = actionResponse.candidates?.[0];
+    console.log('  → Candidate[0] exists:', !!candidate);
+    console.log('  → Content exists:', !!candidate?.content);
+    console.log('  → Parts exists:', !!candidate?.content?.parts);
+    console.log('  → Parts length:', candidate?.content?.parts?.length);
+
+    // Log each part to see what we're getting
+    candidate?.content?.parts?.forEach((p: any, i: number) => {
+      console.log(`  → Part[${i}]:`, {
+        hasText: !!p.text,
+        textPreview: p.text?.slice(0, 100),
+        hasFunctionCall: !!p.functionCall,
+        functionCallName: p.functionCall?.name,
+        functionCallArgs: p.functionCall?.args ? Object.keys(p.functionCall.args) : null
+      });
+    });
+
+    // Check if there's text that LOOKS like a function call (the failing case)
+    const allText = candidate?.content?.parts?.filter((p: any) => p.text).map((p: any) => p.text).join('') || '';
+    if (allText.includes('generate_marketing_image') || allText.includes('f{')) {
+      console.log('  ⚠️ WARNING: Text contains function-call-like syntax but no structured functionCall detected!');
+      console.log('  → Raw text:', allText.slice(0, 500));
+    }
+    // ========== END DIAGNOSTIC LOGGING ==========
+
     const functionCalls = actionResponse.candidates?.[0]?.content?.parts?.filter(p => p.functionCall).map(p => p.functionCall) || [];
+    console.log('[GeminiService] 📊 Extracted functionCalls:', functionCalls.length, functionCalls.map(c => c?.name));
 
     if (functionCalls && functionCalls.length > 0) {
       // Phase 5: Filter for all image generation calls
@@ -551,6 +619,33 @@ export const sendChatMessage = async (
           const styleId = call.args['styleId'] as string | undefined;
           const aspectRatio = (call.args['aspectRatio'] as string) || '1:1';
           const modelTier = (call.args['modelTier'] as 'pro' | 'ultra') || 'pro';
+          const offeringId = call.args['offeringId'] as string | undefined;
+          // AI-triggered Freedom Mode (OR fallback to manual toggle)
+          const aiFreedomMode = call.args['isFreedomMode'] as boolean | undefined;
+          const effectiveFreedomMode = aiFreedomMode ?? creativeContext.isFreedomMode;
+
+          // Build subjectContext from offering if AI specified one
+          let effectiveContext = imageGenContext;
+          if (offeringId) {
+            const offering = business.offerings.find(o => o.id === offeringId);
+            if (offering && offering.imageUrl) {
+              console.log(`[GeminiService] 📦 Product context injected: ${offering.name} (ID: ${offeringId})`);
+              effectiveContext = {
+                type: 'product',
+                name: offering.name,
+                imageUrl: offering.imageUrl,
+                preserveLikeness: offering.preserveLikeness ?? false,
+                promotion: offering.promotion,
+                benefits: offering.benefits,
+                targetAudience: offering.targetAudience,
+                price: offering.price,
+              };
+            } else if (offering) {
+              console.log(`[GeminiService] ⚠️ Offering "${offering.name}" has no image - using logo only`);
+            } else {
+              console.warn(`[GeminiService] ⚠️ Offering ID not found: ${offeringId}`);
+            }
+          }
 
           // Fetch style preset if AI specified one
           let stylePreset: StylePreset | undefined;
@@ -568,12 +663,12 @@ export const sendChatMessage = async (
             imagePrompt,
             business,
             stylePreset,
-            imageGenContext,
+            effectiveContext, // Use offering context if available, else fallback
             aspectRatio,
             modelTier,
             undefined,
             undefined,
-            creativeContext.isFreedomMode // Pass freedom flag
+            effectiveFreedomMode // AI can trigger or user toggle
           );
 
           jobIds.push(jobId);
@@ -586,8 +681,14 @@ export const sendChatMessage = async (
         const isBatch = jobIds.length > 1;
 
         // Return with Turn 1's conversational text + generation jobs
+        // Provide fallback if text is empty after cleanup
+        const finalText = cleanFunctionCallArtifacts(conversationalText).trim();
+        const displayText = finalText || (jobIds.length > 1
+          ? `On it! Creating ${jobIds.length} variations for you...`
+          : 'On it! Generating your asset now...');
+
         return {
-          text: conversationalText,  // Always use Turn 1's text - guaranteed to exist
+          text: displayText,
           image: undefined,
           jobId: isBatch ? undefined : jobIds[0],
           jobIds: isBatch ? jobIds : undefined,
