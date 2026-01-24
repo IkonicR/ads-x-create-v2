@@ -135,26 +135,42 @@ export const generateAdCopy = async (
 // AI task suggestions are handled by the Chat CMO assistant if needed.
 
 /**
- * Generate a concise chat title from the first user message
+ * Generate a concise chat title from conversation messages
+ * Accepts single message or array of messages for progressive refinement
  */
-export const generateChatTitle = async (message: string): Promise<string> => {
+export const generateChatTitle = async (messages: string | string[]): Promise<string> => {
   const ai = getAiClient();
-  if (!ai) return message.slice(0, 40);
+  const messageArray = Array.isArray(messages) ? messages : [messages];
+  const fallback = messageArray[0]?.slice(0, 40) || 'New Chat';
+
+  if (!ai) return fallback;
 
   try {
+    const isRefinement = messageArray.length > 1;
+    const contextText = messageArray.slice(-5).join('\n---\n').slice(0, 500);
+
+    const prompt = isRefinement
+      ? `Based on this conversation, generate a concise 3-6 word title that captures the main topic. Be specific and descriptive. No quotes or punctuation at the end.
+
+Conversation:
+${contextText}
+
+Title:`
+      : `Generate a concise 3-6 word title for this chat request. Be descriptive but brief. No quotes or punctuation at the end.
+
+User message: "${messageArray[0]?.slice(0, 200)}"
+
+Title:`;
+
     const response = await ai.models.generateContent({
       model: AI_MODELS.textDirect,
-      contents: `Generate a concise 3-6 word title for this chat request. Be descriptive but brief. No quotes or punctuation at the end.
-
-User message: "${message.slice(0, 200)}"
-
-Title:`,
+      contents: prompt,
     });
 
     const title = response.text?.trim().replace(/^["']|["']$/g, '').slice(0, 60);
-    return title || message.slice(0, 40);
+    return title || fallback;
   } catch {
-    return message.slice(0, 40);
+    return fallback;
   }
 };
 

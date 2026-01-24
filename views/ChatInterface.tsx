@@ -483,10 +483,28 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
           ));
         }
 
-        // Generate AI title on first user message (background, no await)
+        // Dynamic Title Refinement: Generate/refine at 1st, 3rd, and 5th messages
         const userMessageCount = messages.filter(m => m.role === 'user').length;
+
+        // Message 1: Initial title
         if (userMessageCount === 0) {
           generateChatTitle(userText).then(title => {
+            chatService.updateSessionTitle(currentSessionId!, title);
+          });
+        }
+
+        // Message 3: First refinement (more context)
+        if (userMessageCount === 2) {
+          const recentMessages = [...messages.slice(-4).map(m => m.text), userText];
+          generateChatTitle(recentMessages).then(title => {
+            chatService.updateSessionTitle(currentSessionId!, title);
+          });
+        }
+
+        // Message 5: Final refinement (maximum context)
+        if (userMessageCount === 4) {
+          const recentMessages = [...messages.slice(-6).map(m => m.text), userText];
+          generateChatTitle(recentMessages).then(title => {
             chatService.updateSessionTitle(currentSessionId!, title);
           });
         }
