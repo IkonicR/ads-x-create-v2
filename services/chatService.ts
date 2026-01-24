@@ -180,6 +180,18 @@ export async function getActiveSession(businessId: string): Promise<ChatSession 
 }
 
 /**
+ * Deactivate all sessions for a business (used when resetting chat)
+ * Does NOT create a new session - that happens on first message
+ */
+export async function deactivateAllSessions(businessId: string): Promise<void> {
+    await supabase
+        .from('chat_sessions')
+        .update({ is_active: false })
+        .eq('business_id', businessId)
+        .eq('is_active', true);
+}
+
+/**
  * Load all messages for a session
  */
 export async function loadMessages(sessionId: string): Promise<ChatMessage[]> {

@@ -110,21 +110,37 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
         const storageKey = `chat_session_${business.id}`;
         const savedSessionId = localStorage.getItem(storageKey);
 
+        console.log('[ChatInterface] Session priority check:', {
+          cachedSessionId: cached?.sessionId,
+          localStorageSessionId: savedSessionId,
+        });
+
         let sessionIdToLoad = cached?.sessionId || savedSessionId || null;
         let session = null;
 
         if (sessionIdToLoad) {
           // Try to load the cached/saved session
           session = await chatService.getSessionById(sessionIdToLoad);
+          console.log('[ChatInterface] Loaded preferred session:', session?.id);
         }
 
         // Fall back to most recent if session not found
         if (!session) {
           session = await chatService.findActiveSession(business.id);
+          console.log('[ChatInterface] Fell back to most recent session:', session?.id);
         }
 
         if (!session) return; // No session yet - will create on first message
 
+        // CRITICAL: If session matches what we already have from cache, skip reload
+        if (cached?.sessionId === session.id && cached.messages.length > 0) {
+          console.log('[ChatInterface] ✅ Session matches cache - keeping current messages');
+          setSessionId(session.id);
+          localStorage.setItem(storageKey, session.id);
+          return; // Don't overwrite!
+        }
+
+        console.log('[ChatInterface] Loading messages for session:', session.id);
         setSessionId(session.id);
         // Persist to localStorage for future
         localStorage.setItem(storageKey, session.id);
@@ -169,11 +185,24 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
   useEffect(() => {
     if (!sessionId) return;
 
+    // CRITICAL: Don't reload on initial mount if cache already has the right data
+    const cached = chatService.getCachedChat(business.id);
+    const skipInitialReload = cached?.sessionId === sessionId && cached.messages.length > 0;
+
     let isLoading = false;  // Guard against concurrent reloads
     let debounceTimer: NodeJS.Timeout | null = null;
+    let hasRunOnce = false;  // Track if we've already loaded once
 
     const reloadMessages = async () => {
       if (isLoading) return;  // Prevent concurrent loads
+
+      // Skip first run if cache already has the data
+      if (!hasRunOnce && skipInitialReload) {
+        console.log('[ChatInterface] ⏭️ Skipping initial reload - cache already has correct session');
+        hasRunOnce = true;
+        return;
+      }
+      hasRunOnce = true;
       isLoading = true;
 
       try {
@@ -496,6 +525,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
         if (newSession) {
           currentSessionId = newSession.id;
           setSessionId(newSession.id);
+          // Persist to localStorage for session persistence on refresh
+          localStorage.setItem(`chat_session_${business.id}`, newSession.id);
           // Save welcome message too
           await chatService.saveMessage(newSession.id, 'ai', getWelcomeMessage().text, undefined, undefined, business.id);
         }
@@ -659,22 +690,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
   };
 
   const handleReset = async () => {
-    // Clear cache immediately
+    // Clear cache and localStorage - we're starting fresh
     chatService.clearCachedChat(business.id);
+    localStorage.removeItem(`chat_session_${business.id}`);
 
-    // Reset to welcome message
+    // Reset to welcome message (UI only - no DB session yet)
     const welcome = getWelcomeMessage();
     setMessages([welcome]);
+    setSessionId(null); // No session until first message
 
-    // Create new session in background
-    const newSession = await chatService.resetSession(business.id);
-    if (newSession) {
-      setSessionId(newSession.id);
-      // Persist this as the current session
-      localStorage.setItem(`chat_session_${business.id}`, newSession.id);
-      await chatService.saveMessage(newSession.id, 'ai', welcome.text, undefined, undefined, business.id);
-      updateCache([welcome], newSession.id);
-    }
+    // Deactivate any existing session in background (don't create new one)
+    await chatService.deactivateAllSessions(business.id);
   };
 
   // Load all sessions for history dropdown
