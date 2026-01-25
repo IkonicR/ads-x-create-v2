@@ -19,6 +19,8 @@ const cleanFunctionCallArtifacts = (text: string): string => {
   // - \)\} matches closing ')}'
   return text
     .replace(/f?\{generate_marketing_image\([\s\S]*?\)\}/g, '')
+    // NEW: Catch standalone function call syntax (no curly braces) - the format AI actually outputs
+    .replace(/generate_marketing_image\s*\(\s*prompt\s*=\s*"[\s\S]*?"\s*\)/g, '')
     // Clean up malformed function call JSON (when AI outputs as text instead of structured)
     .replace(/calls"?\s*:\s*\[[\s\S]*?generate_marketing_image[\s\S]*?\]/g, '')
     .replace(/function"?\s*:\s*"?generate_marketing_image[\s\S]*?\}/g, '')
@@ -32,6 +34,26 @@ const cleanFunctionCallArtifacts = (text: string): string => {
     .replace(/^\s*\]\s*$/gm, '')  // Catches lines that are just ]
     .replace(/\n{3,}/g, '\n\n')  // Collapse 3+ newlines to 2
     .trim();
+};
+
+/**
+ * Detect and trim infinite repetition loops in AI output.
+ * If a 50+ character block repeats 3+ times consecutively, 
+ * truncate at the end of the first occurrence.
+ * This is a circuit breaker for model degeneration loops.
+ */
+const detectAndTrimRepetitions = (text: string): string => {
+  // Look for any 50+ char block that repeats 3+ times consecutively
+  const pattern = /(.{50,}?)\1{2,}/g;
+  const match = pattern.exec(text);
+
+  if (match) {
+    console.warn('[GeminiService] ⚠️ Repetition loop detected, truncating output');
+    // Return text up to and including first occurrence of the repeated block
+    return text.slice(0, match.index + match[1].length).trim();
+  }
+
+  return text;
 };
 
 interface ParsedFunctionCall {
@@ -363,9 +385,10 @@ export const sendChatMessage = async (
     const availableStyles = stylesData || [];
 
     // Fetch Active Tasks for AI context (Phase 9: Task Awareness)
+    // Include full details so CMO knows dimensions, specs, and descriptions
     const { data: tasksData } = await supabase
       .from('tasks')
-      .select('id, title, status, priority')
+      .select('id, title, status, priority, description, dueDate:due_date, category, techSpecs:tech_specs')
       .eq('business_id', business.id)
       .neq('status', 'Done')
       .limit(10);
@@ -524,9 +547,14 @@ export const sendChatMessage = async (
 
     // Clean any accidental JSON/function syntax from Turn 1
     let conversationalText = textResponse.text || '';
+
+    // Safety: Check for infinite loops (Circuit Breaker)
+    conversationalText = detectAndTrimRepetitions(conversationalText);
+
     conversationalText = conversationalText
       .replace(/\{[\s\S]*?"action"[\s\S]*?\}/g, '')  // LangChain JSON
       .replace(/f?\{generate_marketing_image[\s\S]*?\}/g, '')  // f{} syntax
+      .replace(/generate_marketing_image\s*\(\s*prompt\s*=\s*"[\s\S]*?"\s*\)/g, '')  // Standalone function call
       .replace(/\{\s*"prompt"[\s\S]*?\}/g, '')  // Raw JSON
       .trim();
 
