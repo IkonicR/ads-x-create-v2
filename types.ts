@@ -558,6 +558,90 @@ export interface SocialAccount {
 }
 
 // ============================================================================
+// CONTENT PILLARS TYPES
+// ============================================================================
+
+export type PillarTheme = 'motivation' | 'product' | 'team' | 'testimonial' | 'educational' | 'custom';
+export type PillarScheduleType = 'weekly' | 'monthly';
+export type PillarSubjectMode = 'static' | 'rotate_offerings' | 'rotate_team' | 'rotate_locations';
+export type PillarDraftStatus = 'pending' | 'approved' | 'skipped' | 'posted' | 'expired';
+
+export interface ContentPillar {
+  id: string;
+  businessId: string;
+
+  // Identity
+  name: string;
+  theme: PillarTheme;
+
+  // Schedule
+  scheduleType: PillarScheduleType;
+  dayOfWeek?: number;      // 0-6 (Sunday-Saturday)
+  dayOfMonth?: number;     // 1-31
+
+  // Content Source
+  subjectMode: PillarSubjectMode;
+  staticSubjectId?: string;
+  lastRotatedIndex?: number;
+
+  // Style & Generation
+  stylePresetId?: string;
+  promptTemplate?: string;
+  generateImage: boolean;
+
+  // Platforms
+  platforms: string[];
+
+  // V2: Enhanced configuration
+  instructions?: string;           // Natural language from chat builder
+  platformOutputs?: {              // Per-platform settings
+    platform: string;
+    aspectRatio: string;
+    captionStyle?: string;
+  }[];
+  styleRotation?: {                // Style rotation config
+    enabled: boolean;
+    styleIds: string[];
+    currentIndex: number;
+  };
+
+  // State
+  isActive: boolean;
+
+  // Metadata
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PillarDraft {
+  id: string;
+  pillarId: string;
+  businessId: string;
+
+  // Generated Content
+  caption: string;
+  imageAssetId?: string;
+  imageUrl?: string;
+
+  // Target
+  scheduledFor: string;  // Date string (YYYY-MM-DD)
+  platforms: string[];
+
+  // Status
+  status: PillarDraftStatus;
+  approvedAt?: string;
+  postedAt?: string;
+
+  // Subject tracking
+  subjectType?: 'offering' | 'team' | 'location';
+  subjectId?: string;
+
+  // Metadata
+  createdAt: string;
+  updatedAt?: string;
+}
+
+// ============================================================================
 // UTILITY TYPES
 // ============================================================================
 

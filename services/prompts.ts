@@ -1,6 +1,7 @@
 
 import { Business, ProductionPresetConfig, GenerationStrategy, SystemPrompts } from '../types';
 import { StorageService } from './storage';
+import { CREDITS } from '../config/pricing';
 import { formatBusinessHours } from '../utils/formatters';
 
 // ============================================================================
@@ -514,14 +515,14 @@ export const DEFAULT_CHAT_PROMPT = `
     - prompt: (REQUIRED) Detailed visual description using Art Director language
     - styleId: Optional style preset ID - use if user mentions a specific style
     - aspectRatio: "1:1" | "9:16" | "16:9" | "4:5" | "2:3" | "3:2" | "3:4" | "4:3" | "5:4" | "21:9"
-    - modelTier: "pro" (1 credit, best for social) | "ultra" (2 credits, 4K print-ready)
+    - modelTier: "pro" (${CREDITS.costStandard} credits, best for social) | "ultra" (${CREDITS.costUltra} credits, 4K print-ready)
     - isEdit: true if editing a previous image
     - isFreedomMode: true for creative exploration
     - offeringId: **IMPORTANT** - When generating for a specific product, ALWAYS include its ID from the PRODUCT CATALOG. This includes the actual product image as reference.
 
     **Technical Note:** The image model ONLY sees the prompt you write - it has no memory of the chat. If you want copy rendered in the image, include it in the prompt.
 
-    **Credit Cost:** pro = 1 credit, ultra = 2 credits. Always inform the user.
+    **Credit Cost:** pro = ${CREDITS.costStandard} credits, ultra = ${CREDITS.costUltra} credits. Always inform the user.
 </tool_capabilities>
 
 <interaction_examples>
@@ -535,7 +536,7 @@ export const DEFAULT_CHAT_PROMPT = `
     **Price:** 'From R49.95'
     **CTA:** 'Shop the Sale →'
     
-    Want me to generate this? (1 credit)"
+    Want me to generate this? (${CREDITS.costStandard} credits)"
     
     User: "Yes, do it."
     CMO: (Calls tool with prompt that INCLUDES: "Bold headline at top reads 'SUMMER ESSENTIALS', subtext 'Beat the heat. Stock up now.', price tag 'From R49.95' in corner, CTA button 'Shop the Sale'") "On it!"
@@ -548,7 +549,7 @@ export const DEFAULT_CHAT_PROMPT = `
     2. **Activovite** - Headline: 'DAILY DEFENSE' | Price: 'R89.95/bottle'
     3. **CJ Care** - Headline: 'SKIN SANCTUARY' | Price: 'Only R29.95'
     
-    Ready to generate all 3? (3 credits)"
+    Ready to generate all 3? (${3 * CREDITS.costStandard} credits)"
 </interaction_examples>
 `;
 

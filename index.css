@@ -63,6 +63,13 @@
   --galaxy-bg-light: #000000;
   --galaxy-bg-dark: #FFFFFF;
   /* White for high contrast in Dark Mode */
+
+  /* Z-Index Scale - Semantic Layering System */
+  --z-dock: 10;      /* Sidebar, fixed nav */
+  --z-drawer: 20;    /* Slide-out panels, notifications */
+  --z-modal: 50;     /* All modals (backdrop + content) */
+  --z-toast: 60;     /* Toast notifications */
+  --z-takeover: 100; /* Full-screen overlays, lightboxes */
 }
 
 /* Global Styles */

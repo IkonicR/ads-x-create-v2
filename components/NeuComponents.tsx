@@ -658,11 +658,9 @@ export const NeuDropdown: React.FC<NeuDropdownProps> = ({
     }
   }, [overlay]);
 
-  // Update position on open and scroll/resize
+  // Update position on scroll/resize (initial position set synchronously in onClick)
   useLayoutEffect(() => {
     if (isOpen && overlay) {
-      updatePosition();
-
       // Update on scroll/resize
       const handleUpdate = () => updatePosition();
       window.addEventListener('scroll', handleUpdate, true);
@@ -724,13 +722,15 @@ export const NeuDropdown: React.FC<NeuDropdownProps> = ({
     visible: { opacity: 1, x: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
   };
 
-  // Shared dropdown content
+  // Shared dropdown content - uses direct animation (not variant-controlled by parent)
   const dropdownContent = (
     <div className="p-2 space-y-1">
-      {options.map((option) => (
+      {options.map((option, index) => (
         <motion.button
           key={option.value}
-          variants={itemVariants}
+          initial={{ opacity: 0, x: -10 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: index * 0.03, type: "spring", stiffness: 300, damping: 24 }}
           onClick={(e) => {
             e.stopPropagation();
             onChange(option.value);
@@ -771,7 +771,18 @@ export const NeuDropdown: React.FC<NeuDropdownProps> = ({
           )}
         >
           <button
-            onClick={() => setIsOpen(!isOpen)}
+            onClick={() => {
+              if (!isOpen && overlay && triggerRef.current) {
+                // Calculate position synchronously BEFORE setting open
+                const rect = triggerRef.current.getBoundingClientRect();
+                setDropdownPosition({
+                  top: rect.bottom + 8,
+                  left: rect.left,
+                  width: rect.width,
+                });
+              }
+              setIsOpen(!isOpen);
+            }}
             className={cn(
               "w-full flex items-center justify-between outline-none text-left",
               compact ? "px-3 py-2 text-xs" : "px-4 py-3",

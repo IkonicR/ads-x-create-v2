@@ -454,7 +454,7 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[100] flex items-center justify-center overflow-hidden"
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden"
           onClick={onClose}
         >
           {/* 1. The Portal Background (Galaxy) */}
@@ -1229,7 +1229,7 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({ asset, onClose, onDele
 
                         {/* Asset Picker Modal - Split View Portal */}
                         {showAssetPicker && ReactDOM.createPortal(
-                          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+                          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                             <motion.div
                               initial={{ opacity: 0 }}
                               animate={{ opacity: 1 }}

@@ -30,7 +30,7 @@ export const BusinessDrawer: React.FC<BusinessDrawerProps> = ({
                 <>
                     {/* Backdrop (Invisible but clickable to close) */}
                     <div
-                        className="fixed inset-0 z-[100]"
+                        className="fixed inset-0 z-40"
                         onClick={onClose}
                     />
 
@@ -41,7 +41,7 @@ export const BusinessDrawer: React.FC<BusinessDrawerProps> = ({
                         exit={{ x: -20, opacity: 0, scale: 0.95 }}
                         transition={{ type: "spring", stiffness: 300, damping: 30 }}
                         className={`
-              fixed left-32 bottom-8 z-[101] w-72 p-4 rounded-3xl
+                            fixed left-32 bottom-8 z-40 w-72 p-4 rounded-3xl
               ${isDark ? 'bg-neu-dark shadow-neu-out-dark' : 'bg-neu-light shadow-neu-out-light'}
               border border-white/10
               flex flex-col gap-4

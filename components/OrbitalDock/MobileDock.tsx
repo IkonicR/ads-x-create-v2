@@ -143,7 +143,7 @@ export const MobileDock: React.FC<MobileDockProps> = ({
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
                             onClick={handleToggleVault}
-                            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] md:hidden"
+                            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden"
                         />
 
                         {/* Sheet */}
@@ -153,7 +153,7 @@ export const MobileDock: React.FC<MobileDockProps> = ({
                             animate={{ y: 0 }}
                             exit={{ y: "100%" }}
                             transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                            className={`fixed bottom-0 left-0 right-0 z-[101] rounded-t-[2rem] p-6 pb-32 ${vaultStyles} md:hidden border-t border-white/10 shadow-[0_-20px_50px_rgba(0,0,0,0.5)] overflow-hidden`}
+                            className={`fixed bottom-0 left-0 right-0 z-40 rounded-t-[2rem] p-6 pb-32 ${vaultStyles} md:hidden border-t border-white/10 shadow-[0_-20px_50px_rgba(0,0,0,0.5)] overflow-hidden`}
                         >
                             <div className="w-12 h-1.5 bg-gray-300 dark:bg-gray-700 rounded-full mx-auto mb-6 opacity-50" />
 
@@ -295,7 +295,7 @@ export const MobileDock: React.FC<MobileDockProps> = ({
             </AnimatePresence>
 
             {/* THE TACTICAL STRIP (Bottom Bar) */}
-            <div className={`fixed bottom-0 left-0 right-0 z-50 md:hidden pb-safe`}>
+            <div className={`fixed bottom-0 left-0 right-0 z-10 md:hidden pb-safe`}>
                 <div className={`flex items-center justify-around px-2 pb-2 pt-2 transition-all duration-500 ease-in-out ${dockStyles}`}>
 
                     <MobileKey

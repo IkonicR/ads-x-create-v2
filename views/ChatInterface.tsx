@@ -1,7 +1,7 @@
-
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { Business, ChatMessage } from '../types';
+import { CREDITS } from '../config/pricing';
 import { NeuCard, NeuButton, NeuIconButton, useThemeStyles } from '../components/NeuComponents';
 import { Send, Bot, User, Sparkles, Download, Box, X, History, Sliders } from 'lucide-react';
 import { sendChatMessage, pollJobStatus, generateChatTitle } from '../services/geminiService';
@@ -406,9 +406,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
     // Handle failed jobs - show error message, refund credits, and remove
     if (failedJobs.length > 0) {
       for (const job of failedJobs) {
-        // Refund credit for failed generation (1 credit per job, pro tier default)
-        refundCredits(1);
-        console.log(`[ChatInterface] 💰 Refunded 1 credit for failed job: ${job.id}`);
+        // Refund credit for failed generation (uses costStandard - chat uses pro by default)
+        refundCredits(CREDITS.costStandard);
+        console.log(`[ChatInterface] 💰 Refunded ${CREDITS.costStandard} credits for failed job: ${job.id}`);
 
         // Add error message to chat
         const errorMsg: ChatMessage = {
@@ -632,10 +632,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
       }
 
       // CRITICAL: Deduct credits for chat-triggered image generations
-      // Default to 1 credit per image (pro tier) - chat uses pro by default
+      // costStandard credits per image (chat uses pro by default)
       const jobCount = aiResponse.jobIds?.length || (aiResponse.jobId ? 1 : 0);
       if (jobCount > 0) {
-        const creditCost = jobCount; // 1 credit per image (pro tier)
+        const creditCost = jobCount * CREDITS.costStandard;
         const success = await deductCredits(creditCost);
         if (!success) {
           console.error('[ChatInterface] ⚠️ Failed to deduct credits for', jobCount, 'jobs');

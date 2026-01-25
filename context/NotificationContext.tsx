@@ -231,7 +231,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       {children}
 
       {/* Toast Container - Desktop: top-right (under header), Mobile: bottom-center (above MobileDock) */}
-      <div className="fixed z-[100] flex flex-col gap-3 pointer-events-none
+      <div className="fixed z-50 flex flex-col gap-3 pointer-events-none
         top-20 right-6 md:top-20 md:right-6
         max-md:bottom-24 max-md:left-1/2 max-md:-translate-x-1/2 max-md:top-auto max-md:right-auto
       ">

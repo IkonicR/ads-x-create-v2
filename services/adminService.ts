@@ -27,6 +27,15 @@ export interface UserWithSubscription {
         periodEnd: string;
     } | null;
 
+    // Team membership (for users who inherit from owner)
+    teamMembership?: {
+        inheritsFromName: string;
+        inheritsFromEmail: string;
+        inheritsFromPlan: PlanId;
+        role: 'editor' | 'viewer';
+        businessCount: number;
+    };
+
     businessCount: number;
     businesses?: Business[];
 }
@@ -35,6 +44,7 @@ export const AdminService = {
     /**
      * Get ALL users from profiles table
      * Includes users with and without subscriptions
+     * Team members get `teamMembership` with inheritance info
      */
     async getAllSubscriptionOwners(): Promise<UserWithSubscription[]> {
         // Start from profiles - get ALL users
@@ -58,29 +68,35 @@ export const AdminService = {
             .select('*')
             .in('user_id', userIds);
 
-        // Get business counts - check BOTH sources
-        // 1. Via business_members
-        const { data: memberBusinessData } = await supabase
+        // Get ALL business memberships (not just owner)
+        const { data: allMemberships } = await supabase
             .from('business_members')
-            .select('user_id, business_id')
-            .eq('role', 'owner')
+            .select('user_id, business_id, role')
             .in('user_id', userIds);
 
-        // 2. Via businesses.owner_id
-        const { data: ownedBusinessData } = await supabase
+        // Get business info including owner_id
+        const businessIds = [...new Set((allMemberships || []).map(m => m.business_id))];
+        const { data: businessesData } = await supabase
             .from('businesses')
-            .select('owner_id, id')
-            .in('owner_id', userIds);
+            .select('id, name, owner_id')
+            .in('id', businessIds);
 
-        // Merge and count unique businesses per user
-        const countMap: Record<string, Set<string>> = {};
-        (memberBusinessData || []).forEach(b => {
-            if (!countMap[b.user_id]) countMap[b.user_id] = new Set();
-            countMap[b.user_id].add(b.business_id);
+        // Build maps
+        const businessMap: Record<string, { name: string; owner_id: string }> = {};
+        (businessesData || []).forEach(b => {
+            businessMap[b.id] = { name: b.name, owner_id: b.owner_id };
         });
-        (ownedBusinessData || []).forEach(b => {
-            if (!countMap[b.owner_id]) countMap[b.owner_id] = new Set();
-            countMap[b.owner_id].add(b.id);
+
+        // Get profile info for owners (for display name)
+        const ownerIds = [...new Set(Object.values(businessMap).map(b => b.owner_id).filter(Boolean))];
+        const { data: ownerProfiles } = await supabase
+            .from('profiles')
+            .select('id, email, full_name')
+            .in('id', ownerIds);
+
+        const ownerProfileMap: Record<string, { email: string; fullName: string | null }> = {};
+        (ownerProfiles || []).forEach(p => {
+            ownerProfileMap[p.id] = { email: p.email, fullName: p.full_name };
         });
 
         // Build subscription map
@@ -89,8 +105,53 @@ export const AdminService = {
             subsMap[s.user_id] = s;
         });
 
+        // Build membership map for counting owned businesses
+        const ownedCountMap: Record<string, number> = {};
+        (allMemberships || []).forEach(m => {
+            if (m.role === 'owner') {
+                ownedCountMap[m.user_id] = (ownedCountMap[m.user_id] || 0) + 1;
+            }
+        });
+
+        // Build team membership info for non-owners
+        const teamMembershipMap: Record<string, {
+            inheritsFromName: string;
+            inheritsFromEmail: string;
+            inheritsFromPlan: PlanId;
+            role: 'editor' | 'viewer';
+            businessCount: number;
+        }> = {};
+
+        (allMemberships || []).forEach(m => {
+            if (m.role !== 'owner') {
+                const business = businessMap[m.business_id];
+                if (business && business.owner_id) {
+                    const ownerSub = subsMap[business.owner_id];
+                    const ownerProfile = ownerProfileMap[business.owner_id];
+
+                    // Only set if owner has a subscription and we haven't set this user yet
+                    // or if this owner has a subscription (prefer owners with subscriptions)
+                    if (ownerSub && (!teamMembershipMap[m.user_id] || !teamMembershipMap[m.user_id].inheritsFromPlan)) {
+                        const memberBusinessCount = (allMemberships || [])
+                            .filter(mem => mem.user_id === m.user_id && mem.role !== 'owner')
+                            .length;
+
+                        teamMembershipMap[m.user_id] = {
+                            inheritsFromName: ownerProfile?.fullName || ownerProfile?.email || 'Unknown',
+                            inheritsFromEmail: ownerProfile?.email || '',
+                            inheritsFromPlan: ownerSub.plan_id as PlanId,
+                            role: m.role as 'editor' | 'viewer',
+                            businessCount: memberBusinessCount
+                        };
+                    }
+                }
+            }
+        });
+
         return profiles.map(profile => {
             const sub = subsMap[profile.id];
+            const teamMembership = teamMembershipMap[profile.id];
+
             return {
                 id: profile.id,
                 email: profile.email || '',
@@ -107,7 +168,8 @@ export const AdminService = {
                     periodStart: sub.period_start,
                     periodEnd: sub.period_end,
                 } : null,
-                businessCount: countMap[profile.id]?.size || 0,
+                teamMembership: !sub ? teamMembership : undefined, // Only show if no own subscription
+                businessCount: ownedCountMap[profile.id] || 0,
             };
         });
     },

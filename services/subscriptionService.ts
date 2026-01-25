@@ -243,7 +243,7 @@ export async function refundCredits(amount: number): Promise<number | null> {
  * Get credit cost for an image
  */
 export function getCreditCost(resolution: '2k' | '4k'): number {
-    return resolution === '4k' ? CREDITS.perImage4K : CREDITS.perImage2K;
+    return resolution === '4k' ? CREDITS.costUltra : CREDITS.costStandard;
 }
 
 /**

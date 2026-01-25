@@ -5,6 +5,7 @@
  */
 
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle } from 'lucide-react';
 import { NeuButton, NeuCard, NeuCloseButton, useThemeStyles } from './NeuComponents';
@@ -32,7 +33,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
 }) => {
     const { styles } = useThemeStyles();
 
-    return (
+    return createPortal(
         <AnimatePresence>
             {isOpen && (
                 <>
@@ -93,7 +94,8 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                     </motion.div>
                 </>
             )}
-        </AnimatePresence>
+        </AnimatePresence>,
+        document.body
     );
 };
 

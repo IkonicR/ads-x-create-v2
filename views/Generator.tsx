@@ -238,7 +238,7 @@ const Generator: React.FC<GeneratorProps> = ({
 
     // Pricing Logic - Uses config/pricing.ts as source of truth
     // flash/pro = 2K = 1 credit, ultra = 4K = 2 credits
-    const cost = modelTier === 'ultra' ? CREDITS.perImage4K : CREDITS.perImage2K;
+    const cost = modelTier === 'ultra' ? CREDITS.costUltra : CREDITS.costStandard;
     const isDebug = prompt.toLowerCase().startsWith('debug:');
 
     // Use subscription credits (shared pool) instead of business credits
@@ -604,7 +604,7 @@ const Generator: React.FC<GeneratorProps> = ({
         message={
           <>
             You are about to generate a **4096x4096px** high-fidelity asset using our most advanced model.
-            This will consume **{CREDITS.perImage4K} Credits**.
+            This will consume **{CREDITS.costUltra} Credits**.
             <br /><br />
             Are you sure you want to proceed?
           </>

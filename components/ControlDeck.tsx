@@ -4,6 +4,7 @@ import { useThemeStyles, useNeuButtonProps, NeuButton, NeuInput, NeuDropdown } f
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Send, LayoutTemplate, Palette, X, Crop, User, Smartphone, Monitor, Square, Box, RectangleVertical, RectangleHorizontal, Zap, Diamond, Plus, Camera, Sun, Edit2, DollarSign, Tag, Unlock, SlidersHorizontal, Ruler, ChevronDown, Check } from 'lucide-react';
 import { StylePreset, ViewState, SubjectType, Offering, TeamMember } from '../types';
+import { CREDITS } from '../config/pricing';
 import { SmartPromptInput } from './SmartPromptInput';
 import { useNavigation } from '../context/NavigationContext';
 import { supabase } from '../services/supabase';
@@ -76,8 +77,8 @@ const RATIOS = [
 ];
 
 const MODELS = [
-  { id: 'pro', name: 'Gemini Pro', credits: '1 Cr', description: 'High Fidelity. Best for social assets.', icon: Diamond },
-  { id: 'ultra', name: 'Ultra 4K', credits: '2 Cr', description: 'Max Resolution. Print ready.', icon: Sparkles },
+  { id: 'pro', name: 'Gemini Pro', credits: CREDITS.costStandard, description: 'High Fidelity. Best for social assets.', icon: Diamond },
+  { id: 'ultra', name: 'Ultra 4K', credits: CREDITS.costUltra, description: 'Max Resolution. Print ready.', icon: Sparkles },
 ];
 
 export const ControlDeck: React.FC<ControlDeckProps> = ({
@@ -478,7 +479,7 @@ export const ControlDeck: React.FC<ControlDeckProps> = ({
                               <div className="flex justify-between items-center">
                                 <span className={`text-sm font-bold ${themeStyles.textMain}`}>{model.name}</span>
                                 <span className={`text-xs font-bold px-2 py-1 rounded ${themeStyles.bg} ${themeStyles.shadowIn} opacity-70 flex items-center gap-1`}>
-                                  {model.id === 'pro' ? '1' : '2'} <Sparkles size={10} fill="currentColor" className="text-brand" />
+                                  {model.credits} <Sparkles size={10} fill="currentColor" className="text-brand" />
                                 </span>
                               </div>
                               <span className={`text-xs ${themeStyles.textSub} block mt-1`}>{model.description}</span>

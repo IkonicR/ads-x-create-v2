@@ -38,7 +38,7 @@ export const OrbitalDock: React.FC<OrbitalDockProps> = ({
 
   return (
     <>
-      <div className="fixed left-6 top-1/2 -translate-y-1/2 z-40 hidden md:block">
+      <div className="fixed left-6 top-1/2 -translate-y-1/2 z-10 hidden md:block">
         <motion.div
           layout
           initial={{ x: -100, opacity: 0, width: 80 }}

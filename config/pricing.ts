@@ -1,119 +1,154 @@
 /**
- * Ads x Create — Pricing Configuration
- * Source of Truth for all pricing plans
- * Last Updated: December 18, 2025
+ * Ads x Create — Pricing Configuration V7 (The Abundance Model)
+ * Strategy: "High Limits + Smart Scaling"
+ * Model: gemini-3-pro-image-preview (~$0.134/img cost)
+ * Currency: x100 Inflation
  */
 
-// Supported currencies with conversion rates (approximate, update as needed)
 export const CURRENCIES = {
     USD: { symbol: '$', rate: 1, locale: 'en-US' },
-    ZAR: { symbol: 'R', rate: 18, locale: 'en-ZA' },    // South African Rand
-    EUR: { symbol: '€', rate: 0.92, locale: 'de-DE' },  // Euro
-    GBP: { symbol: '£', rate: 0.79, locale: 'en-GB' },  // British Pound
-    AUD: { symbol: 'A$', rate: 1.55, locale: 'en-AU' }, // Australian Dollar
-    INR: { symbol: '₹', rate: 83, locale: 'en-IN' },    // Indian Rupee
-    BRL: { symbol: 'R$', rate: 4.9, locale: 'pt-BR' },  // Brazilian Real
+    ZAR: { symbol: 'R', rate: 18, locale: 'en-ZA' },
+    EUR: { symbol: '€', rate: 0.92, locale: 'de-DE' },
+    GBP: { symbol: '£', rate: 0.79, locale: 'en-GB' },
+    AUD: { symbol: 'A$', rate: 1.55, locale: 'en-AU' },
+    INR: { symbol: '₹', rate: 83, locale: 'en-IN' },
+    BRL: { symbol: 'R$', rate: 4.9, locale: 'pt-BR' },
 } as const;
 
 export type CurrencyCode = keyof typeof CURRENCIES;
 
-// Credit system
+// ------------------------------------------------------------------
+// CREDIT LOGIC: x100 INFLATION
+// ------------------------------------------------------------------
 export const CREDITS = {
-    perImage2K: 1,
-    perImage4K: 2,
-    extraCreditPrice: 0.25, // USD
-    rolloverMonths: 1,
-    rolloverCap: 2, // 2x monthly limit
+    // CONSUMPTION
+    costStandard: 100,   // 1 Image ($0.13 cost)
+    costUltra: 200,      // 4K Upscale ($0.24 cost)
+
+    // FUTURE PROOFING (When we add Flux.2)
+    costFlux: 30,        // Flux is cheaper, allows "Draft Mode" later
+
+    costEdit: 50,        // In-painting ($0.06 cost)
+    costChat: 0,         // Free retention hook
+
+    // RETENTION
+    rolloverMonths: 1,   // Unused credits roll over (Fairness)
+    rolloverCap: 2,      // Max bank = 2x monthly allowance
+
+    // SALES LOGIC
+    extraCreditPrice: 0.005,
 };
 
-// Plan definitions (prices in USD)
 export const PLANS = {
     creator: {
         id: 'creator',
-        name: 'Creator',
-        description: 'For solopreneurs and influencers',
+        name: 'Solo',
+        description: 'For solopreneurs building a personal brand',
         monthlyPrice: 39,
-        annualPrice: 390, // 17% off
+        annualPrice: 390, // 2 Months Free
         features: {
             businesses: 1,
-            creditsPerMonth: 40,
-            extraBusinessPrice: null, // Cannot add extra
+            maxBusinesses: 1, // Locked. Must upgrade.
+
+            // 10,000 Credits = 100 Standard Images
+            // Margin: 66% (Safe)
+            creditsPerMonth: 10000,
+
+            // HOOK: Lite Scheduling (15 posts = ~Every other day)
+            socialScheduling: true,
+            socialSchedulingLimit: 15,
+
+            extraBusinessPrice: null,
             extraBusinessCredits: null,
-            socialScheduling: false,
+
             customStyles: false,
             teamSeats: 0,
             whiteLabel: false,
-            earlyAccess: false,
-            betaFeatures: false,
             prioritySupport: false,
             dedicatedManager: false,
         },
     },
     growth: {
         id: 'growth',
-        name: 'Growth',
-        description: 'For small businesses and power users',
+        name: 'Business',
         badge: 'Most Popular',
-        monthlyPrice: 89,
-        annualPrice: 890,
+        description: 'For growing brands requiring consistency',
+        monthlyPrice: 97,
+        annualPrice: 970,
         features: {
             businesses: 1,
             maxBusinesses: 10,
-            creditsPerMonth: 150,
+
+            // 30,000 Credits = 300 Images
+            // Margin: 58% (Volume play)
+            creditsPerMonth: 30000,
+
+            // SMART SCALING:
+            // Pay $29 -> Get +50 Images (5,000 credits)
+            // Profit on add-on: ~$22.30 (77% Margin)
             extraBusinessPrice: 29,
-            extraBusinessCredits: 50,
+            extraBusinessCredits: 5000,
+
+            // UNLIMITED SCHEDULING
             socialScheduling: true,
-            customStyles: true,
-            teamSeats: 3,
+            socialSchedulingLimit: -1,
+
+            customStyles: true, // "God-Tier" Presets
+            teamSeats: 5,
             whiteLabel: false,
-            earlyAccess: true,
-            betaFeatures: false,
             prioritySupport: true,
             dedicatedManager: false,
         },
     },
     agency: {
         id: 'agency',
-        name: 'Agency',
-        description: 'For marketing agencies',
-        monthlyPrice: 299,
-        annualPrice: 2990,
+        name: 'Partner',
+        description: 'For agencies and multi-brand organizations',
+        monthlyPrice: 297,
+        annualPrice: 2970,
         features: {
-            businesses: 10,
+            businesses: 10, // 10 Included!
             maxBusinesses: 100,
-            creditsPerMonth: 750, // Global pool
+
+            // 100,000 Credits = 1,000 Images (Global Pool)
+            // Margin: 55% (Worst case) -> ~80% (Realized)
+            creditsPerMonth: 100000,
             isGlobalPool: true,
+
+            // VOLUME SCALING:
+            // Pay $19 -> Get 0 Extra Credits (Share the massive pool)
+            // Profit: 100%
             extraBusinessPrice: 19,
-            extraBusinessCredits: 0, // Pool doesn't grow
+            extraBusinessCredits: 0,
+
             socialScheduling: true,
+            socialSchedulingLimit: -1,
+
             customStyles: true,
             teamSeats: -1, // Unlimited
-            whiteLabel: true,
-            earlyAccess: true,
-            betaFeatures: true,
+            whiteLabel: true, // Your logo, not ours
             prioritySupport: true,
             dedicatedManager: true,
         },
     },
     beta: {
         id: 'beta',
-        name: 'Beta Tester',
-        description: 'Limited beta access via invite code',
+        name: 'Beta',
+        description: 'Early access testing',
         monthlyPrice: 0,
         annualPrice: 0,
         features: {
-            businesses: 1,        // Base, extra_businesses adds more
-            maxBusinesses: 10,    // Hard cap for safety
-            creditsPerMonth: 0,   // Credits come from invite code, not recurring
+            businesses: 3,
+            maxBusinesses: 3, // Hard cap for beta testers
+            creditsPerMonth: 5000, // 50 Images
             extraBusinessPrice: null,
             extraBusinessCredits: null,
             socialScheduling: true,
+            socialSchedulingLimit: -1,
             customStyles: true,
-            teamSeats: 0,         // No team for beta testers
+            teamSeats: 5,
             whiteLabel: false,
-            earlyAccess: true,
-            betaFeatures: true,
-            prioritySupport: false,
+            prioritySupport: true,
             dedicatedManager: false,
         },
     },
@@ -121,19 +156,18 @@ export const PLANS = {
 
 export type PlanId = keyof typeof PLANS;
 
-// Credit packs for overage
+// CREDIT PACKS
+// Strategy: "Fair Backup"
 export const CREDIT_PACKS = [
-    { credits: 50, price: 15 },
-    { credits: 100, price: 25 },
-    { credits: 500, price: 100 },
+    { credits: 3000, price: 15, label: 'Starter (30 Imgs)' },     // $0.50 / img
+    { credits: 12000, price: 49, label: 'Creator (120 Imgs)' },   // $0.40 / img
+    { credits: 60000, price: 199, label: 'Agency (600 Imgs)' },   // $0.33 / img
 ];
 
 // Helper: Convert price to currency
 export function formatPrice(usdPrice: number, currency: CurrencyCode = 'USD'): string {
     const { symbol, rate, locale } = CURRENCIES[currency];
     const converted = Math.round(usdPrice * rate);
-
-    // Round to nice numbers for non-USD
     const rounded = currency === 'USD' ? converted : Math.ceil(converted / 10) * 10;
 
     return new Intl.NumberFormat(locale, {
@@ -144,7 +178,7 @@ export function formatPrice(usdPrice: number, currency: CurrencyCode = 'USD'): s
     }).format(rounded);
 }
 
-// Helper: Get plan price with extra businesses
+// Helper: Calculate Plan Price
 export function calculatePlanPrice(
     planId: PlanId,
     extraBusinesses: number = 0,
@@ -153,7 +187,7 @@ export function calculatePlanPrice(
     const plan = PLANS[planId];
     const extraPrice = plan.features.extraBusinessPrice || 0;
     const monthlyRaw = plan.monthlyPrice + (extraBusinesses * extraPrice);
-    const annualRaw = monthlyRaw * 10; // 17% off (10 months for 12)
+    const annualRaw = monthlyRaw * 10;
 
     return {
         monthly: formatPrice(monthlyRaw, currency),
@@ -162,16 +196,10 @@ export function calculatePlanPrice(
     };
 }
 
-// Helper: Detect currency from country code
 export function getCurrencyFromCountry(countryCode: string): CurrencyCode {
     const countryToCurrency: Record<string, CurrencyCode> = {
-        US: 'USD',
-        ZA: 'ZAR',
-        DE: 'EUR', FR: 'EUR', ES: 'EUR', IT: 'EUR', NL: 'EUR',
-        GB: 'GBP',
-        AU: 'AUD',
-        IN: 'INR',
-        BR: 'BRL',
+        US: 'USD', ZA: 'ZAR', DE: 'EUR', FR: 'EUR', ES: 'EUR', IT: 'EUR', NL: 'EUR',
+        GB: 'GBP', AU: 'AUD', IN: 'INR', BR: 'BRL',
     };
     return countryToCurrency[countryCode] || 'USD';
 }

@@ -202,7 +202,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60"
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
                 onClick={onClose}
             >
                 <motion.div

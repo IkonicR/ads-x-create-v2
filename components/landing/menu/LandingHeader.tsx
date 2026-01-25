@@ -31,7 +31,7 @@ const LandingHeader: React.FC = () => {
                 />
 
                 {/* Menu Toggle - Padding from right grid line */}
-                <div className="relative mr-4 z-[60]">
+                <div className="relative mr-4 z-40">
                     <button
                         onClick={() => setIsMenuOpen(!isMenuOpen)}
                         className="

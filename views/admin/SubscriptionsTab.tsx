@@ -320,7 +320,11 @@ const UserSubscriptionRow: React.FC<UserSubscriptionRowProps> = ({
                                         {user.fullName || 'Unnamed User'}
                                     </h4>
                                     {/* Status Badge */}
-                                    {!user.subscription ? (
+                                    {user.teamMembership ? (
+                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-400" title={`Inherits from ${user.teamMembership.inheritsFromName}`}>
+                                            Team
+                                        </span>
+                                    ) : !user.subscription ? (
                                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/20 text-red-400">
                                             No Sub
                                         </span>
@@ -337,6 +341,12 @@ const UserSubscriptionRow: React.FC<UserSubscriptionRowProps> = ({
                                 <p className={`text-xs ${styles.textSub} truncate`}>
                                     {user.email || 'No email'}
                                 </p>
+                                {/* Team inheritance info */}
+                                {user.teamMembership && (
+                                    <p className={`text-[10px] ${styles.textSub} opacity-70`}>
+                                        ↳ Inherits from {user.teamMembership.inheritsFromName} ({user.teamMembership.inheritsFromPlan}) • {user.teamMembership.role} on {user.teamMembership.businessCount} business{user.teamMembership.businessCount !== 1 ? 'es' : ''}
+                                    </p>
+                                )}
                             </div>
                         </div>
 
@@ -347,10 +357,10 @@ const UserSubscriptionRow: React.FC<UserSubscriptionRowProps> = ({
                                 onChange={(val) => onPlanChange(user.id, val as PlanId)}
                                 overlay={true}
                                 options={[
-                                    { label: 'Beta Tester', value: 'beta' },
-                                    { label: 'Creator', value: 'creator' },
-                                    { label: 'Growth', value: 'growth' },
-                                    { label: 'Agency', value: 'agency' },
+                                    { label: 'Beta', value: 'beta' },
+                                    { label: 'Solo', value: 'creator' },
+                                    { label: 'Business', value: 'growth' },
+                                    { label: 'Partner', value: 'agency' },
                                 ]}
                             />
                         </div>

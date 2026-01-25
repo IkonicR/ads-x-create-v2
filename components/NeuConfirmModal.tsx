@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useThemeStyles, NeuButton } from './NeuComponents';
 import { AlertTriangle } from 'lucide-react';
@@ -26,7 +27,7 @@ export const NeuConfirmModal: React.FC<NeuConfirmModalProps> = ({
 }) => {
   const { styles } = useThemeStyles();
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
         <>
@@ -36,15 +37,15 @@ export const NeuConfirmModal: React.FC<NeuConfirmModalProps> = ({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onCancel}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100]"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
           />
-          
+
           {/* Modal */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="fixed inset-0 flex items-center justify-center z-[101] p-4 pointer-events-none"
+            className="fixed inset-0 flex items-center justify-center z-50 p-4 pointer-events-none"
           >
             <div className={`w-full max-w-md rounded-3xl p-8 pointer-events-auto ${styles.bg} ${styles.shadowOut} border border-white/10`}>
               <div className="flex items-center gap-4 mb-4">
@@ -53,11 +54,11 @@ export const NeuConfirmModal: React.FC<NeuConfirmModalProps> = ({
                 </div>
                 <h3 className={`text-xl font-bold ${styles.textMain}`}>{title}</h3>
               </div>
-              
+
               <div className={`text-sm ${styles.textSub} leading-relaxed mb-8`}>
                 {message}
               </div>
-              
+
               <div className="flex gap-4 justify-end">
                 <NeuButton onClick={onCancel} className="flex-1">
                   {cancelText}
@@ -70,6 +71,7 @@ export const NeuConfirmModal: React.FC<NeuConfirmModalProps> = ({
           </motion.div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 };

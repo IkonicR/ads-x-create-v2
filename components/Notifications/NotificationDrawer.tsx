@@ -43,7 +43,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={onClose}
-                        className="fixed inset-0 z-50 bg-black/20 backdrop-blur-sm"
+                        className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm"
                     />
 
                     {/* Drawer */}
@@ -53,7 +53,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
                         animate="open"
                         exit="closed"
                         className={`
-              fixed top-0 right-0 h-full w-full md:w-[400px] z-[60]
+                            fixed top-0 right-0 h-full w-full md:w-[400px] z-40
               flex flex-col shadow-2xl
               ${isDark ? 'bg-neu-dark border-l border-white/5' : 'bg-neu-light border-l border-black/5'}
             `}

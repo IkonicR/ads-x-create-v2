@@ -245,7 +245,7 @@ export const PostDetailModal: React.FC<PostDetailModalProps> = ({
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     onClick={handleClose}
-                    className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+                    className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
                 >
                     <motion.div
                         initial={{ opacity: 0, scale: 0.95, y: 20 }}

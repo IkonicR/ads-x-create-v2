@@ -49,7 +49,7 @@ export const ControlDeck = () => {
     const [activeItem, setActiveItem] = useState('dashboard');
 
     return (
-        <div className="fixed left-0 top-0 bottom-0 z-[100] flex items-center">
+        <div className="fixed left-0 top-0 bottom-0 z-10 flex items-center">
             <motion.div
                 initial={{ x: -100 }}
                 animate={{ x: 0 }}

@@ -10,6 +10,7 @@ import { NavigationProvider, useNavigation } from './context/NavigationContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AssetProvider, useAssets } from './context/AssetContext';
 import { SocialProvider, useSocial } from './context/SocialContext';
+import { PillarProvider } from './context/PillarContext';
 import { SubscriptionProvider, useSubscription } from './context/SubscriptionContext';
 import { JobProvider } from './context/JobContext';
 import Layout from './components/Layout';
@@ -181,9 +182,10 @@ const AppContent: React.FC = () => {
     load();
   }, [authChecked, profileChecked, profile?.onboarding_completed, user?.id]); // Wait for auth + profile check
 
-  // GATE 3: Check subscription exists after profile is confirmed
+  // GATE 3: Check subscription OR team membership exists after profile is confirmed
+  // Team members inherit access through their business membership - they don't need their own subscription
   useEffect(() => {
-    const checkSubscription = async () => {
+    const checkAccess = async () => {
       // Only check if we have a fully onboarded user
       if (!user || !profile || !profile.onboarding_completed) {
         setHasSubscription(null);
@@ -191,25 +193,50 @@ const AppContent: React.FC = () => {
       }
 
       try {
-        const { data, error } = await supabase
+        // Check 1: Does user have their own subscription?
+        const { data: subscription } = await supabase
           .from('subscriptions')
           .select('id')
           .eq('user_id', user.id)
           .maybeSingle();
 
-        if (error || !data) {
-          console.warn('[Gate 3] No subscription found for user:', user.id);
-          setHasSubscription(false);
-        } else {
+        if (subscription) {
+          console.log('[Gate 3] User has own subscription - granting access');
           setHasSubscription(true);
+          return;
         }
+
+        // Check 2: Is user a member of any business? (inherited access)
+        // Uses RPC with SECURITY DEFINER to bypass RLS timing issues
+        console.log('[Gate 3] No subscription, checking team membership for:', user.id);
+        const { data: hasMembership, error: membershipError } = await supabase
+          .rpc('user_has_team_membership', { check_user_id: user.id });
+
+        if (membershipError) {
+          console.error('[Gate 3] Membership RPC failed:', membershipError);
+          // Don't block access on query error - allow through and let downstream handle it
+          setHasSubscription(true);
+          return;
+        }
+
+        console.log('[Gate 3] Has team membership:', hasMembership);
+
+        if (hasMembership) {
+          console.log('[Gate 3] User has team membership - granting access');
+          setHasSubscription(true);
+          return;
+        }
+
+        // No subscription and no team membership
+        console.warn('[Gate 3] No subscription or team membership found for user:', user.id);
+        setHasSubscription(false);
       } catch (err) {
-        console.error('[Gate 3] Subscription check failed:', err);
+        console.error('[Gate 3] Access check failed:', err);
         setHasSubscription(false);
       }
     };
 
-    checkSubscription();
+    checkAccess();
   }, [user?.id, profile?.onboarding_completed]);
 
   // Check for pending team invites on login
@@ -726,9 +753,11 @@ const App: React.FC = () => {
           <NotificationProvider>
             <AssetProvider>
               <SocialProvider>
-                <Router>
-                  <AppContent />
-                </Router>
+                <PillarProvider>
+                  <Router>
+                    <AppContent />
+                  </Router>
+                </PillarProvider>
               </SocialProvider>
             </AssetProvider>
           </NotificationProvider>
