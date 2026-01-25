@@ -23,6 +23,7 @@ import { PostDetailModal } from '../components/PostDetailModal';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { PillarCard } from '../components/PillarCard';
 import { PillarBuilder } from '../components/PillarBuilder';
+import { DropBanner, DropOverlay } from '../components/TheDrop';
 import { Calendar, Layers, Plus, Sparkles } from 'lucide-react';
 
 interface PlannerProps {
@@ -65,13 +66,19 @@ const Planner: React.FC<PlannerProps> = ({ business }) => {
     // Extract connected platform types from accounts
     const connectedPlatforms = accounts.map(acc => acc.platform?.toLowerCase() || '').filter(Boolean);
 
-    // Load data when business changes
+    // Load data when business changes OR when switching to pillars tab
     useEffect(() => {
         if (business?.id) {
             loadPosts(business.id, true);
+        }
+    }, [business?.id, loadPosts]);
+
+    // Fetch pillars when tab switches to pillars OR business changes
+    useEffect(() => {
+        if (business?.id && activeTab === 'pillars') {
             loadPillars(business.id);
         }
-    }, [business?.id, loadPosts, loadPillars]);
+    }, [business?.id, activeTab, loadPillars]);
 
     // State for post detail modal
     const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null);
@@ -83,6 +90,13 @@ const Planner: React.FC<PlannerProps> = ({ business }) => {
     const [isPillarModalOpen, setIsPillarModalOpen] = useState(false);
     const [editingPillar, setEditingPillar] = useState<ContentPillar | null>(null);
     const [pillarToDelete, setPillarToDelete] = useState<string | null>(null);
+
+    // State for The Drop (batch approval)
+    const [reviewingBatch, setReviewingBatch] = useState<{
+        batchId: string;
+        startDate: string;
+        endDate: string;
+    } | null>(null);
 
     // Check connection status
     const isConnected = !!business.socialConfig?.ghlLocationId;
@@ -202,6 +216,14 @@ const Planner: React.FC<PlannerProps> = ({ business }) => {
                     {error}
                 </motion.div>
             )}
+
+            {/* The Drop Banner */}
+            <div className="px-4">
+                <DropBanner
+                    businessId={business.id}
+                    onReviewClick={(batch) => setReviewingBatch(batch)}
+                />
+            </div>
 
             {/* Calendar Tab */}
             <AnimatePresence mode="wait">
@@ -402,6 +424,18 @@ const Planner: React.FC<PlannerProps> = ({ business }) => {
                 onConfirm={confirmDeletePillar}
                 onCancel={() => setPillarToDelete(null)}
             />
+
+            {/* The Drop Overlay (Batch Review) */}
+            <AnimatePresence>
+                {reviewingBatch && (
+                    <DropOverlay
+                        batchId={reviewingBatch.batchId}
+                        startDate={reviewingBatch.startDate}
+                        endDate={reviewingBatch.endDate}
+                        onClose={() => setReviewingBatch(null)}
+                    />
+                )}
+            </AnimatePresence>
         </div>
     );
 };

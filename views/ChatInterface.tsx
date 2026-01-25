@@ -600,10 +600,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
       };
 
       // Save AI response to DB - CRITICAL: We need the database ID for attachment persistence
+      // Use currentSessionId (not sessionId state) since state may not have updated yet
       let dbMessageId: string | undefined;
-      if (sessionId) {
+      if (currentSessionId) {
         const savedAiMsg = await chatService.saveMessage(
-          sessionId,
+          currentSessionId,
           'ai',
           aiResponse.text,
           aiResponse.image ? 'image' : undefined,
@@ -618,7 +619,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
 
       setMessages(prev => {
         const updated = [...prev, aiMsg];
-        updateCache(updated, sessionId);
+        updateCache(updated, currentSessionId);
         return updated;
       });
 

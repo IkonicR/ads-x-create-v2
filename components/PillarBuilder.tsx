@@ -32,21 +32,16 @@ export interface PillarDraft {
     dayOfWeek?: number;
     dayOfMonth?: number;
     subjectMode?: string;
-    staticSubjectId?: string;
-    stylePresetId?: string;
+    platforms?: string[];
     instructions?: string;
     generateImage?: boolean;
-    platforms?: string[];
-    platformOutputs?: {
-        platform: string;
-        aspectRatio: string;
-        captionStyle?: string;
-    }[];
-    styleRotation?: {
-        enabled: boolean;
-        styleIds: string[];
-    };
+    styleId?: string;
+    showBusinessName?: boolean;
+    showContactInfo?: boolean;
+    sloganProminence?: 'hidden' | 'subtle' | 'standard' | 'prominent';
 }
+
+import { useStyles } from '../hooks/useStyles';
 
 export const PillarBuilder: React.FC<PillarBuilderProps> = ({
     isOpen,
@@ -56,7 +51,8 @@ export const PillarBuilder: React.FC<PillarBuilderProps> = ({
     onClose,
     onSave,
 }) => {
-    const { styles, theme } = useThemeStyles();
+    const { styles: themeStyles, theme } = useThemeStyles();
+    const { styles: availableStyles } = useStyles(business.id); // Valid hook call
     const isDark = theme === 'dark';
 
     // The pillar being built
@@ -174,6 +170,7 @@ export const PillarBuilder: React.FC<PillarBuilderProps> = ({
                         <PillarBuilderChat
                             business={business}
                             connectedAccounts={connectedAccounts}
+                            availableStyles={availableStyles}
                             draft={draft}
                             onDraftUpdate={handleDraftUpdate}
                             existingPillar={existingPillar}

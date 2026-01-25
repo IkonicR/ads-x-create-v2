@@ -27,10 +27,17 @@ function mapPillarFromDB(row: any): ContentPillar {
         promptTemplate: row.prompt_template,
         generateImage: row.generate_image ?? true,
         platforms: row.platforms || [],
-        // V2 fields
+        // V2 fields (Phase 1)
         instructions: row.instructions,
         platformOutputs: row.platform_outputs,
         styleRotation: row.style_rotation,
+        // V2 fields (Phase 2 - scheduling & memory)
+        preferredTime: row.preferred_time,
+        pillarTimezone: row.pillar_timezone,
+        topicHistory: row.topic_history || [],
+        optimalTimes: row.optimal_times,
+        useOptimalTimes: row.use_optimal_times ?? false,
+        // State
         isActive: row.is_active ?? true,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
@@ -53,10 +60,17 @@ function mapPillarToDB(pillar: Partial<ContentPillar>): Record<string, any> {
     if (pillar.promptTemplate !== undefined) dbRecord.prompt_template = pillar.promptTemplate;
     if (pillar.generateImage !== undefined) dbRecord.generate_image = pillar.generateImage;
     if (pillar.platforms !== undefined) dbRecord.platforms = pillar.platforms;
-    // V2 fields
+    // V2 fields (Phase 1)
     if (pillar.instructions !== undefined) dbRecord.instructions = pillar.instructions;
     if (pillar.platformOutputs !== undefined) dbRecord.platform_outputs = pillar.platformOutputs;
     if (pillar.styleRotation !== undefined) dbRecord.style_rotation = pillar.styleRotation;
+    // V2 fields (Phase 2 - scheduling & memory)
+    if (pillar.preferredTime !== undefined) dbRecord.preferred_time = pillar.preferredTime;
+    if (pillar.pillarTimezone !== undefined) dbRecord.pillar_timezone = pillar.pillarTimezone;
+    if (pillar.topicHistory !== undefined) dbRecord.topic_history = pillar.topicHistory;
+    if (pillar.optimalTimes !== undefined) dbRecord.optimal_times = pillar.optimalTimes;
+    if (pillar.useOptimalTimes !== undefined) dbRecord.use_optimal_times = pillar.useOptimalTimes;
+    // State
     if (pillar.isActive !== undefined) dbRecord.is_active = pillar.isActive;
 
     return dbRecord;
@@ -71,7 +85,12 @@ function mapDraftFromDB(row: any): PillarDraft {
         imageAssetId: row.image_asset_id,
         imageUrl: row.image_url,
         scheduledFor: row.scheduled_for,
+        scheduledDatetime: row.scheduled_datetime,
         platforms: row.platforms || [],
+        // V2 fields (Phase 2)
+        approvalBatchId: row.approval_batch_id,
+        topicSummary: row.topic_summary,
+        // Status
         status: row.status,
         approvedAt: row.approved_at,
         postedAt: row.posted_at,
@@ -296,5 +315,163 @@ export const PillarService = {
             console.error('[PillarService] Error deleting draft:', error);
             throw error;
         }
+    },
+
+    // ========================================================================
+    // BATCH APPROVAL FUNCTIONS (The Drop)
+    // ========================================================================
+
+    /**
+     * Get pending batches for a business
+     * Returns unique batch IDs with count and date range
+     */
+    async getPendingBatches(businessId: string): Promise<{
+        batchId: string;
+        count: number;
+        startDate: string;
+        endDate: string;
+    }[]> {
+        const { data, error } = await supabase
+            .from('pillar_drafts')
+            .select('approval_batch_id, scheduled_for')
+            .eq('business_id', businessId)
+            .eq('status', 'pending')
+            .not('approval_batch_id', 'is', null)
+            .order('scheduled_for', { ascending: true });
+
+        if (error) {
+            console.error('[PillarService] Error fetching pending batches:', error);
+            throw error;
+        }
+
+        if (!data || data.length === 0) return [];
+
+        // Group by batch ID
+        const batchMap = new Map<string, { dates: string[] }>();
+        for (const draft of data) {
+            if (!draft.approval_batch_id) continue;
+            const batch = batchMap.get(draft.approval_batch_id) || { dates: [] };
+            batch.dates.push(draft.scheduled_for);
+            batchMap.set(draft.approval_batch_id, batch);
+        }
+
+        return Array.from(batchMap.entries()).map(([batchId, { dates }]) => ({
+            batchId,
+            count: dates.length,
+            startDate: dates[0],
+            endDate: dates[dates.length - 1],
+        }));
+    },
+
+    /**
+     * Get all drafts in a batch
+     */
+    async getDraftsByBatch(batchId: string): Promise<PillarDraft[]> {
+        const { data, error } = await supabase
+            .from('pillar_drafts')
+            .select('*')
+            .eq('approval_batch_id', batchId)
+            .order('scheduled_for', { ascending: true });
+
+        if (error) {
+            console.error('[PillarService] Error fetching drafts by batch:', error);
+            throw error;
+        }
+
+        return (data || []).map(mapDraftFromDB);
+    },
+
+    /**
+     * Approve a single draft
+     */
+    async approveDraft(draftId: string): Promise<PillarDraft> {
+        const { data, error } = await supabase
+            .from('pillar_drafts')
+            .update({
+                status: 'approved',
+                approved_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', draftId)
+            .select()
+            .single();
+
+        if (error) {
+            console.error('[PillarService] Error approving draft:', error);
+            throw error;
+        }
+
+        return mapDraftFromDB(data);
+    },
+
+    /**
+     * Approve all drafts in a batch
+     */
+    async approveAllInBatch(batchId: string): Promise<number> {
+        const { data, error } = await supabase
+            .from('pillar_drafts')
+            .update({
+                status: 'approved',
+                approved_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            })
+            .eq('approval_batch_id', batchId)
+            .eq('status', 'pending')
+            .select('id');
+
+        if (error) {
+            console.error('[PillarService] Error approving batch:', error);
+            throw error;
+        }
+
+        return data?.length || 0;
+    },
+
+    /**
+     * Skip a draft
+     */
+    async skipDraft(draftId: string): Promise<PillarDraft> {
+        const { data, error } = await supabase
+            .from('pillar_drafts')
+            .update({
+                status: 'skipped',
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', draftId)
+            .select()
+            .single();
+
+        if (error) {
+            console.error('[PillarService] Error skipping draft:', error);
+            throw error;
+        }
+
+        return mapDraftFromDB(data);
+    },
+
+    /**
+     * Update draft (caption, scheduled time)
+     */
+    async updateDraft(draftId: string, updates: {
+        caption?: string;
+        scheduledDatetime?: string;
+    }): Promise<PillarDraft> {
+        const { data, error } = await supabase
+            .from('pillar_drafts')
+            .update({
+                ...updates.caption && { caption: updates.caption },
+                ...updates.scheduledDatetime && { scheduled_datetime: updates.scheduledDatetime },
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', draftId)
+            .select()
+            .single();
+
+        if (error) {
+            console.error('[PillarService] Error updating draft:', error);
+            throw error;
+        }
+
+        return mapDraftFromDB(data);
     },
 };

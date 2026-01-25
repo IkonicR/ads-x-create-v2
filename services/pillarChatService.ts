@@ -3,10 +3,16 @@
  * 
  * Uses Gemini 3 Flash with function calling to extract structured pillar data
  * from natural language conversation.
+ * 
+ * UPGRADE (Phase 3): 
+ * - Injects full business context (Voice, Archetype, Contact Info)
+ * - Injects V2 God-Tier Styles
+ * - Extracts styleId and contact preferences
+ * - Forces follow-up questions
  */
 
 import { GoogleGenAI, FunctionDeclaration, Type, Part } from "@google/genai";
-import { Business, SocialAccount } from '../types';
+import { Business, SocialAccount, StylePreset } from '../types';
 import { AI_MODELS } from '../config/ai-models';
 import { PillarDraft } from '../components/PillarBuilder';
 
@@ -26,7 +32,7 @@ export interface PillarChatMessage {
 }
 
 // Platform configuration for AI context
-const PLATFORM_INFO = {
+const PLATFORM_INFO: Record<string, { name: string; aspectRatio: string; captionLimit: number }> = {
     instagram_feed: { name: 'Instagram Feed', aspectRatio: '1:1', captionLimit: 2200 },
     instagram_story: { name: 'Instagram Story', aspectRatio: '9:16', captionLimit: 150 },
     facebook: { name: 'Facebook', aspectRatio: '1.91:1', captionLimit: 63206 },
@@ -71,67 +77,99 @@ const updatePillarTool: FunctionDeclaration = {
                 type: Type.BOOLEAN,
                 description: 'Whether to auto-generate images for this pillar',
             },
+            styleId: {
+                type: Type.STRING,
+                description: 'The ID of the Visual Style Preset to use (from the available styles list)',
+            },
+            // Content Preferences
+            showBusinessName: { type: Type.BOOLEAN, description: 'Include business name on the creative?' },
+            showContactInfo: { type: Type.BOOLEAN, description: 'Include contact info on the creative?' },
+            sloganProminence: {
+                type: Type.STRING,
+                enum: ['hidden', 'subtle', 'standard', 'prominent'],
+                description: 'How prominent should the slogan be?'
+            },
         },
         required: [],
     },
 };
 
-// Build system prompt for pillar creation
-const buildSystemPrompt = (business: Business, connectedAccounts: SocialAccount[]): string => {
+/**
+ * Build System Prompt with Full Context
+ */
+const buildSystemPrompt = (
+    business: Business,
+    connectedAccounts: SocialAccount[],
+    availableStyles: StylePreset[] = []
+): string => {
+    // 1. Platform Context
     const platformList = connectedAccounts.length > 0
         ? connectedAccounts.map(a => `- ${a.platform} (${a.name})`).join('\n')
         : 'No platforms connected yet';
 
+    // 2. Product Context
     const offeringsList = business.offerings?.length > 0
-        ? business.offerings.map(o => `- ${o.name}`).join('\n')
+        ? business.offerings.map(o => `- ${o.name} (${o.category || 'Product'})`).join('\n')
         : 'No products/services added yet';
 
-    const teamList = business.teamMembers?.length > 0
-        ? business.teamMembers.map(t => `- ${t.name} (${t.role})`).join('\n')
-        : 'No team members added yet';
+    // 3. Style Context (V2 God-Tier)
+    const stylesList = availableStyles.length > 0
+        ? availableStyles.map(s => `- "${s.name}" (ID: ${s.id}): ${s.description}`).join('\n')
+        : 'No specific styles available. Ask for general vibe.';
 
-    return `You are a Content Strategy Assistant helping create a recurring content pillar for "${business.name}".
+    // 4. Voice & Archetype
+    const archetype = business.voice?.archetype || 'Professional';
+    const voiceTone = business.voice?.tone || 'Helpful and authoritative';
 
-## YOUR ROLE
-Guide the user through setting up a content pillar — a recurring, automated content series. Be friendly, conversational, and helpful. Ask one question at a time.
+    // 5. Contact Info
+    const contacts = (business.profile.contacts || [])
+        .map(c => `${c.label || c.type}: ${c.value}`)
+        .join(', ');
 
-## WHAT YOU NEED TO DISCOVER
-Through conversation, learn:
-1. **What type of content?** (motivation, product spotlight, team feature, tips, testimonials, custom)
-2. **Which day of the week?** (Monday through Sunday)
-3. **Which platforms?** (based on what they have connected)
-4. **What to feature?** (rotate through products? same thing each time? rotate team?)
-5. **Any specific style or vibe?**
+    return `
+<role>
+You are the Creative Director for "${business.name}".
+Your goal: Design a recurring "Content Pillar" — an automated weekly content series.
+You are NOT a form filler. You are a strategic partner.
+</role>
 
-## FUNCTION CALLING
-IMPORTANT: Call \`update_pillar_config\` whenever the user provides information. Extract structured data from their message. You can call it with partial data — you'll build up the config over multiple turns.
-
-## BUSINESS CONTEXT
-**Business:** ${business.name}
-
-**Connected Platforms:**
-${platformList}
-
-**Products/Services:**
+<brand_bible>
+**Archetype:** ${archetype}
+**Tone:** ${voiceTone}
+**Products:**
 ${offeringsList}
 
-**Team Members:**
-${teamList}
+**Contact Info Available:** ${contacts || 'None specified'}
+</brand_bible>
 
-## CONVERSATION FLOW
-1. Start by understanding what they want to post about
-2. Ask what day of the week
-3. Ask which platforms
-4. Ask about rotation (same product or different each week?)
-5. Capture any special instructions
-6. Confirm the configuration
+<available_styles>
+You have access to these V2 Production Styles. RECOMMEND one that fits the user's vision:
+${stylesList}
+</available_styles>
 
-## STYLE
-- Be warm and encouraging
-- Use their business name when relevant
-- Keep responses concise (2-3 sentences)
-- Ask ONE question at a time
-- When you have enough info, let them know the pillar is ready to save`;
+<connected_platforms>
+${platformList}
+</connected_platforms>
+
+<protocol>
+1. **Be Proactive:** Don't just ask "what do you want?". Pitch ideas based on their products/archetype.
+2. **One Step at a Time:** Don't overwhelm. Ask 1 key question per turn.
+3. **Capture Details:** You need to know:
+   - **Theme/Topic** (Rotation? Static?)
+   - **Visual Style** (Pick a specific Style ID)
+   - **Platforms** (Insta? FB?)
+   - **Content Elements** (Should we show phone number? Address? Logo?)
+4. **Function Calling:** Call \`update_pillar_config\` whenever you learn something new.
+5. **Always Follow Up:** After calling a function, you MUST output text to move the conversation forward. NEVER be silent.
+</protocol>
+
+<conversation_flow>
+1. **Greeting:** Pitch a pillar idea based on their business type. "Hey! Since we're a gym, how about a 'Member Spotlight Monday'?"
+2. **Visuals:** "What vibe are we going for? I recommend 'Neon Noir' for high energy, or 'Clean Health' for trust. What do you think?"
+3. **Details:** "Should we include the phone number on every post? What about the logo?"
+4. **Logistics:** "Which day should this drop? Tuesdays? And for Instagram, do you want square feed posts (1:1) or full-screen stories (9:16)?"
+</conversation_flow>
+    `.trim();
 };
 
 /**
@@ -140,6 +178,7 @@ ${teamList}
 export const sendPillarChatMessage = async (
     business: Business,
     connectedAccounts: SocialAccount[],
+    availableStyles: StylePreset[],
     history: PillarChatMessage[],
     newMessage: string,
     currentDraft: PillarDraft
@@ -157,7 +196,7 @@ export const sendPillarChatMessage = async (
     }
 
     try {
-        const systemPrompt = buildSystemPrompt(business, connectedAccounts);
+        const systemPrompt = buildSystemPrompt(business, connectedAccounts, availableStyles);
 
         // Build conversation history
         const conversationHistory = history.map(msg => ({
@@ -177,7 +216,7 @@ export const sendPillarChatMessage = async (
 
         // Include current draft state so AI knows what's already configured
         const contextMessage = currentDraft && Object.keys(currentDraft).length > 0
-            ? `${newMessage}\n\n[Current pillar config: ${JSON.stringify(currentDraft)}]`
+            ? `${newMessage}\n\n[System Note: Current config: ${JSON.stringify(currentDraft)}. Ask the next logical missing question.]`
             : newMessage;
 
         // Send message
@@ -202,6 +241,7 @@ export const sendPillarChatMessage = async (
             if (part.functionCall?.name === 'update_pillar_config') {
                 const args = part.functionCall.args as Record<string, any>;
 
+                // Map fields
                 if (args.name) updates.name = args.name;
                 if (args.theme) updates.theme = args.theme;
                 if (args.dayOfWeek !== undefined) updates.dayOfWeek = args.dayOfWeek;
@@ -210,15 +250,40 @@ export const sendPillarChatMessage = async (
                 if (args.instructions) updates.instructions = args.instructions;
                 if (args.generateImage !== undefined) updates.generateImage = args.generateImage;
 
+                // New Fields (Phase 3)
+                if (args.styleId) updates.styleId = args.styleId;
+                if (args.showBusinessName !== undefined) updates.showBusinessName = args.showBusinessName;
+                if (args.showContactInfo !== undefined) updates.showContactInfo = args.showContactInfo;
+                if (args.sloganProminence) updates.sloganProminence = args.sloganProminence;
+
                 console.log('[PillarChatService] Extracted updates:', updates);
             }
         }
 
-        // Fallback if no text response
+        /**
+         * CRITICAL FIX: If AI called a function but returned no text, 
+         * we must force a follow-up generation to keep the chat alive.
+         */
+        if (!responseText.trim() && Object.keys(updates).length > 0) {
+            console.log('[PillarChatService] Function called but no text. Forcing follow-up...');
+
+            // We can't re-use the same chat object easily for a strictly "next turn", 
+            // but we can simulate it or just return a generic prompt if specific logic is hard.
+            // Better approach: Ask it to generate the response text now.
+
+            const followUp = await chat.sendMessage({
+                message: [{ text: "System: You updated the config. Now, confirm what you changed and ask the next logical question to the user. Do not call functions this time." }]
+            });
+
+            const followUpText = followUp.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (followUpText) {
+                responseText = followUpText;
+            }
+        }
+
+        // Final Fallback
         if (!responseText.trim()) {
-            responseText = Object.keys(updates).length > 0
-                ? "Got it! I've updated the pillar configuration. What else would you like to add?"
-                : "I understand. Can you tell me more about what kind of content you'd like to create?";
+            responseText = "I've updated the pillar preferences. What else should we adjust?";
         }
 
         return {
@@ -236,8 +301,9 @@ export const sendPillarChatMessage = async (
 };
 
 /**
- * Get initial greeting message
+ * Get initial greeting message (Enhanced)
  */
 export const getInitialGreeting = (business: Business): string => {
-    return `Hey! Let's create a recurring content pillar for ${business.name}. What kind of content do you want to post regularly? You can pick a suggestion below or describe your own idea.`;
+    const archetype = business.voice?.archetype || '';
+    return `Hey! I'm ready to design a new content pillar for ${business.name}. ${archetype ? `Keeping our "${archetype}" vibe in mind, ` : ''}what kind of recurring content should we create?`;
 };

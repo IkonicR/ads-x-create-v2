@@ -605,6 +605,20 @@ export interface ContentPillar {
     currentIndex: number;
   };
 
+  // V2: Scheduling
+  preferredTime?: string;          // Override default posting time (HH:MM)
+  pillarTimezone?: string;         // Override business timezone
+
+  // V2: Content Memory
+  topicHistory?: {                 // Past topics for open-ended pillars
+    date: string;
+    summary: string;
+  }[];
+
+  // V2: Future - AI optimal times
+  optimalTimes?: Record<string, { time: string; score: number }>;
+  useOptimalTimes?: boolean;
+
   // State
   isActive: boolean;
 
@@ -624,8 +638,15 @@ export interface PillarDraft {
   imageUrl?: string;
 
   // Target
-  scheduledFor: string;  // Date string (YYYY-MM-DD)
+  scheduledFor: string;            // Date string (YYYY-MM-DD)
+  scheduledDatetime?: string;      // Full datetime for posting (ISO)
   platforms: string[];
+
+  // Batch approval
+  approvalBatchId?: string;        // Groups drafts for batch approval
+
+  // Content memory
+  topicSummary?: string;           // AI-extracted topic summary
 
   // Status
   status: PillarDraftStatus;

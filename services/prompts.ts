@@ -604,10 +604,47 @@ export const PromptFactory = {
       ? availableStyles.map(s => `      - "${s.name}" (ID: ${s.id})`).join('\n')
       : '      - Various creative styles available';
 
-    // Format tasks for AI context
+    // Format tasks for AI context (rich context with dimensions, specs, descriptions)
     let tasksText = "No active marketing tasks.";
     if (tasks && tasks.length > 0) {
-      tasksText = tasks.map(t => `- [${t.status}] ${t.title} (Priority: ${t.priority})`).join('\n      ');
+      tasksText = tasks.map(t => {
+        const lines: string[] = [];
+
+        // Main line: status, title, priority, due date
+        let mainLine = `📌 [${t.status}] **${t.title}** (${t.priority})`;
+        if (t.dueDate) {
+          const due = new Date(t.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          mainLine += ` — Due: ${due}`;
+        }
+        lines.push(mainLine);
+
+        // Description (if exists)
+        if (t.description) {
+          lines.push(`   Description: ${t.description}`);
+        }
+
+        // Tech Specs (critical for production tasks)
+        if (t.techSpecs) {
+          const specs: string[] = [];
+          if (t.techSpecs.dimensions) {
+            const { width, height, unit } = t.techSpecs.dimensions;
+            specs.push(`${width}×${height}${unit}`);
+          }
+          if (t.techSpecs.fileFormat) {
+            specs.push(t.techSpecs.fileFormat);
+          }
+          if (specs.length > 0) {
+            lines.push(`   📐 Tech Specs: ${specs.join(', ')}`);
+          }
+        }
+
+        // Category (if exists)
+        if (t.category) {
+          lines.push(`   Category: ${t.category}`);
+        }
+
+        return lines.join('\n');
+      }).join('\n\n      ');
     }
 
     // V2: Format brand colors

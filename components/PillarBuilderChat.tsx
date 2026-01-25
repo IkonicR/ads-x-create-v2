@@ -9,7 +9,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Business, SocialAccount, ContentPillar } from '../types';
+import { Business, SocialAccount, ContentPillar, StylePreset } from '../types';
 import { PillarDraft } from './PillarBuilder';
 import { useThemeStyles, NeuButton } from './NeuComponents';
 import { sendPillarChatMessage, getInitialGreeting, PillarChatMessage } from '../services/pillarChatService';
@@ -21,6 +21,7 @@ import {
 interface PillarBuilderChatProps {
     business: Business;
     connectedAccounts: SocialAccount[];
+    availableStyles: StylePreset[];
     draft: PillarDraft;
     onDraftUpdate: (updates: Partial<PillarDraft>) => void;
     existingPillar?: ContentPillar | null;
@@ -68,6 +69,7 @@ const SUGGESTION_CARDS = [
 export const PillarBuilderChat: React.FC<PillarBuilderChatProps> = ({
     business,
     connectedAccounts,
+    availableStyles,
     draft,
     onDraftUpdate,
     existingPillar,
@@ -124,6 +126,7 @@ export const PillarBuilderChat: React.FC<PillarBuilderChatProps> = ({
             const { response, updates } = await sendPillarChatMessage(
                 business,
                 connectedAccounts,
+                availableStyles,
                 messages,
                 userMessage.content,
                 draft
