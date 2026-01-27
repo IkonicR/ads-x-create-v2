@@ -119,6 +119,12 @@ npx supabase db push
 > Running `git checkout -- <file>` destroys uncommitted work permanently. This has caused data loss before.
 > If you need to revert YOUR changes, ask the user first — they may have uncommitted work in the same files.
 
+> [!CAUTION]
+> ## ⛔ NEVER SUGGEST DOWNGRADING AI MODELS
+> **DO NOT** ever suggest using older Gemini models (2.0, 1.5, etc.) as a "fix" for AI-related issues.
+> We use the latest Gemini models intentionally. If something breaks, debug the actual problem — don't dumb down the product.
+> This is a premium product. We ship cutting-edge, not legacy.
+
 ## Gemini Added Memories
 
 ## ARCHITECTURAL PATTERNS

@@ -19,13 +19,21 @@ const cleanFunctionCallArtifacts = (text: string): string => {
   // - \)\} matches closing ')}'
   return text
     .replace(/f?\{generate_marketing_image\([\s\S]*?\)\}/g, '')
-    // NEW: Catch standalone function call syntax (no curly braces) - the format AI actually outputs
-    .replace(/generate_marketing_image\s*\(\s*prompt\s*=\s*"[\s\S]*?"\s*\)/g, '')
+    // Catch ANY function call syntax (both prompt= and prompt: variants)
+    .replace(/generate_marketing_image\s*\([^)]*\)/g, '')
     // Clean up malformed function call JSON (when AI outputs as text instead of structured)
     .replace(/calls"?\s*:\s*\[[\s\S]*?generate_marketing_image[\s\S]*?\]/g, '')
     .replace(/function"?\s*:\s*"?generate_marketing_image[\s\S]*?\}/g, '')
     // Clean up orphaned JSON fragments that sometimes leak through
     .replace(/"?\s*args"?\s*:\s*\{[^}]*\}/g, '')  // Catches "args": {...}
+    // Clean internal AI notes and comments
+    .replace(/\/\/\s*Note:.*$/gm, '')  // Catches "// Note: ..."
+    .replace(/\/\/\s*Calling the tool.*$/gm, '')  // Catches "// Calling the tool..."
+    .replace(/\/\/\s*I will.*$/gm, '')  // Catches "// I will generate..."
+    .replace(/^\/\/.*$/gm, '')  // Catches any remaining // comments
+    // Clean thought artifacts
+    .replace(/"thought"\s*:\s*"[^"]*"/g, '')  // Catches "thought": "..."
+    // Clean orphaned JSON syntax
     .replace(/"\s*\}/g, '')  // Catches " }
     .replace(/\{\s*"/g, '')  // Catches { "
     .replace(/"\s*,?\s*$/gm, '')  // Catches trailing " or ", at end of lines
@@ -554,8 +562,12 @@ export const sendChatMessage = async (
     conversationalText = conversationalText
       .replace(/\{[\s\S]*?"action"[\s\S]*?\}/g, '')  // LangChain JSON
       .replace(/f?\{generate_marketing_image[\s\S]*?\}/g, '')  // f{} syntax
-      .replace(/generate_marketing_image\s*\(\s*prompt\s*=\s*"[\s\S]*?"\s*\)/g, '')  // Standalone function call
+      .replace(/generate_marketing_image\s*\([^)]*\)/g, '')  // Any function call syntax
       .replace(/\{\s*"prompt"[\s\S]*?\}/g, '')  // Raw JSON
+      .replace(/\/\/\s*Note:.*$/gm, '')  // Internal notes
+      .replace(/\/\/\s*Calling the tool.*$/gm, '')  // Tool call comments
+      .replace(/^\/\/.*$/gm, '')  // Any remaining // comments
+      .replace(/"thought"\s*:\s*"[^"]*"/g, '')  // Thought artifacts
       .trim();
 
     // TURN 2: Action execution (with full CMO prompt and tools)

@@ -11,7 +11,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Business, SocialAccount, ContentPillar, StylePreset } from '../types';
 import { PillarDraft } from './PillarBuilder';
-import { useThemeStyles, NeuButton } from './NeuComponents';
+import { useThemeStyles, NeuButton, NeuCard, NeuInput, NeuIconButton } from './NeuComponents';
+import { MarkdownRenderer } from './MarkdownRenderer';
 import { sendPillarChatMessage, getInitialGreeting, PillarChatMessage } from '../services/pillarChatService';
 import {
     Send, Sparkles, Target, Users, MessageSquare,
@@ -189,13 +190,19 @@ export const PillarBuilderChat: React.FC<PillarBuilderChatProps> = ({
                             animate={{ opacity: 1, y: 0 }}
                             className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                         >
-                            <div
-                                className={`max-w-[80%] px-4 py-3 rounded-2xl ${msg.role === 'user'
-                                    ? 'bg-brand text-white rounded-br-sm'
-                                    : `${isDark ? 'bg-white/10' : 'bg-black/5'} ${styles.textMain} rounded-bl-sm`
-                                    }`}
-                            >
-                                {msg.content}
+                            <div className={`max-w-[85%] ${msg.role === 'user' ? 'ml-8' : 'mr-8'}`}>
+                                <NeuCard
+                                    className={`px-4 py-3 ${msg.role === 'user'
+                                        ? 'bg-brand border-brand text-white' // User bubble
+                                        : '' // Default Neu styling for AI
+                                        }`}
+                                >
+                                    {msg.role === 'assistant' ? (
+                                        <MarkdownRenderer content={msg.content} className="text-sm" />
+                                    ) : (
+                                        <p className="whitespace-pre-wrap text-sm">{msg.content}</p>
+                                    )}
+                                </NeuCard>
                             </div>
                         </motion.div>
                     ))}
@@ -206,11 +213,14 @@ export const PillarBuilderChat: React.FC<PillarBuilderChatProps> = ({
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        className="flex justify-start"
+                        className="flex justify-start mr-8"
                     >
-                        <div className={`px-4 py-3 rounded-2xl rounded-bl-sm ${isDark ? 'bg-white/10' : 'bg-black/5'}`}>
-                            <Loader2 size={20} className="animate-spin text-brand" />
-                        </div>
+                        <NeuCard className="px-4 py-3 max-w-[85%]">
+                            <div className="flex items-center gap-2">
+                                <Loader2 size={16} className="animate-spin text-brand" />
+                                <span className={`text-xs ${styles.textSub} italic`}>Thinking...</span>
+                            </div>
+                        </NeuCard>
                     </motion.div>
                 )}
 
@@ -223,18 +233,19 @@ export const PillarBuilderChat: React.FC<PillarBuilderChatProps> = ({
                     <p className={`text-xs ${styles.textSub} mb-3 pt-4`}>Quick Start</p>
                     <div className="grid grid-cols-2 gap-2">
                         {SUGGESTION_CARDS.map((card) => (
-                            <button
+                            <NeuCard
                                 key={card.id}
                                 onClick={() => handleSuggestionClick(card)}
-                                className={`p-3 rounded-xl text-left transition-all border-2 border-transparent hover:border-brand/30 ${isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'
-                                    }`}
+                                className="p-3 cursor-pointer group hover:border-brand/40"
                             >
                                 <div className="flex items-center gap-2 mb-1">
-                                    <span className="text-brand">{card.icon}</span>
+                                    <span className="text-brand group-hover:scale-110 transition-transform">
+                                        {card.icon}
+                                    </span>
                                     <span className={`text-sm font-bold ${styles.textMain}`}>{card.title}</span>
                                 </div>
-                                <p className={`text-xs ${styles.textSub}`}>{card.description}</p>
-                            </button>
+                                <p className={`text-xs ${styles.textSub} line-clamp-2`}>{card.description}</p>
+                            </NeuCard>
                         ))}
                     </div>
                 </div>
@@ -242,27 +253,25 @@ export const PillarBuilderChat: React.FC<PillarBuilderChatProps> = ({
 
             {/* Input */}
             <div className={`p-4 border-t ${isDark ? 'border-white/10' : 'border-black/10'}`}>
-                <div className={`flex items-end gap-2 p-3 rounded-xl ${isDark ? 'bg-white/5' : 'bg-black/5'}`}>
-                    <textarea
-                        ref={inputRef}
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        placeholder="Describe what you want..."
-                        rows={1}
-                        className={`flex-1 bg-transparent resize-none outline-none ${styles.textMain} placeholder:${styles.textSub}`}
-                        style={{ maxHeight: '120px' }}
-                    />
-                    <button
+                <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                        <NeuInput
+                            ref={inputRef}
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            placeholder="Describe what you want..."
+                            className="w-full text-base"
+                        />
+                    </div>
+                    <NeuButton
                         onClick={handleSend}
                         disabled={!input.trim() || isLoading}
-                        className={`p-2 rounded-lg transition-all ${input.trim() && !isLoading
-                            ? 'bg-brand text-white hover:opacity-90'
-                            : `${isDark ? 'bg-white/10 text-white/30' : 'bg-black/10 text-black/30'}`
-                            }`}
+                        variant="primary"
+                        className="h-[46px] w-[46px] !p-0 flex items-center justify-center shrink-0"
                     >
                         <Send size={18} />
-                    </button>
+                    </NeuButton>
                 </div>
             </div>
         </div>

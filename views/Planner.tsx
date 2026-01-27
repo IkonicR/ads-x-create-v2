@@ -277,74 +277,105 @@ const Planner: React.FC<PlannerProps> = ({ business }) => {
                         transition={{ duration: 0.2 }}
                         className="px-4"
                     >
-                        {/* Loading State */}
-                        {pillarsLoading && pillars.length === 0 && (
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                className={`p-16 rounded-2xl ${styles.bg} ${styles.shadowOut} flex flex-col items-center justify-center`}
-                            >
-                                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand mb-4" />
-                                <p className={styles.textSub}>Loading your content pillars...</p>
-                            </motion.div>
-                        )}
-
-                        {/* Empty State */}
-                        {!pillarsLoading && pillars.length === 0 && (
-                            <NeuCard className="p-12 text-center">
-                                <div className={`w-16 h-16 mx-auto mb-4 rounded-full ${styles.bgAccent} flex items-center justify-center`}>
-                                    <Sparkles size={32} className="text-brand" />
-                                </div>
-                                <h3 className={`text-xl font-bold ${styles.textMain} mb-2`}>
-                                    No Content Pillars Yet
-                                </h3>
-                                <p className={`${styles.textSub} mb-6 max-w-md mx-auto`}>
-                                    Content Pillars are recurring themes like "Motivation Monday" or "Product Friday".
-                                    The AI will auto-draft content for your approval.
-                                </p>
-                                <NeuButton
-                                    variant="primary"
-                                    onClick={handleCreatePillar}
-                                    className="mx-auto"
+                        <AnimatePresence mode="wait">
+                            {isPillarModalOpen ? (
+                                <motion.div
+                                    key="builder"
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: 20 }}
                                 >
-                                    <Plus size={18} className="mr-2" />
-                                    Create Your First Pillar
-                                </NeuButton>
-                            </NeuCard>
-                        )}
+                                    <div className="mb-4">
+                                        <NeuButton
+                                            onClick={() => setIsPillarModalOpen(false)}
+                                            className="text-sm"
+                                            variant="secondary"
+                                        >
+                                            ← Back to Pillars
+                                        </NeuButton>
+                                    </div>
+                                    <PillarBuilder
+                                        isOpen={true}
+                                        business={business}
+                                        connectedAccounts={accounts}
+                                        existingPillar={editingPillar}
+                                        onClose={() => setIsPillarModalOpen(false)}
+                                        onSave={handleSavePillar}
+                                    />
+                                </motion.div>
+                            ) : (
+                                <motion.div
+                                    key="list"
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                >
+                                    {/* Loading State */}
+                                    {pillarsLoading && pillars.length === 0 && (
+                                        <motion.div
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            className={`p-16 rounded-2xl ${styles.bg} ${styles.shadowOut} flex flex-col items-center justify-center`}
+                                        >
+                                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand mb-4" />
+                                            <p className={styles.textSub}>Loading your content pillars...</p>
+                                        </motion.div>
+                                    )}
 
-                        {/* Pillars Grid */}
-                        {pillars.length > 0 && (
-                            <div className="space-y-4">
-                                {/* Header with Add Button */}
-                                <div className="flex items-center justify-between">
-                                    <h3 className={`font-bold ${styles.textMain}`}>
-                                        Your Content Pillars
-                                    </h3>
-                                    <NeuButton
-                                        variant="primary"
-                                        onClick={handleCreatePillar}
-                                        className="text-sm"
-                                    >
-                                        <Plus size={16} className="mr-1" />
-                                        Add Pillar
-                                    </NeuButton>
-                                </div>
+                                    {/* Empty State */}
+                                    {!pillarsLoading && pillars.length === 0 && (
+                                        <NeuCard className="p-12 text-center">
+                                            <div className={`w-16 h-16 mx-auto mb-4 rounded-full ${styles.bgAccent} flex items-center justify-center`}>
+                                                <Sparkles size={32} className="text-brand" />
+                                            </div>
+                                            <h3 className={`text-xl font-bold ${styles.textMain} mb-2`}>
+                                                No Content Pillars Yet
+                                            </h3>
+                                            <p className={`${styles.textSub} mb-6 max-w-md mx-auto`}>
+                                                Set up automated content themes (like "Motivation Monday" or "Product Spotlight")
+                                                and let AI generate posts for you every week.
+                                            </p>
+                                            <NeuButton onClick={handleCreatePillar}>
+                                                Create Your First Pillar
+                                            </NeuButton>
+                                        </NeuCard>
+                                    )}
 
-                                {/* Pillar Cards */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {pillars.map((pillar) => (
-                                        <PillarCard
-                                            key={pillar.id}
-                                            pillar={pillar}
-                                            onEdit={handleEditPillar}
-                                            onToggleActive={togglePillarActive}
-                                            onDelete={handleDeletePillar}
-                                        />
-                                    ))}
-                                </div>
-                            </div>
-                        )}
+                                    {/* Pillars Grid */}
+                                    {pillars.length > 0 && (
+                                        <div className="space-y-4">
+                                            {/* Header with Add Button */}
+                                            <div className="flex items-center justify-between">
+                                                <h3 className={`font-bold ${styles.textMain}`}>
+                                                    Your Content Pillars
+                                                </h3>
+                                                <NeuButton
+                                                    variant="primary"
+                                                    onClick={handleCreatePillar}
+                                                    className="text-sm"
+                                                >
+                                                    <Plus size={16} className="mr-1" />
+                                                    Add Pillar
+                                                </NeuButton>
+                                            </div>
+
+                                            {/* Pillar Cards */}
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                {pillars.map((pillar) => (
+                                                    <PillarCard
+                                                        key={pillar.id}
+                                                        pillar={pillar}
+                                                        onEdit={handleEditPillar}
+                                                        onToggleActive={togglePillarActive}
+                                                        onDelete={handleDeletePillar}
+                                                    />
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
                     </motion.div>
                 )}
             </AnimatePresence>
@@ -400,18 +431,6 @@ const Planner: React.FC<PlannerProps> = ({ business }) => {
                 onCancel={() => setPostToDelete(null)}
             />
 
-            {/* Pillar Builder (Split-screen chat) */}
-            <PillarBuilder
-                isOpen={isPillarModalOpen}
-                business={business}
-                connectedAccounts={accounts}
-                existingPillar={editingPillar}
-                onClose={() => {
-                    setIsPillarModalOpen(false);
-                    setEditingPillar(null);
-                }}
-                onSave={handleSavePillar}
-            />
 
             {/* Delete Pillar Confirmation Modal */}
             <ConfirmModal

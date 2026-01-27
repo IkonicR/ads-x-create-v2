@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { createPortal } from 'react-dom';
+// import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ContentPillar, Business, SocialAccount } from '../types';
 import { PillarBuilderChat } from './PillarBuilderChat';
@@ -41,8 +41,6 @@ export interface PillarDraft {
     sloganProminence?: 'hidden' | 'subtle' | 'standard' | 'prominent';
 }
 
-import { useStyles } from '../hooks/useStyles';
-
 export const PillarBuilder: React.FC<PillarBuilderProps> = ({
     isOpen,
     business,
@@ -52,7 +50,7 @@ export const PillarBuilder: React.FC<PillarBuilderProps> = ({
     onSave,
 }) => {
     const { styles: themeStyles, theme } = useThemeStyles();
-    const { styles: availableStyles } = useStyles(business.id); // Valid hook call
+    const availableStyles: any[] = []; // TODO: Fetch styles from database
     const isDark = theme === 'dark';
 
     // The pillar being built
@@ -103,100 +101,72 @@ export const PillarBuilder: React.FC<PillarBuilderProps> = ({
 
     if (!isOpen) return null;
 
-    return createPortal(
-        <AnimatePresence>
-            <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8"
+    return (
+        <div
+            className={`w-full h-[calc(100vh-140px)] flex rounded-2xl overflow-hidden border relative ${isDark ? 'bg-neu-dark border-white/5' : 'bg-neu-light border-black/5'
+                } ${themeStyles.shadowOut}`}
+        >
+            {/* Close Button */}
+            <button
+                onClick={onClose}
+                className={`absolute top-4 right-4 z-20 p-2 rounded-xl transition-colors ${isDark ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-black/10 hover:bg-black/20 text-black'
+                    }`}
             >
-                {/* Backdrop */}
-                <div
-                    className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-                    onClick={onClose}
-                />
+                <X size={20} />
+            </button>
 
-                {/* Main Container */}
-                <motion.div
-                    initial={{ scale: 0.95, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0.95, opacity: 0 }}
-                    className={`relative z-10 flex w-full h-full max-h-[calc(100vh-4rem)] md:max-h-[calc(100vh-6rem)] rounded-2xl overflow-hidden ${isDark ? 'bg-neu-dark' : 'bg-neu-light'
+            {/* Mobile View Toggle */}
+            <div className="md:hidden absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex gap-2 p-1 rounded-xl bg-black/20 backdrop-blur-sm">
+                <button
+                    onClick={() => setMobileView('chat')}
+                    className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-all ${mobileView === 'chat' ? 'bg-brand text-white' : 'text-white/70 hover:text-white'
                         }`}
                 >
-                    {/* Close Button */}
-                    <button
-                        onClick={onClose}
-                        className={`absolute top-4 right-4 z-20 p-2 rounded-xl transition-colors ${isDark ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-black/10 hover:bg-black/20 text-black'
-                            }`}
-                    >
-                        <X size={20} />
-                    </button>
+                    <MessageSquare size={16} />
+                    Chat
+                </button>
+                <button
+                    onClick={() => setMobileView('preview')}
+                    className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-all ${mobileView === 'preview' ? 'bg-brand text-white' : 'text-white/70 hover:text-white'
+                        }`}
+                >
+                    <Eye size={16} />
+                    Preview
+                </button>
+            </div>
 
-                    {/* Mobile View Toggle */}
-                    <div className="md:hidden absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex gap-2 p-1 rounded-xl bg-black/20 backdrop-blur-sm">
-                        <button
-                            onClick={() => setMobileView('chat')}
-                            className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-all ${mobileView === 'chat'
-                                ? 'bg-brand text-white'
-                                : 'text-white/70 hover:text-white'
-                                }`}
-                        >
-                            <MessageSquare size={16} />
-                            Chat
-                        </button>
-                        <button
-                            onClick={() => setMobileView('preview')}
-                            className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-all ${mobileView === 'preview'
-                                ? 'bg-brand text-white'
-                                : 'text-white/70 hover:text-white'
-                                }`}
-                        >
-                            <Eye size={16} />
-                            Preview
-                        </button>
-                    </div>
+            {/* Left: Chat */}
+            <div className={`
+                    flex-1 flex flex-col
+                    md:border-r ${isDark ? 'md:border-white/10' : 'md:border-black/10'}
+                    ${mobileView === 'chat' ? 'flex' : 'hidden md:flex'}
+                `}>
+                <PillarBuilderChat
+                    business={business}
+                    connectedAccounts={connectedAccounts}
+                    availableStyles={availableStyles}
+                    draft={draft}
+                    onDraftUpdate={handleDraftUpdate}
+                    existingPillar={existingPillar}
+                />
+            </div>
 
-                    {/* Desktop: Split Screen */}
-                    {/* Mobile: Show based on toggle */}
-
-                    {/* Left: Chat */}
-                    <div className={`
-            flex-1 flex flex-col
-            md:border-r ${isDark ? 'md:border-white/10' : 'md:border-black/10'}
-            ${mobileView === 'chat' ? 'flex' : 'hidden md:flex'}
-          `}>
-                        <PillarBuilderChat
-                            business={business}
-                            connectedAccounts={connectedAccounts}
-                            availableStyles={availableStyles}
-                            draft={draft}
-                            onDraftUpdate={handleDraftUpdate}
-                            existingPillar={existingPillar}
-                        />
-                    </div>
-
-                    {/* Right: Preview */}
-                    <div className={`
-            w-full md:w-[400px] lg:w-[450px] flex flex-col
-            ${mobileView === 'preview' ? 'flex' : 'hidden md:flex'}
-          `}>
-                        <PillarBuilderPreview
-                            draft={draft}
-                            canSave={canSave}
-                            isSaving={isSaving}
-                            onSave={handleSave}
-                            onEdit={(field) => {
-                                // TODO: Allow inline editing - for now just switch to chat
-                                setMobileView('chat');
-                            }}
-                        />
-                    </div>
-                </motion.div>
-            </motion.div>
-        </AnimatePresence>,
-        document.body
+            {/* Right: Preview */}
+            <div className={`
+                    w-full md:w-[400px] lg:w-[450px] flex flex-col bg-opacity-50
+                    ${mobileView === 'preview' ? 'flex' : 'hidden md:flex'}
+                `}>
+                <PillarBuilderPreview
+                    draft={draft}
+                    canSave={canSave}
+                    isSaving={isSaving}
+                    onSave={handleSave}
+                    onEdit={(field) => {
+                        setMobileView('chat');
+                    }}
+                />
+            </div>
+        </div>
     );
 };
 
