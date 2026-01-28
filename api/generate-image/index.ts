@@ -484,7 +484,8 @@ ${styleInstructions ? `=== STYLE INSTRUCTIONS ===\n${styleInstructions}` : ''}
             }
         }
 
-        // ADD TIMEOUT SAFETY: 40s (Max duration is 60s)
+        // ADD TIMEOUT SAFETY: 55s (Max duration is 60s)
+        // Increased from 40s because Gemini 3 Pro Image regularly takes 35-45s
         const generatePromise = googleClient.models.generateContent({
             model: 'gemini-3-pro-image-preview',
             contents: [{ role: 'user', parts: googleParts }],
@@ -498,7 +499,7 @@ ${styleInstructions ? `=== STYLE INSTRUCTIONS ===\n${styleInstructions}` : ''}
         });
 
         const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('AI generation timed out (40s)')), 40000)
+            setTimeout(() => reject(new Error('AI generation timed out (55s)')), 55000)
         );
 
         const result: any = await Promise.race([generatePromise, timeoutPromise]);
