@@ -9,9 +9,8 @@
  */
 
 import React from 'react';
-import { motion } from 'framer-motion';
 import { ChevronLeft, ChevronRight, RefreshCw, Wifi, WifiOff, Settings } from 'lucide-react';
-import { NeuButton, useThemeStyles } from '../NeuComponents';
+import { NeuButton, NeuTabs, useThemeStyles } from '../NeuComponents';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 
 export type CalendarViewMode = 'month' | 'week' | 'day';
@@ -102,28 +101,12 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
             {/* Right: View Toggle + Actions */}
             <div className="flex items-center gap-3">
                 {/* View Mode Toggle */}
-                <div className={`relative flex items-center gap-1 p-1 rounded-xl ${styles.bg} ${styles.shadowIn}`}>
-                    {VIEW_MODES.map((mode) => (
-                        <button
-                            key={mode.value}
-                            onClick={() => onViewModeChange(mode.value)}
-                            className={`relative z-10 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === mode.value
-                                    ? 'text-white'
-                                    : `${styles.textSub} hover:${styles.textMain}`
-                                }`}
-                        >
-                            {mode.label}
-                            {viewMode === mode.value && (
-                                <motion.div
-                                    layoutId="viewModeIndicator"
-                                    className="absolute inset-0 bg-brand rounded-lg -z-10"
-                                    initial={false}
-                                    transition={{ type: 'spring', stiffness: 500, damping: 35 }}
-                                />
-                            )}
-                        </button>
-                    ))}
-                </div>
+                <NeuTabs
+                    tabs={VIEW_MODES.map(m => ({ id: m.value, label: m.label }))}
+                    activeTab={viewMode}
+                    onChange={(id) => onViewModeChange(id as CalendarViewMode)}
+                    layoutId="calendarViewMode"
+                />
 
                 {/* Sync Button */}
                 {onSync && (

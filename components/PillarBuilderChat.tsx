@@ -16,7 +16,7 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { sendPillarChatMessage, getInitialGreeting, PillarChatMessage } from '../services/pillarChatService';
 import {
     Send, Sparkles, Target, Users, MessageSquare,
-    BookOpen, Calendar, Loader2
+    BookOpen, Calendar, Loader2, Bot, User
 } from 'lucide-react';
 
 interface PillarBuilderChatProps {
@@ -78,13 +78,41 @@ export const PillarBuilderChat: React.FC<PillarBuilderChatProps> = ({
     const { styles, theme } = useThemeStyles();
     const isDark = theme === 'dark';
 
-    const [messages, setMessages] = useState<ChatMessage[]>([]);
+    // localStorage key for chat persistence
+    const STORAGE_KEY_CHAT = `pillar_chat_${business.id}`;
+
+    // Initialize messages from localStorage cache (if available)
+    const [messages, setMessages] = useState<ChatMessage[]>(() => {
+        // Skip cache if editing existing pillar
+        if (existingPillar) return [];
+        
+        try {
+            const savedChat = localStorage.getItem(STORAGE_KEY_CHAT);
+            if (savedChat) {
+                const parsed = JSON.parse(savedChat);
+                return parsed.map((m: any) => ({
+                    ...m,
+                    timestamp: new Date(m.timestamp)
+                }));
+            }
+        } catch { /* ignore */ }
+        return [];
+    });
+    
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
-    // Initial AI greeting
+    // Save messages to localStorage on update
+    useEffect(() => {
+        if (existingPillar) return; // Don't save when editing existing
+        if (messages.length > 0) {
+            localStorage.setItem(STORAGE_KEY_CHAT, JSON.stringify(messages));
+        }
+    }, [messages, existingPillar, STORAGE_KEY_CHAT]);
+
+    // Initial AI greeting (only if no cached messages)
     useEffect(() => {
         if (messages.length === 0 && !existingPillar) {
             setMessages([{
@@ -182,31 +210,37 @@ export const PillarBuilderChat: React.FC<PillarBuilderChatProps> = ({
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                <AnimatePresence>
                     {messages.map((msg) => (
                         <motion.div
                             key={msg.id}
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                            className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
                         >
-                            <div className={`max-w-[85%] ${msg.role === 'user' ? 'ml-8' : 'mr-8'}`}>
-                                <NeuCard
-                                    className={`px-4 py-3 ${msg.role === 'user'
-                                        ? 'bg-brand border-brand text-white' // User bubble
-                                        : '' // Default Neu styling for AI
-                                        }`}
-                                >
-                                    {msg.role === 'assistant' ? (
-                                        <MarkdownRenderer content={msg.content} className="text-sm" />
-                                    ) : (
-                                        <p className="whitespace-pre-wrap text-sm">{msg.content}</p>
-                                    )}
-                                </NeuCard>
+                            {/* Avatar */}
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                                msg.role === 'assistant'
+                                    ? `${styles.bg} ${styles.shadowOut} text-brand`
+                                    : `bg-brand text-white shadow-md`
+                            }`}>
+                                {msg.role === 'assistant' ? <Bot size={16} /> : <User size={16} />}
+                            </div>
+
+                            {/* Bubble */}
+                            <div className={`max-w-[80%] p-3 rounded-xl text-base leading-relaxed ${
+                                msg.role === 'assistant'
+                                    ? `${styles.bg} ${styles.shadowOut} ${styles.textMain}`
+                                    : `${styles.bg} ${styles.shadowIn} ${styles.textMain} border-l-4 border-brand`
+                            }`}>
+                                {msg.role === 'assistant' ? (
+                                    <MarkdownRenderer content={msg.content} className="text-base" />
+                                ) : (
+                                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                                )}
                             </div>
                         </motion.div>
                     ))}
-                </AnimatePresence>
+
 
                 {/* Loading indicator */}
                 {isLoading && (

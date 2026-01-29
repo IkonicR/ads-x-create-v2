@@ -50,12 +50,13 @@ const Planner: React.FC<PlannerProps> = ({ business }) => {
         deletePostFromGHL,
     } = useSocial();
 
-    // Use the PillarContext
+    // Use the PillarContext (preloaded by App.tsx)
     const {
         pillars,
         pendingDraftsCount,
         loading: pillarsLoading,
         error: pillarsError,
+        initialLoaded: pillarsInitialLoaded,
         loadPillars,
         createPillar,
         updatePillar,
@@ -66,19 +67,19 @@ const Planner: React.FC<PlannerProps> = ({ business }) => {
     // Extract connected platform types from accounts
     const connectedPlatforms = accounts.map(acc => acc.platform?.toLowerCase() || '').filter(Boolean);
 
-    // Load data when business changes OR when switching to pillars tab
+    // Load social posts when business changes
     useEffect(() => {
         if (business?.id) {
             loadPosts(business.id, true);
         }
     }, [business?.id, loadPosts]);
 
-    // Fetch pillars when tab switches to pillars OR business changes
+    // Load pillars when business changes (matches social posts pattern)
     useEffect(() => {
-        if (business?.id && activeTab === 'pillars') {
+        if (business?.id) {
             loadPillars(business.id);
         }
-    }, [business?.id, activeTab, loadPillars]);
+    }, [business?.id, loadPillars]);
 
     // State for post detail modal
     const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null);
@@ -311,7 +312,7 @@ const Planner: React.FC<PlannerProps> = ({ business }) => {
                                     exit={{ opacity: 0 }}
                                 >
                                     {/* Loading State */}
-                                    {pillarsLoading && pillars.length === 0 && (
+                                    {(pillarsLoading || !pillarsInitialLoaded) && pillars.length === 0 && (
                                         <motion.div
                                             initial={{ opacity: 0 }}
                                             animate={{ opacity: 1 }}
@@ -322,8 +323,8 @@ const Planner: React.FC<PlannerProps> = ({ business }) => {
                                         </motion.div>
                                     )}
 
-                                    {/* Empty State */}
-                                    {!pillarsLoading && pillars.length === 0 && (
+                                    {/* Empty State - wait for initial load to prevent flash */}
+                                    {!pillarsLoading && pillarsInitialLoaded && pillars.length === 0 && (
                                         <NeuCard className="p-12 text-center">
                                             <div className={`w-16 h-16 mx-auto mb-4 rounded-full ${styles.bgAccent} flex items-center justify-center`}>
                                                 <Sparkles size={32} className="text-brand" />
@@ -335,9 +336,11 @@ const Planner: React.FC<PlannerProps> = ({ business }) => {
                                                 Set up automated content themes (like "Motivation Monday" or "Product Spotlight")
                                                 and let AI generate posts for you every week.
                                             </p>
-                                            <NeuButton onClick={handleCreatePillar}>
-                                                Create Your First Pillar
-                                            </NeuButton>
+                                            <div className="flex justify-center">
+                                                <NeuButton onClick={handleCreatePillar}>
+                                                    Create Your First Pillar
+                                                </NeuButton>
+                                            </div>
                                         </NeuCard>
                                     )}
 

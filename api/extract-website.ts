@@ -1,7 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { gateway } from '@ai-sdk/gateway';
 import { generateText } from 'ai';
-import { AI_MODELS } from '../config/ai-models';
+
+// NOTE: Do not import from ../config/ai-models - causes Vercel bundler crash
+// Model ID is hardcoded here: google/gemini-3-flash (stable production model)
 
 /**
  * Website Extraction API - Firecrawl V2
@@ -395,8 +396,9 @@ async function extractWithAI(
 
     try {
         // Use Vercel AI Gateway (Gemini 3 Flash)
+        // Note: AI SDK v5+ accepts model IDs directly as strings (NO gateway() wrapper)
         const result = await generateText({
-            model: gateway(AI_MODELS.text as any),
+            model: 'google/gemini-3-flash',
             system: EXTRACTION_SYSTEM_PROMPT,
             prompt: `BRANDING:\n${JSON.stringify(branding)}\n\nCONTENT:\n${combinedMarkdown.slice(0, 50000)}`,
             temperature: 0.2,

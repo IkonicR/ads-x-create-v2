@@ -10,7 +10,7 @@ import { NavigationProvider, useNavigation } from './context/NavigationContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AssetProvider, useAssets } from './context/AssetContext';
 import { SocialProvider, useSocial } from './context/SocialContext';
-import { PillarProvider } from './context/PillarContext';
+import { PillarProvider, usePillars } from './context/PillarContext';
 import { SubscriptionProvider, useSubscription } from './context/SubscriptionContext';
 import { JobProvider } from './context/JobContext';
 import Layout from './components/Layout';
@@ -102,6 +102,7 @@ const AppContent: React.FC = () => {
   const location = useLocation();
   const { addAsset, setBusinessId } = useAssets();
   const { loadPosts: loadSocialPosts, setBusinessId: setSocialBusinessId } = useSocial();
+  const { setBusinessId: setPillarBusinessId } = usePillars();
   const { setBusinessId: setSubscriptionBusinessId } = useSubscription();
   const { notify } = useNotification();
   const [pendingInviteChecked, setPendingInviteChecked] = useState(false);
@@ -155,6 +156,7 @@ const AppContent: React.FC = () => {
           // Sync Contexts
           setBusinessId(targetBusinessId);
           setSubscriptionBusinessId(targetBusinessId);
+          setPillarBusinessId(targetBusinessId);
 
           // Redirect logic: Check for OAuth returnTo first, then default to Dashboard
           const authReturnTo = localStorage.getItem('auth_return_to');
@@ -321,6 +323,7 @@ const AppContent: React.FC = () => {
           setBusinessId(newBusinessId);
           setSubscriptionBusinessId(newBusinessId);
           setSocialBusinessId(newBusinessId);
+          setPillarBusinessId(newBusinessId);
           loadSocialPosts(newBusinessId, true);
         }
       }
@@ -550,6 +553,7 @@ const AppContent: React.FC = () => {
       // Preload social posts for instant calendar (find locationId from new business)
       const targetBusiness = businesses.find(b => b.id === id);
       setSocialBusinessId(id);
+      setPillarBusinessId(id);
       loadSocialPosts(id, true); // Don't await - let it load in background
 
       // Tasks are now workspace-level (loaded by TaskContext), no per-business reload needed

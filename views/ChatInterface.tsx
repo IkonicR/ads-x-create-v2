@@ -830,7 +830,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
               {/* Content Column */}
               <div className={`max-w-[80%] flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                 {/* Text Bubble */}
-                <div className={`p-4 rounded-2xl text-sm leading-relaxed ${msg.role === 'ai'
+                <div className={`p-4 rounded-2xl text-base leading-relaxed ${msg.role === 'ai'
                   ? `${styles.bg} ${styles.shadowOut} ${styles.textMain}`
                   : `${styles.bg} ${styles.shadowIn} ${styles.textMain} border-l-4 border-brand whitespace-pre-wrap`
                   }`}>
@@ -965,7 +965,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
               <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${styles.bg} ${styles.shadowOut} text-brand`}>
                 <Bot size={20} />
               </div>
-              <div className={`p-4 rounded-2xl ${styles.bg} ${styles.shadowOut} text-sm`}>
+              <div className={`p-4 rounded-2xl ${styles.bg} ${styles.shadowOut} text-base`}>
                 <div className="flex gap-1">
                   <div className="w-2 h-2 bg-brand rounded-full animate-bounce"></div>
                   <div className="w-2 h-2 bg-brand rounded-full animate-bounce delay-100"></div>

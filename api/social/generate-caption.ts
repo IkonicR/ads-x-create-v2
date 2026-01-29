@@ -7,9 +7,10 @@
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { gateway } from '@ai-sdk/gateway';
 import { generateText } from 'ai';
-import { AI_MODELS } from '../../config/ai-models';
+
+// NOTE: Do not import from config/ai-models - causes Vercel bundler crash
+// Model ID hardcoded: google/gemini-3-flash (stable production model)
 
 interface CaptionRequest {
     assetPrompt: string;
@@ -113,8 +114,9 @@ Write the caption now:`;
         console.log('[Caption API] Generating via Vercel Gateway...');
 
         // Use Vercel AI Gateway (Gemini 3 Flash)
+        // Note: AI SDK v5+ accepts model IDs directly as strings (NO gateway() wrapper)
         const result = await generateText({
-            model: gateway(AI_MODELS.text as any),
+            model: 'google/gemini-3-flash',
             system: CAPTION_SYSTEM_PROMPT,
             prompt: userPrompt,
             temperature: 0.7,

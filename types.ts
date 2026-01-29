@@ -599,6 +599,10 @@ export interface ContentPillar {
     aspectRatio: string;
     captionStyle?: string;
   }[];
+
+  // V2: Enhanced configuration
+  contactProminence?: 'prominent' | 'subtle' | 'none';
+  sloganProminence?: 'hidden' | 'subtle' | 'standard' | 'prominent';
   styleRotation?: {                // Style rotation config
     enabled: boolean;
     styleIds: string[];
@@ -656,6 +660,12 @@ export interface PillarDraft {
   // Subject tracking
   subjectType?: 'offering' | 'team' | 'location';
   subjectId?: string;
+
+  // NEW: Visual & Content Settings
+  aspectRatio?: '1:1' | '9:16' | '16:9' | '4:5' | '2:3' | '3:2' | '3:4' | '4:3' | '5:4' | '21:9';
+  hashtagMode?: 'inherit' | 'ai_only' | 'brand_only' | 'ai_plus_brand';
+  captionMode?: 'same' | 'tailored';
+  logoVariant?: 'main' | 'wordmark' | 'dark' | 'light';
 
   // Metadata
   createdAt: string;

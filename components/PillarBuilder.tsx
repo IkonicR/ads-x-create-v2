@@ -6,13 +6,13 @@
  * - Mobile: Full-screen chat with preview accessible via toggle
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 // import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ContentPillar, Business, SocialAccount } from '../types';
 import { PillarBuilderChat } from './PillarBuilderChat';
 import { PillarBuilderPreview } from './PillarBuilderPreview';
-import { useThemeStyles, NeuIconButton } from './NeuComponents';
+import { useThemeStyles, NeuIconButton, NeuCloseButton, NeuButton } from './NeuComponents';
 import { X, Eye, MessageSquare } from 'lucide-react';
 
 interface PillarBuilderProps {
@@ -37,8 +37,15 @@ export interface PillarDraft {
     generateImage?: boolean;
     styleId?: string;
     showBusinessName?: boolean;
-    showContactInfo?: boolean;
+    contactProminence?: 'prominent' | 'subtle' | 'none';
     sloganProminence?: 'hidden' | 'subtle' | 'standard' | 'prominent';
+    // Visual & Content Settings (Phase 2H)
+    aspectRatio?: '1:1' | '9:16' | '16:9' | '4:5' | '2:3' | '3:2' | '3:4' | '4:3' | '5:4' | '21:9';
+    captionMode?: 'same' | 'tailored';
+    hashtagMode?: 'inherit' | 'ai_only' | 'brand_only' | 'ai_plus_brand';
+    logoVariant?: 'main' | 'wordmark' | 'dark' | 'light';
+    offeringRotationFrequency?: 'never' | 'every_post' | 'every_2nd' | 'every_3rd' | 'every_4th' | 'occasionally';
+    preferredTime?: string; // e.g., "12:00" for midday
 }
 
 export const PillarBuilder: React.FC<PillarBuilderProps> = ({
@@ -53,8 +60,70 @@ export const PillarBuilder: React.FC<PillarBuilderProps> = ({
     const availableStyles: any[] = []; // TODO: Fetch styles from database
     const isDark = theme === 'dark';
 
-    // The pillar being built
-    const [draft, setDraft] = useState<PillarDraft>({});
+    // ============================================================================
+    // SESSION PERSISTENCE (localStorage)
+    // ============================================================================
+    const STORAGE_KEY_DRAFT = `pillar_draft_${business.id}`;
+    const STORAGE_KEY_CHAT = `pillar_chat_${business.id}`;
+    const STORAGE_KEY_SESSION = `pillar_session_${business.id}`;
+    const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+    // Helper to clear session
+    const clearPillarSession = useCallback(() => {
+        localStorage.removeItem(STORAGE_KEY_DRAFT);
+        localStorage.removeItem(STORAGE_KEY_CHAT);
+        localStorage.removeItem(STORAGE_KEY_SESSION);
+    }, [STORAGE_KEY_DRAFT, STORAGE_KEY_CHAT, STORAGE_KEY_SESSION]);
+
+    // Initialize draft from localStorage (if resumable)
+    const [draft, setDraft] = useState<PillarDraft>(() => {
+        // Skip if editing existing pillar
+        if (existingPillar) return {};
+        
+        try {
+            const storedSession = localStorage.getItem(STORAGE_KEY_SESSION);
+            if (storedSession) {
+                const age = Date.now() - parseInt(storedSession);
+                if (age < SESSION_MAX_AGE_MS) {
+                    const savedDraft = localStorage.getItem(STORAGE_KEY_DRAFT);
+                    if (savedDraft) {
+                        return JSON.parse(savedDraft);
+                    }
+                } else {
+                    // Stale - clear in next tick to avoid state issues
+                    setTimeout(() => {
+                        localStorage.removeItem(STORAGE_KEY_DRAFT);
+                        localStorage.removeItem(STORAGE_KEY_CHAT);
+                        localStorage.removeItem(STORAGE_KEY_SESSION);
+                    }, 0);
+                }
+            }
+        } catch { /* ignore */ }
+        return {};
+    });
+
+    // Resume prompt state
+    const [showResumePrompt, setShowResumePrompt] = useState(() => {
+        if (existingPillar) return false;
+        try {
+            const storedSession = localStorage.getItem(STORAGE_KEY_SESSION);
+            if (storedSession) {
+                const age = Date.now() - parseInt(storedSession);
+                const savedDraft = localStorage.getItem(STORAGE_KEY_DRAFT);
+                return age < SESSION_MAX_AGE_MS && !!savedDraft;
+            }
+        } catch { /* ignore */ }
+        return false;
+    });
+
+    // Auto-save draft to localStorage on change
+    useEffect(() => {
+        if (existingPillar) return; // Don't save when editing existing
+        if (Object.keys(draft).length > 0) {
+            localStorage.setItem(STORAGE_KEY_DRAFT, JSON.stringify(draft));
+            localStorage.setItem(STORAGE_KEY_SESSION, Date.now().toString());
+        }
+    }, [draft, existingPillar, STORAGE_KEY_DRAFT, STORAGE_KEY_SESSION]);
 
     // Mobile: toggle between chat and preview
     const [mobileView, setMobileView] = useState<'chat' | 'preview'>('chat');
@@ -67,9 +136,22 @@ export const PillarBuilder: React.FC<PillarBuilderProps> = ({
         setDraft(prev => ({ ...prev, ...updates }));
     }, []);
 
+    // Handle start fresh
+    const handleStartFresh = useCallback(() => {
+        clearPillarSession();
+        setDraft({});
+        setShowResumePrompt(false);
+    }, [clearPillarSession]);
+
     // Handle save
     const handleSave = async () => {
         if (!draft.name) return;
+
+        // Validate subjectMode against allowed values (defensive check)
+        const VALID_SUBJECT_MODES = ['static', 'rotate_offerings', 'rotate_team', 'rotate_locations'];
+        const normalizedSubjectMode = VALID_SUBJECT_MODES.includes(draft.subjectMode || '')
+            ? draft.subjectMode
+            : 'static';
 
         setIsSaving(true);
         try {
@@ -80,7 +162,7 @@ export const PillarBuilder: React.FC<PillarBuilderProps> = ({
                 scheduleType: draft.scheduleType || 'weekly',
                 dayOfWeek: draft.dayOfWeek,
                 dayOfMonth: draft.dayOfMonth,
-                subjectMode: (draft.subjectMode as any) || 'static',
+                subjectMode: normalizedSubjectMode as any,
                 staticSubjectId: draft.staticSubjectId,
                 stylePresetId: draft.stylePresetId,
                 promptTemplate: draft.instructions,
@@ -88,6 +170,8 @@ export const PillarBuilder: React.FC<PillarBuilderProps> = ({
                 platforms: draft.platforms || [],
                 isActive: true,
             });
+            // Clear localStorage on successful save
+            clearPillarSession();
             onClose();
         } catch (err) {
             console.error('[PillarBuilder] Save error:', err);
@@ -107,13 +191,34 @@ export const PillarBuilder: React.FC<PillarBuilderProps> = ({
                 } ${themeStyles.shadowOut}`}
         >
             {/* Close Button */}
-            <button
+            <NeuCloseButton
                 onClick={onClose}
-                className={`absolute top-4 right-4 z-20 p-2 rounded-xl transition-colors ${isDark ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-black/10 hover:bg-black/20 text-black'
-                    }`}
-            >
-                <X size={20} />
-            </button>
+                className="absolute top-4 right-4 z-20"
+            />
+
+            {/* Resume Draft Prompt */}
+            <AnimatePresence>
+                {showResumePrompt && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        className={`absolute top-4 left-4 right-16 z-30 p-3 rounded-xl ${themeStyles.shadowOut} ${isDark ? 'bg-brand/20 border border-brand/30' : 'bg-brand/10 border border-brand/20'} flex items-center justify-between gap-4 backdrop-blur-sm`}
+                    >
+                        <span className={`text-sm font-medium ${themeStyles.textMain}`}>
+                            You have an unsaved draft
+                        </span>
+                        <div className="flex gap-2">
+                            <NeuButton size="sm" onClick={handleStartFresh}>
+                                Start Fresh
+                            </NeuButton>
+                            <NeuButton size="sm" variant="primary" onClick={() => setShowResumePrompt(false)}>
+                                Continue
+                            </NeuButton>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Mobile View Toggle */}
             <div className="md:hidden absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex gap-2 p-1 rounded-xl bg-black/20 backdrop-blur-sm">
@@ -158,11 +263,15 @@ export const PillarBuilder: React.FC<PillarBuilderProps> = ({
                 `}>
                 <PillarBuilderPreview
                     draft={draft}
+                    business={business}
                     canSave={canSave}
                     isSaving={isSaving}
                     onSave={handleSave}
                     onEdit={(field) => {
                         setMobileView('chat');
+                    }}
+                    onFieldChange={(field, value) => {
+                        setDraft(prev => ({ ...prev, [field]: value }));
                     }}
                 />
             </div>

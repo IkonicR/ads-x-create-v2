@@ -62,6 +62,7 @@ const updatePillarTool: FunctionDeclaration = {
             },
             subjectMode: {
                 type: Type.STRING,
+                enum: ['static', 'rotate_offerings', 'rotate_team', 'rotate_locations'],
                 description: 'How to select content: "static" (same every time), "rotate_offerings" (cycle through products), "rotate_team" (cycle through team members), "rotate_locations" (cycle through locations)',
             },
             platforms: {
@@ -88,6 +89,37 @@ const updatePillarTool: FunctionDeclaration = {
                 type: Type.STRING,
                 enum: ['hidden', 'subtle', 'standard', 'prominent'],
                 description: 'How prominent should the slogan be?'
+            },
+            // NEW: Aspect Ratio, Hashtag Mode, Caption Mode
+            aspectRatio: {
+                type: Type.STRING,
+                enum: ['1:1', '9:16', '16:9', '4:5', '2:3', '3:2', '3:4', '4:3', '5:4', '21:9'],
+                description: 'Aspect ratio for generated images (e.g., 1:1 for square, 9:16 for stories)',
+            },
+            hashtagMode: {
+                type: Type.STRING,
+                enum: ['inherit', 'ai_only', 'brand_only', 'ai_plus_brand'],
+                description: 'Hashtag strategy for this pillar. "inherit" uses business default settings.',
+            },
+            captionMode: {
+                type: Type.STRING,
+                enum: ['same', 'tailored'],
+                description: 'Caption strategy: "same" for identical captions everywhere, "tailored" for platform-optimized versions.',
+            },
+            logoVariant: {
+                type: Type.STRING,
+                enum: ['main', 'wordmark', 'dark', 'light'],
+                description: 'Which logo variant to use if multiple are available.',
+            },
+            // Offering Rotation (Phase 2H)
+            offeringRotationFrequency: {
+                type: Type.STRING,
+                enum: ['never', 'every_post', 'every_2nd', 'every_3rd', 'every_4th', 'occasionally'],
+                description: 'How often to feature products/services in posts. "every_3rd" = include offering in every 3rd post. "occasionally" = AI decides based on context.',
+            },
+            preferredTime: {
+                type: Type.STRING,
+                description: 'Preferred posting time in HH:MM format (e.g., "12:00" for midday, "08:00" for morning)',
             },
         },
         required: [],
@@ -120,11 +152,56 @@ const buildSystemPrompt = (
     // 4. Voice & Archetype
     const archetype = business.voice?.archetype || 'Professional';
     const voiceTone = business.voice?.tone || 'Helpful and authoritative';
+    const slogan = business.voice?.slogan || '';
 
     // 5. Contact Info
     const contacts = (business.profile.contacts || [])
         .map(c => `${c.label || c.type}: ${c.value}`)
         .join(', ');
+
+    // 6. Logo Variants
+    const logoVariants = [
+        business.logoUrl && 'Main Logo',
+        business.logoVariants?.wordmark && 'Wordmark',
+        business.logoVariants?.dark && 'Dark Version',
+        business.logoVariants?.light && 'Light Version',
+    ].filter(Boolean);
+    const logoStatus = logoVariants.length > 0 ? logoVariants.join(', ') : 'No logo uploaded';
+
+    // 7. Ad Preferences
+    const adPrefs = business.adPreferences;
+    const adPrefsContext = adPrefs ? `
+- Location Display: ${adPrefs.locationDisplay || 'hidden'}${adPrefs.locationText ? ` (Custom: "${adPrefs.locationText}")` : ''}
+- Hours Display: ${adPrefs.hoursDisplay || 'hidden'}
+- Show Business Name: ${adPrefs.showBusinessName ?? true}
+- Slogan Prominence: ${adPrefs.sloganProminence || 'standard'}
+- Contact Prominence: ${adPrefs.contactProminence || 'standard'}` : 'Not configured';
+
+    // 8. Social Settings (Hashtags)
+    const socialSettings = business.socialSettings as { hashtagMode?: string; brandHashtags?: string[] } | undefined;
+    const hashtagMode = socialSettings?.hashtagMode || 'ai_plus_brand';
+    const brandHashtags = socialSettings?.brandHashtags?.length 
+        ? socialSettings.brandHashtags.map(t => `#${t}`).join(', ')
+        : 'None set';
+
+    // 9. Brand Colors (Phase 2I)
+    const colors = business.colors as { brand?: string; secondary?: string; accent?: string } | undefined;
+    const primaryColor = colors?.brand || 'Not specified';
+    const secondaryColor = colors?.secondary || 'Not specified';
+    const accentColor = colors?.accent || 'Not specified';
+    const hasColors = colors?.brand || colors?.secondary || colors?.accent;
+
+    // 10. Current Date & Season (Phase 2H - Season Awareness)
+    const now = new Date();
+    const month = now.getMonth(); // 0-11
+    const saSeasons: Record<string, number[]> = {
+        Summer: [11, 0, 1],    // Dec, Jan, Feb
+        Autumn: [2, 3, 4],     // Mar, Apr, May
+        Winter: [5, 6, 7],     // Jun, Jul, Aug
+        Spring: [8, 9, 10]     // Sep, Oct, Nov
+    };
+    const currentSeason = Object.entries(saSeasons).find(([_, months]) => months.includes(month))?.[0] || 'Summer';
+    const dateString = now.toLocaleDateString('en-ZA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
     return `
 <role>
@@ -136,10 +213,25 @@ You are NOT a form filler. You are a strategic partner.
 <brand_bible>
 **Archetype:** ${archetype}
 **Tone:** ${voiceTone}
+**Slogan:** ${slogan || 'None set'}
+
 **Products:**
 ${offeringsList}
 
 **Contact Info Available:** ${contacts || 'None specified'}
+**Logo Variants:** ${logoStatus}
+
+**Brand Colors:**${hasColors ? `
+- Primary: ${primaryColor}
+- Secondary: ${secondaryColor}
+- Accent: ${accentColor}` : ' Not specified — ask if they want custom colors or you have creative freedom'}
+
+**Ad Preferences:**
+${adPrefsContext}
+
+**Hashtag Settings:**
+- Mode: ${hashtagMode} (ai_only = AI generates, brand_only = only brand tags, ai_plus_brand = both)
+- Brand Hashtags: ${brandHashtags}
 </brand_bible>
 
 <available_styles>
@@ -151,24 +243,95 @@ ${stylesList}
 ${platformList}
 </connected_platforms>
 
+<current_context>
+**Today's Date:** ${dateString}
+**Current South African Season:** ${currentSeason}
+Note: South Africa is in the Southern Hemisphere, so seasons are OPPOSITE to Europe/US.
+- December-February = Summer (hot, holiday season)
+- March-May = Autumn (cooler, back to school)
+- June-August = Winter (cold, cozy indoor vibes)
+- September-November = Spring (renewal, outdoor activities)
+Use this context when suggesting seasonal themes or timing for the pillar.
+</current_context>
+
+<critical_rules>
+## YOU HAVE THE DATA — ASK IF TO INCLUDE, NOT WHAT IT IS:
+- You KNOW the slogan is "${slogan || 'not set'}". Ask: "Should I include the slogan?" NOT "What's your slogan?"
+- You KNOW the address/location settings. Ask: "Should this pillar show location?" NOT "What's your address?"
+- You KNOW the contact info. Ask: "Should we display contact details?" NOT "What's your phone number?"
+
+## LOGO VARIANT SELECTION:
+${logoVariants.length > 1 ? `Multiple logos available (${logoVariants.join(', ')}). Ask which version to use.` : 'Use the main logo if available.'}
+
+## HASHTAGS:
+Brand hashtags are: ${brandHashtags}. Ask:
+- "Should I use your brand hashtags or generate fresh ones for this pillar?"
+- "Override the default hashtag mode (${hashtagMode}) for this pillar?"
+
+## CAPTION TAILORING:
+Always ask: "Same caption for all platforms, or tailored per platform (shorter for Twitter, emoji-rich for Instagram)?"
+
+## OFFERING ROTATION:
+Ask: "How often should we feature your products/services? Every post, every 3rd post, or let me decide based on context?"
+</critical_rules>
+
+<conversation_pacing>
+🚨 **MAXIMUM 2 QUESTIONS PER MESSAGE.** This is NON-NEGOTIABLE.
+- Users forget answers when asked too many at once.
+- If you have 3+ things to ask, pick the 2 most important and save the rest for the next turn.
+- Prioritize: (1) Core concept, (2) Visual decisions, (3) Content strategy, (4) Technical details.
+- **NEVER list more than 2 numbered questions in a single message.**
+- Example of GOOD: "What day should this post? And should we post at morning or midday?"
+- Example of BAD: "1. What day? 2. What time? 3. What style? 4. What platforms?"
+</conversation_pacing>
+
 <protocol>
-1. **Be Proactive:** Don't just ask "what do you want?". Pitch ideas based on their products/archetype.
-2. **One Step at a Time:** Don't overwhelm. Ask 1 key question per turn.
+1. **Be Proactive:** Don't just ask "what do you want?". Pitch ideas based on their products/archetype and the current season (${currentSeason}).
+2. **One Step at a Time:** Don't overwhelm. Ask MAXIMUM 1-2 key questions per turn.
 3. **Capture Details:** You need to know:
    - **Theme/Topic** (Rotation? Static?)
    - **Visual Style** (Pick a specific Style ID)
    - **Platforms** (Insta? FB?)
-   - **Content Elements** (Should we show phone number? Address? Logo?)
+   - **Aspect Ratio** (1:1, 9:16, 16:9, etc.)
+   - **Caption Mode** (Same everywhere, or tailored per platform?)
+   - **Hashtag Mode** (Inherit from settings, AI only, brand only, or combined?)
+   - **Content Elements** (Logo version? Slogan? Contact info?)
+   - **Offering Rotation** (How often to feature products/services?)
 4. **Function Calling:** Call \`update_pillar_config\` whenever you learn something new.
 5. **Always Follow Up:** After calling a function, you MUST output text to move the conversation forward. NEVER be silent.
 </protocol>
 
 <conversation_flow>
 1. **Greeting:** Pitch a pillar idea based on their business type. "Hey! Since we're a gym, how about a 'Member Spotlight Monday'?"
-2. **Visuals:** "What vibe are we going for? I recommend 'Neon Noir' for high energy, or 'Clean Health' for trust. What do you think?"
-3. **Details:** "Should we include the phone number on every post? What about the logo?"
-4. **Logistics:** "Which day should this drop? Tuesdays? And for Instagram, do you want square feed posts (1:1) or full-screen stories (9:16)?"
+2. **Visuals:** "What vibe are we going for? I recommend 'Neon Noir' for high energy, or 'Clean Health' for trust. What aspect ratio — square for feed (1:1) or vertical for stories (9:16)?"
+3. **Details:** "Should we include your slogan '${slogan || '[no slogan]'}' on every post? What about the logo — main or wordmark?"
+4. **Captions:** "Want captions tailored per platform, or identical everywhere? And for hashtags, should I use your brand tags (${brandHashtags}) or generate fresh ones?"
+5. **Logistics:** "Which day should this drop? And what time?"
 </conversation_flow>
+
+<completion_awareness>
+🚨 **REQUIRED FIELDS** (user cannot save until these are set):
+- Name ✓
+- Day of week ✓  
+- At least 1 platform ✓
+
+**OPTIONAL FIELDS** (nice-to-have but not blocking):
+- Instructions (captured from chat), Time, Style ID, Aspect ratio, Caption mode, Hashtag mode, Offering rotation, Contact info, Slogan, Logo variant
+
+## CRITICAL HONESTY RULES:
+1. **NEVER say "final questions" unless you have NO MORE questions to ask.**
+2. **NEVER promise you're done and then immediately ask more questions.**
+3. If you have 4+ topics left to cover, say: "Let me get a few more details..."
+4. If you have 2-3 topics left, say: "Almost there! Just need to confirm..."
+5. If you have 1 topic left, say: "Last thing—"
+6. If you have 0 topics left, say: "All set! Ready to save when you are." — then STOP ASKING.
+
+## WRAP-UP TRIGGER:
+After the required fields are set AND you've covered 3+ optional areas, proactively offer:
+"We've got everything we need! Ready to save this pillar, or did you want to tweak anything?"
+
+DO NOT ask about metrics, analytics, or topics you didn't get to. Just wrap up cleanly.
+</completion_awareness>
     `.trim();
 };
 

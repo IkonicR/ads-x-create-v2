@@ -10,7 +10,8 @@
 export const AI_MODELS = {
   // TEXT GENERATION (Vercel AI Gateway)
   // Used for: Website Extraction, Social Captions, Server-side Chat
-  text: 'google/gemini-3-flash-preview' as const,
+  // Updated Jan 28, 2026: -preview removed (deprecated on Gateway)
+  text: 'google/gemini-3-flash' as const,
 
   // TEXT GENERATION (Direct Google SDK - Client-side)
   // Used for: Browser chat, client-side AI calls

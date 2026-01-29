@@ -11,6 +11,10 @@ import React, { createContext, useContext, useState, useCallback } from 'react';
 import { ContentPillar, PillarDraft } from '../types';
 import { PillarService } from '../services/pillarService';
 
+// === CACHING ===
+const CACHE_KEY_PREFIX = 'pillars_cache_';
+const CACHE_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
+
 interface PillarContextType {
     // State
     pillars: ContentPillar[];
@@ -19,8 +23,10 @@ interface PillarContextType {
     loading: boolean;
     error: string | null;
     currentBusinessId: string | null;
+    initialLoaded: boolean;
 
     // Pillar Actions
+    setBusinessId: (id: string) => void;
     loadPillars: (businessId: string) => Promise<void>;
     createPillar: (pillar: Omit<ContentPillar, 'id' | 'createdAt' | 'updatedAt'>) => Promise<ContentPillar>;
     updatePillar: (id: string, updates: Partial<ContentPillar>) => Promise<void>;
@@ -44,6 +50,40 @@ export const PillarProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [currentBusinessId, setCurrentBusinessId] = useState<string | null>(null);
+    const [initialLoaded, setInitialLoaded] = useState(false);
+
+    // =========================================================================
+    // CACHING (mirrors SocialContext)
+    // =========================================================================
+
+    const loadFromCache = useCallback((businessId: string): boolean => {
+        try {
+            const cached = localStorage.getItem(`${CACHE_KEY_PREFIX}${businessId}`);
+            if (cached) {
+                const { pillars: cachedPillars, pendingCount, timestamp } = JSON.parse(cached);
+                if (Date.now() - timestamp < CACHE_EXPIRY_MS) {
+                    setPillars(cachedPillars);
+                    setPendingDraftsCount(pendingCount || 0);
+                    return true;
+                }
+            }
+        } catch {
+            localStorage.removeItem(`${CACHE_KEY_PREFIX}${businessId}`);
+        }
+        return false;
+    }, []);
+
+    const saveToCache = useCallback((businessId: string, data: ContentPillar[], pendingCount: number) => {
+        try {
+            localStorage.setItem(`${CACHE_KEY_PREFIX}${businessId}`, JSON.stringify({
+                pillars: data.slice(0, 50),
+                pendingCount,
+                timestamp: Date.now()
+            }));
+        } catch (e) {
+            console.warn('[PillarContext] Cache save failed:', e);
+        }
+    }, []);
 
     // =========================================================================
     // PILLAR OPERATIONS
@@ -52,7 +92,11 @@ export const PillarProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const loadPillars = useCallback(async (businessId: string) => {
         if (!businessId) return;
 
-        setLoading(true);
+        // Try cache first for instant render
+        const hadCache = loadFromCache(businessId);
+        if (!hadCache) {
+            setLoading(true);
+        }
         setError(null);
         setCurrentBusinessId(businessId);
 
@@ -64,13 +108,24 @@ export const PillarProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             setPillars(pillarData);
             setPendingDraftsCount(draftCount);
+            saveToCache(businessId, pillarData, draftCount);
         } catch (err: any) {
             console.error('[PillarContext] Load error:', err);
             setError(err.message || 'Failed to load pillars');
         } finally {
             setLoading(false);
+            setInitialLoaded(true);
         }
-    }, []);
+    }, [loadFromCache, saveToCache]);
+
+    // === PROACTIVE LOADER (called from App.tsx on boot/business switch) ===
+    const setBusinessId = useCallback((id: string) => {
+        if (id !== currentBusinessId) {
+            setCurrentBusinessId(id);
+            setInitialLoaded(false);
+            loadPillars(id);
+        }
+    }, [currentBusinessId, loadPillars]);
 
     const createPillar = useCallback(async (
         pillarData: Omit<ContentPillar, 'id' | 'createdAt' | 'updatedAt'>
@@ -204,6 +259,8 @@ export const PillarProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 loading,
                 error,
                 currentBusinessId,
+                initialLoaded,
+                setBusinessId,
                 loadPillars,
                 createPillar,
                 updatePillar,
