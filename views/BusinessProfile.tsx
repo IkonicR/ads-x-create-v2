@@ -1135,13 +1135,7 @@ const BusinessProfile: React.FC<BusinessProfileProps> = ({ business, updateBusin
                       if (isSelected) {
                         updateAdPrefs('contactIds', current.filter(id => id !== contact.id));
                       } else {
-                        if (current.length >= 2) {
-                          // Queue behavior
-                          const [, ...rest] = current;
-                          updateAdPrefs('contactIds', [...rest, contact.id]);
-                        } else {
-                          updateAdPrefs('contactIds', [...current, contact.id]);
-                        }
+                        updateAdPrefs('contactIds', [...current, contact.id]);
                       }
                     }}
                     className={`w-full flex items-center justify-between p-3 rounded-xl border-2 transition-all duration-200

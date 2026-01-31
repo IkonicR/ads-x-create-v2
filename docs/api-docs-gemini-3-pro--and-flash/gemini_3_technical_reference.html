@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini 3 Model Family — Complete Technical Reference</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style type="text/tailwindcss">
+        @layer base {
+            body {
+                font-family: 'Inter', sans-serif;
+                background: #0a0a0f;
+                color: #e2e8f0;
+            }
+            code, pre {
+                font-family: 'JetBrains Mono', monospace;
+            }
+        }
+        @layer components {
+            .gradient-text {
+                background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
+            }
+            .section-card {
+                background: rgba(15, 23, 42, 0.8);
+                border: 1px solid rgba(99, 102, 241, 0.2);
+                backdrop-filter: blur(10px);
+            }
+            .param-table th {
+                background: rgba(99, 102, 241, 0.15);
+            }
+            .param-table tr:nth-child(even) {
+                background: rgba(15, 23, 42, 0.5);
+            }
+            .code-block {
+                background: #0d1117;
+                border: 1px solid #30363d;
+            }
+            .highlight-box {
+                background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
+                border-left: 3px solid #6366f1;
+            }
+            .warning-box {
+                background: rgba(251, 191, 36, 0.1);
+                border-left: 3px solid #fbbf24;
+            }
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+    <!-- Hero Section -->
+    <header class="relative overflow-hidden py-20 px-6">
+        <div class="absolute inset-0 bg-gradient-to-br from-indigo-900/20 via-purple-900/10 to-transparent"></div>
+        <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-indigo-500/10 rounded-full blur-3xl"></div>
+        <div class="relative max-w-6xl mx-auto text-center">
+            <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-sm mb-6">
+                <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+                January 2026 Edition
+            </div>
+            <h1 class="text-5xl md:text-6xl font-bold mb-6">
+                <span class="gradient-text">Gemini 3 Model Family</span>
+            </h1>
+            <p class="text-xl text-slate-400 max-w-3xl mx-auto mb-8">
+                Complete Technical Reference for Gemini 3 Flash and Gemini 3 Pro Image (Nano Banana Pro)
+            </p>
+            <div class="flex flex-wrap justify-center gap-4 text-sm">
+                <span class="px-4 py-2 rounded-lg bg-slate-800/50 border border-slate-700">Model Overview</span>
+                <span class="px-4 py-2 rounded-lg bg-slate-800/50 border border-slate-700">API Reference</span>
+                <span class="px-4 py-2 rounded-lg bg-slate-800/50 border border-slate-700">Style Consistency</span>
+                <span class="px-4 py-2 rounded-lg bg-slate-800/50 border border-slate-700">SDK Integration</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-6 pb-20 space-y-16">
+
+        <!-- Section 1: Model Overview -->
+        <section id="overview" class="section-card rounded-2xl p-8">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                </div>
+                <h2 class="text-3xl font-bold text-white">Section 1: Model Overview</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6 mb-8">
+                <!-- Gemini 3 Flash -->
+                <div class="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xl font-semibold text-blue-400">Gemini 3 Flash</h3>
+                        <span class="px-3 py-1 rounded-full bg-green-500/20 text-green-400 text-xs font-medium">Active</span>
+                    </div>
+                    <dl class="space-y-3 text-sm">
+                        <div class="flex justify-between">
+                            <dt class="text-slate-400">Official Name</dt>
+                            <dd class="text-white font-mono">gemini-3-flash-preview</dd>
+                        </div>
+                        <div class="flex justify-between">
+                            <dt class="text-slate-400">Codename</dt>
+                            <dd class="text-white">—</dd>
+                        </div>
+                        <div class="flex justify-between">
+                            <dt class="text-slate-400">Release Date</dt>
+                            <dd class="text-white">December 17, 2025</dd>
+                        </div>
+                        <div class="flex justify-between">
+                            <dt class="text-slate-400">Context Window</dt>
+                            <dd class="text-white font-mono">1M / 64K tokens</dd>
+                        </div>
+                        <div class="flex justify-between">
+                            <dt class="text-slate-400">Knowledge Cutoff</dt>
+                            <dd class="text-white">January 2025</dd>
+                        </div>
+                    </dl>
+                    <div class="mt-4 pt-4 border-t border-slate-700">
+                        <p class="text-slate-400 text-sm mb-2">Pricing (per 1M tokens):</p>
+                        <p class="text-white"><span class="text-green-400">$0.50</span> input / <span class="text-green-400">$3</span> output</p>
+                    </div>
+                </div>
+
+                <!-- Gemini 3 Pro Image -->
+                <div class="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xl font-semibold text-purple-400">Gemini 3 Pro Image</h3>
+                        <span class="px-3 py-1 rounded-full bg-green-500/20 text-green-400 text-xs font-medium">Active</span>
+                    </div>
+                    <dl class="space-y-3 text-sm">
+                        <div class="flex justify-between">
+                            <dt class="text-slate-400">Official Name</dt>
+                            <dd class="text-white font-mono">gemini-3-pro-image-preview</dd>
+                        </div>
+                        <div class="flex justify-between">
+                            <dt class="text-slate-400">Codename</dt>
+                            <dd class="text-white">Nano Banana Pro 🍌</dd>
+                        </div>
+                        <div class="flex justify-between">
+                            <dt class="text-slate-400">Release Date</dt>
+                            <dd class="text-white">November 20, 2025</dd>
+                        </div>
+                        <div class="flex justify-between">
+                            <dt class="text-slate-400">Context Window</dt>
+                            <dd class="text-white font-mono">65K / 32K tokens</dd>
+                        </div>
+                        <div class="flex justify-between">
+                            <dt class="text-slate-400">Knowledge Cutoff</dt>
+                            <dd class="text-white">January 2025</dd>
+                        </div>
+                    </dl>
+                    <div class="mt-4 pt-4 border-t border-slate-700">
+                        <p class="text-slate-400 text-sm mb-2">Pricing:</p>
+                        <p class="text-white"><span class="text-green-400">$2</span> text input / <span class="text-green-400">$0.134</span> image output</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="highlight-box rounded-lg p-4 mb-6">
+                <h4 class="font-semibold text-indigo-300 mb-2">Primary Use Cases</h4>
+                <div class="grid md:grid-cols-2 gap-4 text-sm">
+                    <div>
+                        <p class="text-white font-medium mb-1">Gemini 3 Flash:</p>
+                        <ul class="text-slate-400 space-y-1 list-disc list-inside">
+                            <li>High-frequency text generation workflows</li>
+                            <li>Agentic coding and multi-step reasoning</li>
+                            <li>Multimodal understanding (text, image, video, audio)</li>
+                            <li>Function calling and tool use</li>
+                            <li>Structured JSON output extraction</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <p class="text-white font-medium mb-1">Gemini 3 Pro Image:</p>
+                        <ul class="text-slate-400 space-y-1 list-disc list-inside">
+                            <li>Professional image generation up to 4K</li>
+                            <li>Style-consistent campaign creation</li>
+                            <li>Character consistency across scenes</li>
+                            <li>Multi-reference image blending (up to 14 images)</li>
+                            <li>Conversational image editing</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 2: Gemini 3 Pro Image API Reference -->
+        <section id="pro-image-api" class="section-card rounded-2xl p-8">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                    </svg>
+                </div>
+                <h2 class="text-3xl font-bold text-white">Section 2: Gemini 3 Pro Image API Reference</h2>
+            </div>
+
+            <div class="space-y-8">
+                <!-- Generation Parameters -->
+                <div>
+                    <h3 class="text-xl font-semibold text-white mb-4">Generation Parameters</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm param-table rounded-lg overflow-hidden">
+                            <thead>
+                                <tr class="text-left">
+                                    <th class="p-3 text-indigo-300 font-semibold">Parameter</th>
+                                    <th class="p-3 text-indigo-300 font-semibold">Type</th>
+                                    <th class="p-3 text-indigo-300 font-semibold">Default</th>
+                                    <th class="p-3 text-indigo-300 font-semibold">Description</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-slate-300">
+                                <tr>
+                                    <td class="p-3 font-mono text-purple-300">model</td>
+                                    <td class="p-3">string</td>
+                                    <td class="p-3">—</td>
+                                    <td class="p-3">Must be <code>gemini-3-pro-image-preview</code></td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-mono text-purple-300">contents</td>
+                                    <td class="p-3">array</td>
+                                    <td class="p-3">—</td>
+                                    <td class="p-3">Text prompt and/or reference images (max 14)</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-mono text-purple-300">responseModalities</td>
+                                    <td class="p-3">array</td>
+                                    <td class="p-3">["TEXT","IMAGE"]</td>
+                                    <td class="p-3">Output types: ["IMAGE"] for images only</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-mono text-purple-300">imageConfig.aspectRatio</td>
+                                    <td class="p-3">string</td>
+                                    <td class="p-3">"1:1"</td>
+                                    <td class="p-3">See aspect ratio table below</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-mono text-purple-300">imageConfig.imageSize</td>
+                                    <td class="p-3">string</td>
+                                    <td class="p-3">"1K"</td>
+                                    <td class="p-3">"1K", "2K", or "4K"</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-mono text-purple-300">tools</td>
+                                    <td class="p-3">array</td>
+                                    <td class="p-3">[]</td>
+                                    <td class="p-3">Enable Google Search grounding: [{"google_search":{}}]</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Aspect Ratios -->
+                <div>
+                    <h3 class="text-xl font-semibold text-white mb-4">Aspect Ratios & Resolutions</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm param-table rounded-lg overflow-hidden">
+                            <thead>
+                                <tr class="text-left">
+                                    <th class="p-3 text-indigo-300 font-semibold">Aspect Ratio</th>
+                                    <th class="p-3 text-indigo-300 font-semibold">1K Resolution</th>
+                                    <th class="p-3 text-indigo-300 font-semibold">2K Resolution</th>
+                                    <th class="p-3 text-indigo-300 font-semibold">4K Resolution</th>
+                                    <th class="p-3 text-indigo-300 font-semibold">Tokens</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-slate-300">
+                                <tr><td class="p-3 font-mono">1:1</td><td class="p-3">1024×1024</td><td class="p-3">2048×2048</td><td class="p-3">4096×4096</td><td class="p-3">1K: 1120 / 4K: 2000</td></tr>
+                                <tr><td class="p-3 font-mono">2:3</td><td class="p-3">848×1264</td><td class="p-3">1696×2528</td><td class="p-3">3392×5056</td><td class="p-3">1K: 1120 / 4K: 2000</td></tr>
+                                <tr><td class="p-3 font-mono">3:2</td><td class="p-3">1264×848</td><td class="p-3">2528×1696</td><td class="p-3">5056×3392</td><td class="p-3">1K: 1120 / 4K: 2000</td></tr>
+                                <tr><td class="p-3 font-mono">3:4</td><td class="p-3">896×1200</td><td class="p-3">1792×2400</td><td class="p-3">3584×4800</td><td class="p-3">1K: 1120 / 4K: 2000</td></tr>
+                                <tr><td class="p-3 font-mono">4:3</td><td class="p-3">1200×896</td><td class="p-3">2400×1792</td><td class="p-3">4800×3584</td><td class="p-3">1K: 1120 / 4K: 2000</td></tr>
+                                <tr><td class="p-3 font-mono">4:5</td><td class="p-3">928×1152</td><td class="p-3">1856×2304</td><td class="p-3">3712×4608</td><td class="p-3">1K: 1120 / 4K: 2000</td></tr>
+                                <tr><td class="p-3 font-mono">5:4</td><td class="p-3">1152×928</td><td class="p-3">2304×1856</td><td class="p-3">4608×3712</td><td class="p-3">1K: 1120 / 4K: 2000</td></tr>
+                                <tr><td class="p-3 font-mono">9:16</td><td class="p-3">768×1376</td><td class="p-3">1536×2752</td><td class="p-3">3072×5504</td><td class="p-3">1K: 1120 / 4K: 2000</td></tr>
+                                <tr><td class="p-3 font-mono">16:9</td><td class="p-3">1376×768</td><td class="p-3">2752×1536</td><td class="p-3">5504×3072</td><td class="p-3">1K: 1120 / 4K: 2000</td></tr>
+                                <tr><td class="p-3 font-mono">21:9</td><td class="p-3">1584×672</td><td class="p-3">3168×1344</td><td class="p-3">6336×2688</td><td class="p-3">1K: 1120 / 4K: 2000</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Reference Image System -->
+                <div>
+                    <h3 class="text-xl font-semibold text-white mb-4">Reference Image System</h3>
+                    <div class="highlight-box rounded-lg p-4 mb-4">
+                        <p class="text-indigo-300 font-medium mb-2">Maximum Reference Images: 14</p>
+                        <p class="text-slate-400 text-sm">For high-fidelity person consistency: up to 5 distinct people</p>
+                    </div>
+
+                    <div class="code-block rounded-lg p-4 mb-4">
+                        <p class="text-slate-400 text-xs mb-2">Python SDK — Multiple Reference Images</p>
+                        <pre class="text-sm text-slate-300 overflow-x-auto"><code>from google import genai
+from google.genai import types
+from PIL import Image
+
+client = genai.Client()
+
+response = client.models.generate_content(
+    model="gemini-3-pro-image-preview",
+    contents=[
+        "An office group photo of these people, they are making funny faces.",
+        Image.open('person1.png'),
+        Image.open('person2.png'),
+        Image.open('person3.png'),
+        Image.open('person4.png'),
+        Image.open('person5.png'),
+    ],
+    config=types.GenerateContentConfig(
+        response_modalities=['TEXT', 'IMAGE'],
+        image_config=types.ImageConfig(
+            aspect_ratio="5:4",
+            image_size="2K"
+        ),
+    )
+)</code></pre>
+                    </div>
+
+                    <h4 class="font-semibold text-white mb-2">Reference Types</h4>
+                    <ul class="text-slate-400 text-sm space-y-2 list-disc list-inside mb-4">
+                        <li><strong class="text-indigo-300">Object references:</strong> Products, items, or specific objects to include</li>
+                        <li><strong class="text-indigo-300">Human/character references:</strong> Up to 5 people with high-fidelity consistency</li>
+                        <li><strong class="text-indigo-300">Style references:</strong> Art style, lighting, color palette to match</li>
+                    </ul>
+
+                    <div class="warning-box rounded-lg p-4">
+                        <p class="text-amber-300 font-medium mb-1">Order Sensitivity</p>
+                        <p class="text-slate-400 text-sm">The first reference image has higher weight. Place style reference images first if you want them to dominate the output aesthetic.</p>
+                    </div>
+                </div>
+
+                <!-- Multi-turn Behavior -->
+                <div>
+                    <h3 class="text-xl font-semibold text-white mb-4">Multi-turn Behavior & Thought Signatures</h3>
+                    <p class="text-slate-400 text-sm mb-4">
+                        Gemini 3 Pro Image uses <strong class="text-indigo-300">thought signatures</strong> to preserve context between turns. 
+                        These are encrypted representations of the model's internal reasoning process.
+                    </p>
+
+                    <div class="code-block rounded-lg p-4 mb-4">
+                        <p class="text-slate-400 text-xs mb-2">Multi-turn Conversation with Chat Interface</p>
+                        <pre class="text-sm text-slate-300 overflow-x-auto"><code>from google import genai
+from google.genai import types
+
+client = genai.Client()
+
+# Create a chat session
+chat = client.chats.create(
+    model="gemini-3-pro-image-preview",
+    config=types.GenerateContentConfig(
+        response_modalities=['TEXT', 'IMAGE'],
+        tools=[{"google_search": {}}]
+    )
+)
+
+# First turn: Generate infographic
+message = "Create a vibrant infographic explaining photosynthesis..."
+response = chat.send_message(message)
+
+# Second turn: Edit the generated image
+message2 = "Update this infographic to be in Spanish. Do not change any other elements."
+response2 = chat.send_message(
+    message2,
+    config=types.GenerateContentConfig(
+        image_config=types.ImageConfig(
+            aspect_ratio="16:9",
+            image_size="2K"
+        ),
+    )
+)</code></pre>
+                    </div>
+
+                    <div class="highlight-box rounded-lg p-4">
+                        <p class="text-indigo-300 font-medium mb-2">Key Points about Thought Signatures</p>
+                        <ul class="text-slate-400 text-sm space-y-1 list-disc list-inside">
+                            <li>All inline_data (image) parts in responses have signatures</li>
+                            <li>The first non-thought text part always has a signature</li>
+                            <li>SDK handles signatures automatically when using chat interface</li>
+                            <li>Missing signatures in API calls result in 400 errors</li>
+                            <li>Interim "thinking" images are marked with <code>thought: true</code> and have NO signatures</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Output Structure -->
+                <div>
+                    <h3 class="text-xl font-semibold text-white mb-4">Output Structure</h3>
+                    <div class="code-block rounded-lg p-4">
+                        <pre class="text-sm text-slate-300 overflow-x-auto"><code>{
+  "candidates": [{
+    "content": {
+      "role": "model",
+      "parts": [
+        {
+          "text": "I'll generate a cyberpunk city scene for you...",
+          "thoughtSignature": "<Signature_A>"
+        },
+        {
+          "inlineData": {
+            "mimeType": "image/png",
+            "data": "<base64_image_data>"
+          },
+          "thoughtSignature": "<Signature_B>"
+        }
+      ]
+    }
+  }]
+}</code></pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 3: Gemini 3 Flash API Reference -->
+        <section id="flash-api" class="section-card rounded-2xl p-8">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                </div>
+                <h2 class="text-3xl font-bold text-white">Section 3: Gemini 3 Flash API Reference</h2>
+            </div>
+
+            <div class="space-y-8">
+                <!-- Config Options -->
+                <div>
+                    <h3 class="text-xl font-semibold text-white mb-4">Configuration Options</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm param-table rounded-lg overflow-hidden">
+                            <thead>
+                                <tr class="text-left">
+                                    <th class="p-3 text-indigo-300 font-semibold">Parameter</th>
+                                    <th class="p-3 text-indigo-300 font-semibold">Type</th>
+                                    <th class="p-3 text-indigo-300 font-semibold">Options</th>
+                                    <th class="p-3 text-indigo-300 font-semibold">Description</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-slate-300">
+                                <tr>
+                                    <td class="p-3 font-mono text-blue-300">thinkingLevel</td>
+                                    <td class="p-3">string</td>
+                                    <td class="p-3">"LOW", "HIGH"</td>
+                                    <td class="p-3">Controls reasoning depth. HIGH for complex tasks, LOW for speed</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-mono text-blue-300">mediaResolution</td>
+                                    <td class="p-3">string</td>
+                                    <td class="p-3">"LOW", "MEDIUM", "HIGH"</td>
+                                    <td class="p-3">Visual processing fidelity for images/video</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-mono text-blue-300">temperature</td>
+                                    <td class="p-3">float</td>
+                                    <td class="p-3">0.0 - 2.0</td>
+                                    <td class="p-3">Recommended: 1.0 (default)</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-mono text-blue-300">responseMimeType</td>
+                                    <td class="p-3">string</td>
+                                    <td class="p-3">"text/plain", "application/json"</td>
+                                    <td class="p-3">Output format</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-mono text-blue-300">responseJsonSchema</td>
+                                    <td class="p-3">object</td>
+                                    <td class="p-3">JSON Schema</td>
+                                    <td class="p-3">Schema for structured output</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-mono text-blue-300">tools</td>
+                                    <td class="p-3">array</td>
+                                    <td class="p-3">Function declarations</td>
+                                    <td class="p-3">Enable function calling</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-mono text-blue-300">systemInstruction</td>
+                                    <td class="p-3">string</td>
+                                    <td class="p-3">—</td>
+                                    <td class="p-3">System-level behavior instructions</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- System Instructions -->
+                <div>
+                    <h3 class="text-xl font-semibold text-white mb-4">System Instructions</h3>
+                    <div class="code-block rounded-lg p-4">
+                        <p class="text-slate-400 text-xs mb-2">Python SDK</p>
+                        <pre class="text-sm text-slate-300 overflow-x-auto"><code>from google import genai
+from google.genai import types
+
+client = genai.Client()
+
+response = client.models.generate_content(
+    model="gemini-3-flash-preview",
+    contents="Explain quantum computing",
+    config=types.GenerateContentConfig(
+        system_instruction="You are a helpful science educator. Use analogies and keep explanations under 3 paragraphs.",
+        thinking_config=types.ThinkingConfig(
+            thinking_level=types.ThinkingLevel.LOW
+        )
+    )
+)</code></pre>
+                    </div>
+                </div>
+
+                <!-- Function Calling -->
+                <div>
+                    <h3 class="text-xl font-semibold text-white mb-4">Function Calling</h3>
+                    <div class="code-block rounded-lg p-4">
+                        <p class="text-slate-400 text-xs mb-2">JavaScript SDK — Function Declaration</p>
+                        <pre class="text-sm text-slate-300 overflow-x-auto"><code>import { GoogleGenAI, Type } from "@google/genai";
+
+const ai = new GoogleGenAI({});
+
+const getWeatherDeclaration = {
+  name: 'get_current_weather',
+  description: 'Get the current weather in a given location',
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      location: {
+        type: Type.STRING,
+        description: 'The city name of the location'
+      }
+    },
+    required: ['location']
+  }
+};
+
+const response = await ai.models.generateContent({
+  model: "gemini-3-flash-preview",
+  contents: "What's the weather in Boston?",
+  config: {
+    tools: [{
+      functionDeclarations: [getWeatherDeclaration]
+    }]
+  }
+});</code></pre>
+                    </div>
+                </div>
+
+                <!-- Multimodal Input -->
+                <div>
+                    <h3 class="text-xl font-semibold text-white mb-4">Multimodal Input Handling</h3>
+                    <div class="code-block rounded-lg p-4">
+                        <p class="text-slate-400 text-xs mb-2">Python — Image + Text with Code Execution</p>
+                        <pre class="text-sm text-slate-300 overflow-x-auto"><code>from google import genai
+from google.genai import types
+import requests
+
+image_path = "https://example.com/instrument.jpg"
+image_bytes = requests.get(image_path).content
+image = types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
+
+client = genai.Client()
+
+response = client.models.generate_content(
+    model="gemini-3-flash-preview",
+    contents=[
+        image,
+        "Zoom into the expression pedals and tell me how many pedals are there?"
+    ],
+    config=types.GenerateContentConfig(
+        tools=[types.Tool(code_execution=types.ToolCodeExecution)]
+    )
+)</code></pre>
+                    </div>
+
+                    <div class="highlight-box rounded-lg p-4 mt-4">
+                        <p class="text-indigo-300 font-medium mb-2">Supported Input Types</p>
+                        <div class="grid grid-cols-2 gap-2 text-sm text-slate-400">
+                            <div>✓ Text</div>
+                            <div>✓ Images (JPEG, PNG, WebP)</div>
+                            <div>✓ Video (as frame sequences)</div>
+                            <div>✓ Audio (16kHz sampled)</div>
+                            <div>✓ PDF Documents</div>
+                            <div>✓ Code files</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Structured Output -->
+                <div>
+                    <h3 class="text-xl font-semibold text-white mb-4">Structured Output with JSON Schema</h3>
+                    <div class="code-block rounded-lg p-4">
+                        <p class="text-slate-400 text-xs mb-2">JavaScript with Zod</p>
+                        <pre class="text-sm text-slate-300 overflow-x-auto"><code>import { GoogleGenAI } from "@google/genai";
+import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
+
+const ai = new GoogleGenAI({});
+
+const recipeSchema = z.object({
+  recipe_name: z.string(),
+  prep_time_minutes: z.number().optional(),
+  ingredients: z.array(z.object({
+    name: z.string(),
+    quantity: z.string()
+  })),
+  instructions: z.array(z.string())
+});
+
+const response = await ai.models.generateContent({
+  model: "gemini-3-flash-preview",
+  contents: "Extract the recipe from this text...",
+  config: {
+    responseMimeType: "application/json",
+    responseJsonSchema: zodToJsonSchema(recipeSchema)
+  }
+});
+
+const recipe = recipeSchema.parse(JSON.parse(response.text));</code></pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 4: Style Consistency for Campaigns -->
+        <section id="style-consistency" class="section-card rounded-2xl p-8">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-10 h-10 rounded-xl bg-pink-500/20 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/>
+                    </svg>
+                </div>
+                <h2 class="text-3xl font-bold text-white">Section 4: Style Consistency for Campaigns</h2>
+            </div>
+
+            <div class="highlight-box rounded-lg p-4 mb-6">
+                <p class="text-indigo-300 font-medium mb-2">The Key Question</p>
+                <p class="text-slate-400">How do you generate a series of images that share the same visual style? Gemini 3 Pro Image provides multiple mechanisms for achieving style consistency.</p>
+            </div>
+
+            <div class="space-y-8">
+                <!-- Reference Image Mechanics -->
+                <div>
+                    <h3 class="text-xl font-semibold text-white mb-4">Reference Image Mechanics for Style Matching</h3>
+                    <p class="text-slate-400 text-sm mb-4">
+                        The most effective approach is using an "anchor" reference image that perfectly represents your target style. 
+                        Upload this image first in the contents array (it has higher weight), then describe the new content.
+                    </p>
+
+                    <div class="code-block rounded-lg p-4">
+                        <p class="text-slate-400 text-xs mb-2">Style Transfer with Reference Image</p>
+                        <pre class="text-sm text-slate-300 overflow-x-auto"><code>from google import genai
+from google.genai import types
+from PIL import Image
+
+client = genai.Client()
+
+# Load your style anchor image
+style_reference = Image.open('style_anchor.png')  # Your "good" image
+
+response = client.models.generate_content(
+    model="gemini-3-pro-image-preview",
+    contents=[
+        style_reference,  # Place style reference FIRST
+        "Generate a new scene of [NEW CONTENT] using the exact art style, color palette, and line work of this uploaded reference image."
+    ],
+    config=types.GenerateContentConfig(
+        response_modalities=['IMAGE'],
+        image_config=types.ImageConfig(
+            aspect_ratio="16:9",
+            image_size="2K"
+        )
+    )
+)</code></pre>
+                    </div>
+                </div>
+
+                <!-- Prompt Patterns -->
+                <div>
+                    <h3 class="text-xl font-semibold text-white mb-4">Prompt Patterns for Variation Work</h3>
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div class="bg-slate-800/50 rounded-lg p-4">
+                            <p class="text-indigo-300 font-medium mb-2">Template Pattern</p>
+                            <pre class="text-xs text-slate-400 overflow-x-auto"><code>"[NEW SUBJECT] in the style of [STYLE DESCRIPTION]. 
+Match the [lighting/color grading/mood] of the reference."
+
+Example:
+"A character opening a door, gouache texture, 
+volumetric lighting, isometric view, 
+soft pastel tones."</code></pre>
+                        </div>
+                        <div class="bg-slate-800/50 rounded-lg p-4">
+                            <p class="text-indigo-300 font-medium mb-2">Style Locking Pattern</p>
+                            <pre class="text-xs text-slate-400 overflow-x-auto"><code>"Using the EXACT style of the reference:
+- Same color palette
+- Same line weight
+- Same lighting setup
+Generate: [NEW CONTENT]"</code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Character Consistency -->
+                <div>
+                    <h3 class="text-xl font-semibold text-white mb-4">Character Consistency Across Generations</h3>
+                    <div class="highlight-box rounded-lg p-4 mb-4">
+                        <p class="text-indigo-300 font-medium mb-2">360° Character Views</p>
+                        <p class="text-slate-400 text-sm">Generate a character from multiple angles by iteratively adding previous outputs as references:</p>
+                    </div>
+
+                    <div class="code-block rounded-lg p-4">
+                        <pre class="text-sm text-slate-300 overflow-x-auto"><code># Turn 1: Generate front view
+response1 = client.models.generate_content(
+    model="gemini-3-pro-image-preview",
+    contents="A studio portrait of a woman in business attire, looking forward",
+    config=types.GenerateContentConfig(response_modalities=['IMAGE'])
+)
+front_view = save_image(response1)
+
+# Turn 2: Generate profile using front as reference
+response2 = client.models.generate_content(
+    model="gemini-3-pro-image-preview",
+    contents=[
+        front_view,
+        "A studio portrait of this SAME woman against white, in profile looking right. Keep facial features identical."
+    ],
+    config=types.GenerateContentConfig(response_modalities=['IMAGE'])
+)</code></pre>
+                    </div>
+                </div>
+
+                <!-- Visual Styles Guide -->
+                <div>
+                    <h3 class="text-xl font-semibold text-white mb-4">Style Control by Visual Domain</h3>
+
+                    <div class="space-y-4">
+                        <div class="bg-slate-800/50 rounded-lg p-4">
+                            <p class="text-pink-300 font-medium mb-2">📷 Photography</p>
+                            <p class="text-slate-400 text-sm mb-2">Control: lighting, color grading, mood</p>
+                            <pre class="text-xs text-slate-500">"Golden hour lighting, warm color grading, shallow depth of field, cinematic mood"</pre>
+                        </div>
+
+                        <div class="bg-slate-800/50 rounded-lg p-4">
+                            <p class="text-pink-300 font-medium mb-2">🎨 Illustrations</p>
+                            <p class="text-slate-400 text-sm mb-2">Control: art style, line weight, palette</p>
+                            <pre class="text-xs text-slate-500">"Gouache texture painting, thick brushstrokes, muted earth-tone palette, hand-crafted feel"</pre>
+                        </div>
+
+                        <div class="bg-slate-800/50 rounded-lg p-4">
+                            <p class="text-pink-300 font-medium mb-2">📐 Graphic Design</p>
+                            <p class="text-slate-400 text-sm mb-2">Control: typography, layout language</p>
+                            <pre class="text-xs text-slate-500">"Swiss modernist style, clean sans-serif typography, grid-based layout, bold primary colors"</pre>
+                        </div>
+
+                        <div class="bg-slate-800/50 rounded-lg p-4">
+                            <p class="text-pink-300 font-medium mb-2">🎮 3D Renders</p>
+                            <p class="text-slate-400 text-sm mb-2">Control: materials, lighting, rendering style</p>
+                            <pre class="text-xs text-slate-500">"Octane render, subsurface scattering, studio lighting, photorealistic materials"</pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Best Practices -->
+                <div class="warning-box rounded-lg p-4">
+                    <p class="text-amber-300 font-medium mb-2">Style Consistency Best Practices</p>
+                    <ul class="text-slate-400 text-sm space-y-1 list-disc list-inside">
+                        <li>Start new chat sessions for each campaign to avoid context drift</li>
+                        <li>Use "Reverse Prompting" — ask the model to analyze your anchor image and extract style keywords</li>
+                        <li>Be hyper-specific: "thick black outlines, minimal shading, flat 2D vector" instead of just "illustration"</li>
+                        <li>Place style reference images FIRST in the contents array</li>
+                        <li>Use the same aspect ratio across a campaign</li>
+                        <li>For long campaigns, periodically re-upload the anchor image to refresh the style lock</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 5: SDK Integration -->
+        <section id="sdk" class="section-card rounded-2xl p-8">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-10 h-10 rounded-xl bg-green-500/20 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                    </svg>
+                </div>
+                <h2 class="text-3xl font-bold text-white">Section 5: SDK Integration</h2>
+            </div>
+
+            <div class="space-y-8">
+                <!-- Installation -->
+                <div>
+                    <h3 class="text-xl font-semibold text-white mb-4">JavaScript SDK: @google/genai</h3>
+                    <div class="code-block rounded-lg p-4">
+                        <p class="text-slate-400 text-xs mb-2">Installation</p>
+                        <pre class="text-sm text-slate-300">npm install @google/genai</pre>
+                    </div>
+
+                    <div class="highlight-box rounded-lg p-4 mt-4">
+                        <p class="text-indigo-300 font-medium mb-2">Required Version</p>
+                        <p class="text-slate-400 text-sm">Use the latest version (0.21.1 or later) for full Gemini 3 support including thinking levels and media resolution controls.</p>
+                    </div>
+                </div>
+
+                <!-- Image Generation Example -->
+                <div>
+                    <h3 class="text-xl font-semibold text-white mb-4">Image Generation with Reference Images</h3>
+                    <div class="code-block rounded-lg p-4">
+                        <pre class="text-sm text-slate-300 overflow-x-auto"><code>import { GoogleGenAI } from "@google/genai";
+import * as fs from "node:fs";
+
+const ai = new GoogleGenAI({});
+
+async function generateWithReference() {
+  // Load reference image
+  const referenceImage = fs.readFileSync("style_reference.png");
+  const base64Image = Buffer.from(referenceImage).toString("base64");
+
+  const response = await ai.models.generateContent({
+    model: "gemini-3-pro-image-preview",
+    contents: [
+      {
+        inlineData: {
+          mimeType: "image/png",
+          data: base64Image
+        }
+      },
+      {
+        text: "Generate a product photo of a wireless headphone using the exact lighting and color grading of this reference image."
+      }
+    ],
+    config: {
+      responseModalities: ["IMAGE"],
+      imageConfig: {
+        aspectRatio: "1:1",
+        imageSize: "2K"
+      }
+    }
+  });
+
+  // Save generated image
+  for (const part of response.candidates[0].content.parts) {
+    if (part.inlineData) {
+      const buffer = Buffer.from(part.inlineData.data, "base64");
+      fs.writeFileSync("output.png", buffer);
+    }
+  }
+}
+
+generateWithReference();</code></pre>
+                    </div>
+                </div>
+
+                <!-- Multi-turn Editing -->
+                <div>
+                    <h3 class="text-xl font-semibold text-white mb-4">Multi-turn Image Editing</h3>
+                    <div class="code-block rounded-lg p-4">
+                        <pre class="text-sm text-slate-300 overflow-x-auto"><code>import { GoogleGenAI } from "@google/genai";
+
+const ai = new GoogleGenAI({});
+
+async function multiTurnEdit() {
+  // Create chat session
+  const chat = ai.chats.create({
+    model: "gemini-3-pro-image-preview",
+    config: {
+      responseModalities: ["TEXT", "IMAGE"]
+    }
+  });
+
+  // First generation
+  const response1 = await chat.sendMessage(
+    "Create a vibrant infographic explaining photosynthesis as a recipe"
+  );
+
+  console.log("Generated:", response1.candidates[0].content.parts[0].text);
+
+  // Edit in same session
+  const response2 = await chat.sendMessage({
+    message: "Change the background to dark mode and update text to Spanish",
+    config: {
+      imageConfig: {
+        aspectRatio: "16:9",
+        imageSize: "2K"
+      }
+    }
+  });
+
+  // Save edited image
+  for (const part of response2.candidates[0].content.parts) {
+    if (part.inlineData) {
+      fs.writeFileSync(
+        "edited.png", 
+        Buffer.from(part.inlineData.data, "base64")
+      );
+    }
+  }
+}
+
+multiTurnEdit();</code></pre>
+                    </div>
+                </div>
+
+                <!-- Character Consistency -->
+                <div>
+                    <h3 class="text-xl font-semibold text-white mb-4">Character Consistency Implementation</h3>
+                    <div class="code-block rounded-lg p-4">
+                        <pre class="text-sm text-slate-300 overflow-x-auto"><code>import { GoogleGenAI } from "@google/genai";
+import * as fs from "node:fs";
+
+const ai = new GoogleGenAI({});
+
+async function maintainCharacterConsistency() {
+  // Load character references (up to 5 people)
+  const characterImages = [
+    fs.readFileSync("char1_front.png"),
+    fs.readFileSync("char1_profile.png"),
+    fs.readFileSync("char2_front.png")
+  ].map(img => Buffer.from(img).toString("base64"));
+
+  const response = await ai.models.generateContent({
+    model: "gemini-3-pro-image-preview",
+    contents: [
+      ...characterImages.map((img, i) => ({
+        inlineData: {
+          mimeType: "image/png",
+          data: img,
+          // Add media resolution for better fidelity
+          mediaResolution: { level: "media_resolution_high" }
+        }
+      })),
+      {
+        text: "A group photo of THESE EXACT people at a beach party. Maintain facial features, hairstyles, and clothing style exactly. Only change the background to a sunset beach scene."
+      }
+    ],
+    config: {
+      responseModalities: ["IMAGE"],
+      imageConfig: {
+        aspectRatio: "16:9",
+        imageSize: "4K"  // Highest quality for production
+      }
+    }
+  });
+
+  // Extract and save
+  const imagePart = response.candidates[0].content.parts.find(
+    p => p.inlineData
+  );
+
+  if (imagePart) {
+    fs.writeFileSync(
+      "consistent_scene.png",
+      Buffer.from(imagePart.inlineData.data, "base64")
+    );
+  }
+}
+
+maintainCharacterConsistency();</code></pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 6: Limitations & Known Issues -->
+        <section id="limitations" class="section-card rounded-2xl p-8">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                </div>
+                <h2 class="text-3xl font-bold text-white">Section 6: Limitations & Known Issues</h2>
+            </div>
+
+            <div class="space-y-8">
+                <!-- Content Restrictions -->
+                <div>
+                    <h3 class="text-xl font-semibold text-white mb-4">Content Restrictions</h3>
+                    <div class="bg-slate-800/50 rounded-lg p-4">
+                        <ul class="text-slate-400 text-sm space-y-2 list-disc list-inside">
+                            <li>All generated images include <strong class="text-indigo-300">SynthID watermarking</strong> (cannot be disabled)</li>
+                            <li>Content must comply with Google's Usage Restriction Policy</li>
+                            <li>No generation of deceptive, harassing, or harmful content</li>
+                            <li>Cannot generate images of real individuals without consent</li>
+                            <li>Text generation within images works best with Gemini 3 Pro Image (not Flash Image)</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Known Issues -->
+                <div>
+                    <h3 class="text-xl font-semibold text-white mb-4">Known Issues & Limitations</h3>
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div class="bg-slate-800/50 rounded-lg p-4">
+                            <p class="text-red-300 font-medium mb-2">Gemini 3 Pro Image</p>
+                            <ul class="text-slate-400 text-sm space-y-1 list-disc list-inside">
+                                <li>No seed parameter for reproducibility</li>
+                                <li>Style drift in long conversation threads</li>
+                                <li>Maximum 14 reference images</li>
+                                <li>No audio/video input support</li>
+                                <li>Thinking mode adds 5-15s latency</li>
+                                <li>4K generation costs 4x tokens vs 1K</li>
+                            </ul>
+                        </div>
+                        <div class="bg-slate-800/50 rounded-lg p-4">
+                            <p class="text-red-300 font-medium mb-2">Gemini 3 Flash</p>
+                            <ul class="text-slate-400 text-sm space-y-1 list-disc list-inside">
+                                <li>Thinking cannot be disabled (only LOW/HIGH)</li>
+                                <li>Knowledge cutoff: January 2025</li>
+                                <li>High media resolution increases token cost</li>
+                                <li>Thought signatures required for multi-turn</li>
+                                <li>Some thinking mode visual bugs reported</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Common Mistakes -->
+                <div>
+                    <h3 class="text-xl font-semibold text-white mb-4">Common Mistakes</h3>
+                    <div class="warning-box rounded-lg p-4">
+                        <ul class="text-slate-400 text-sm space-y-2 list-disc list-inside">
+                            <li><strong class="text-amber-300">Forgetting thought signatures:</strong> Always return signatures in multi-turn API calls or get 400 errors</li>
+                            <li><strong class="text-amber-300">Wrong image order:</strong> Style references should come FIRST in contents array</li>
+                            <li><strong class="text-amber-300">Exceeding reference limits:</strong> Max 14 images for Pro Image, 3 for Flash Image</li>
+                            <li><strong class="text-amber-300">Not starting fresh chats:</strong> Long threads cause style drift — start new sessions for campaigns</li>
+                            <li><strong class="text-amber-300">Ignoring aspect ratio matching:</strong> Mismatched ratios can cause distortion</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- SynthID -->
+                <div>
+                    <h3 class="text-xl font-semibold text-white mb-4">SynthID Watermarking</h3>
+                    <div class="highlight-box rounded-lg p-4">
+                        <p class="text-indigo-300 font-medium mb-2">What You Need to Know</p>
+                        <ul class="text-slate-400 text-sm space-y-1 list-disc list-inside">
+                            <li>All Gemini-generated images contain invisible SynthID watermarks</li>
+                            <li>Watermarks survive common editing (crop, resize, compression)</li>
+                            <li>Can be verified using Gemini App or SynthID Detector Portal</li>
+                            <li>SynthID only detects Google AI content — not Midjourney, DALL-E, etc.</li>
+                            <li>Visible "AI-generated" watermark also present in some outputs</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Sources -->
+        <section id="sources" class="section-card rounded-2xl p-8">
+            <h2 class="text-2xl font-bold text-white mb-6">Sources & References</h2>
+            <div class="text-slate-400 text-sm space-y-2">
+                <p>All information compiled from official Google sources as of January 30, 2026:</p>
+                <ul class="list-disc list-inside space-y-1 mt-2">
+                    <li>Google AI Gemini API Documentation (ai.google.dev)</li>
+                    <li>Gemini 3 Developer Guide — January 2026</li>
+                    <li>Nano Banana Image Generation Guide — January 2026</li>
+                    <li>Google GenAI SDK Documentation</li>
+                    <li>Vertex AI Generative AI Documentation</li>
+                    <li>Gemini 3 Pro Model Card (Google DeepMind)</li>
+                </ul>
+                <p class="mt-4 text-slate-500">This reference prioritizes information from January 2026 and later, reflecting the current state of the Gemini 3 model family in preview.</p>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-800 py-8 px-6">
+        <div class="max-w-6xl mx-auto text-center text-slate-500 text-sm">
+            <p>Gemini 3 Model Family — Complete Technical Reference</p>
+            <p class="mt-1">Generated January 30, 2026</p>
+        </div>
+    </footer>
+
+</body>
+</html>

@@ -214,10 +214,20 @@ const Generator: React.FC<GeneratorProps> = ({
   }, [assets, pendingAssets, removeJob]);
 
   // Combine pending and completed assets for display
-  // Pending assets go first
+  // Pending assets go first, and we filter out any completed assets that are still pending
   const displayAssets = useMemo(() => {
-    return [...pendingAssets, ...assets];
+    // Get IDs of pending jobs to exclude from assets (prevents duplicates during completion transition)
+    const pendingJobIds = new Set(pendingAssets.map(p => p.id));
+    const pendingAssetIds = new Set(pendingAssets.map(p => p.jobId).filter(Boolean));
+    
+    // Filter assets to exclude any that are still in the pending queue
+    const filteredAssets = assets.filter(a => 
+      !pendingJobIds.has(a.id) && !pendingAssetIds.has(a.id as string)
+    );
+    
+    return [...pendingAssets, ...filteredAssets];
   }, [pendingAssets, assets]);
+
 
   const handleDelete = useCallback((id: string) => {
     if (deleteAsset) {

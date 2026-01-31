@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import multer from 'multer';
+import { v4 as uuidv4 } from 'uuid';
 import { gateway } from '@ai-sdk/gateway';
 import { generateText } from 'ai';
 import { GoogleGenAI } from '@google/genai';
@@ -3071,6 +3072,21 @@ app.post('/api/admin/test-email', async (req, res) => {
 
 
 
+// Helper: Extract branding data from business profile for prompt injection
+function extractBrandingData(business: any) {
+    const profile = business.profile || {};
+    const contacts = profile.contacts || [];
+    
+    return {
+        name: business.name,
+        location: profile.publicLocationLabel || '',
+        address: profile.address || '',
+        whatsapp: contacts.find((c: any) => c.type === 'whatsapp')?.value || '',
+        phone: contacts.find((c: any) => c.type === 'phone')?.value || '',
+        email: contacts.find((c: any) => c.type === 'email')?.value || ''
+    };
+}
+
 // Helper: Convert URL to Base64 with proper MIME type detection
 async function urlToBase64WithMime(url: string): Promise<{ base64: string; mimeType: string } | null> {
     try {
@@ -3650,6 +3666,972 @@ app.delete('/api/generate-image/job/:jobId', async (req, res) => {
 });
 
 // ============================================================================
+// CAMPAIGN GENERATION API (Server-Side Orchestration)
+// ============================================================================
+
+// POST /api/generate-campaign
+// Sequential campaign generation with anchor-based style consistency
+app.post('/api/generate-campaign', async (req, res) => {
+    console.log('[Campaign] Campaign Generation Request Received');
+
+    const {
+        businessId,
+        prompts,  // Array of prompts
+        aspectRatio = '1:1',
+        styleId,
+        modelTier = 'pro',
+        isFreedomMode = true  // Default to freedom mode for campaigns
+    } = req.body;
+
+    // Validation
+    if (!businessId) {
+        res.status(400).json({ error: 'businessId is required' });
+        return;
+    }
+    if (!prompts || !Array.isArray(prompts) || prompts.length < 2) {
+        res.status(400).json({ error: 'prompts must be an array with at least 2 items' });
+        return;
+    }
+
+    const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+
+    try {
+        // 1. Generate unique campaign ID
+        const campaignId = uuidv4();
+        console.log(`[Campaign] Starting campaign: ${campaignId} with ${prompts.length} images`);
+
+        // 2. Fetch Business Data
+        const { data: business, error: bizError } = await supabase
+            .from('businesses')
+            .select('*')
+            .eq('id', businessId)
+            .single();
+
+        if (bizError || !business) {
+            res.status(404).json({ error: 'Business not found' });
+            return;
+        }
+
+        // 3. Create Campaign Record
+        const { data: campaign, error: campaignError } = await supabase
+            .from('campaigns')
+            .insert({
+                id: campaignId,
+                business_id: businessId,
+                status: 'processing',
+                total_images: prompts.length,
+                completed_images: 0,
+                prompts: prompts,
+                aspect_ratio: aspectRatio,
+                style_id: styleId,
+                model_tier: modelTier
+            })
+            .select()
+            .single();
+
+        if (campaignError) {
+            console.error('[Campaign] Failed to create campaign:', campaignError);
+            res.status(500).json({ error: 'Failed to create campaign' });
+            return;
+        }
+
+        // Return campaign ID immediately so frontend can track progress
+        res.json({ 
+            campaignId, 
+            status: 'processing',
+            totalImages: prompts.length 
+        });
+
+        // Map business for generation
+        const mappedBusiness = {
+            id: business.id,
+            name: business.name,
+            type: business.type,
+            industry: business.industry,
+            description: business.description,
+            currency: business.currency || 'USD',
+            colors: business.colors || {},
+            voice: business.voice || {},
+            profile: business.profile || {},
+            logoUrl: business.logo_url,
+        };
+
+        // 4. Process SEQUENTIALLY in background (after response sent)
+        (async () => {
+            const assetIds: string[] = [];
+            let anchorUrl: string | undefined;
+
+            for (let i = 0; i < prompts.length; i++) {
+                const prompt = prompts[i];
+                const isAnchor = i === 0;
+                
+                console.log(`[Campaign] Generating image ${i + 1}/${prompts.length}${isAnchor ? ' (ANCHOR)' : ''}`);
+
+                // Update campaign progress
+                await supabase
+                    .from('campaigns')
+                    .update({ completed_images: i })
+                    .eq('id', campaignId);
+
+                try {
+                    // Create job record
+                    const { data: job, error: jobError } = await supabase
+                        .from('generation_jobs')
+                        .insert({
+                            business_id: businessId,
+                            status: 'processing',
+                            prompt,
+                            aspect_ratio: aspectRatio,
+                            style_id: styleId,
+                            model_tier: modelTier,
+                            error_message: isAnchor 
+                                ? 'Creating campaign anchor...' 
+                                : `Generating image ${i + 1}/${prompts.length} with campaign style...`
+                        })
+                        .select()
+                        .single();
+
+                    if (jobError) throw new Error(`Failed to create job: ${jobError.message}`);
+
+                    // Build prompt
+                    const businessName = mappedBusiness.name || 'Brand';
+                    const brandColors = mappedBusiness.colors?.palette?.join(', ') || '';
+
+                    // Add campaign consistency instruction for non-anchor images
+                    const campaignConsistencyNote = anchorUrl 
+                        ? `\n\n=== CAMPAIGN CONSISTENCY ===
+A reference image is provided showing the established visual style.
+MATCH THIS STYLE EXACTLY:
+- Same color grading and lighting
+- Same composition approach
+- Same typographic treatment
+- Same overall aesthetic
+The reference image defines the campaign's visual DNA.`
+                        : '';
+
+                    const finalPrompt = `## CREATIVE FREEDOM MODE
+
+You are generating a creative visual for ${businessName}.
+
+### USER'S VISION
+${prompt}
+
+### BRAND CONTEXT
+- **Color Palette:** ${brandColors || 'Use suitable colors'}
+- **Logo:** Brand logo is provided as an input image.
+${campaignConsistencyNote}
+
+### GUIDELINES
+- **Aspect ratio:** ${aspectRatio}
+- **Logo integration:** The logo must look like part of the design — not pasted on afterwards. Match the visual treatment (color grading, texture, lighting) of the rest of the piece.
+- All text must be diegetic (part of the scene) and spelled correctly.
+- The user's prompt is the priority.
+- **Be smart about copy:** Include bold headlines, taglines, or CTAs when appropriate — this is creative marketing, not abstract art (unless explicitly requested). Skip compliance text (contact info, hours, address) but keep punchy marketing copy.`;
+
+                    console.log('[Campaign] Prompt length:', finalPrompt.length);
+
+                    // Build content parts
+                    const googleParts: any[] = [];
+
+                    // CAMPAIGN ANCHOR INJECTION (Slot 1 - Highest priority)
+                    if (anchorUrl) {
+                        console.log(`[Campaign] 🔗 Attempting anchor injection for image ${i + 1}...`);
+                        console.log(`[Campaign] 🔗 Anchor URL: ${anchorUrl.substring(0, 100)}...`);
+                        const anchorImage = await urlToBase64WithMime(anchorUrl);
+                        if (anchorImage) {
+                            googleParts.push({
+                                inlineData: {
+                                    mimeType: anchorImage.mimeType,
+                                    data: anchorImage.base64
+                                }
+                            });
+                            console.log(`[Campaign] ✓ Anchor image injected as style reference (${anchorImage.base64.length} chars)`);
+                        } else {
+                            console.error(`[Campaign] ❌ FAILED to load anchor image from: ${anchorUrl}`);
+                        }
+                    } else if (i > 0) {
+                        console.warn(`[Campaign] ⚠️ Image ${i + 1} generated WITHOUT anchor URL - consistency may be affected!`);
+                    }
+
+                    // Logo image
+                    if (mappedBusiness.logoUrl) {
+                        const logoImage = await urlToBase64WithMime(mappedBusiness.logoUrl);
+                        if (logoImage) {
+                            googleParts.push({
+                                inlineData: {
+                                    mimeType: logoImage.mimeType,
+                                    data: logoImage.base64
+                                }
+                            });
+                            console.log('[Campaign] ✓ Logo loaded');
+                        }
+                    }
+
+                    // Prompt text
+                    googleParts.push({ text: finalPrompt });
+
+                    // Call Gemini
+                    const googleClient = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY! });
+                    
+                    console.log('[Campaign] Calling Gemini 3 Pro Image...');
+                    const startTime = Date.now();
+
+                    const result = await googleClient.models.generateContent({
+                        model: 'gemini-3-pro-image-preview',
+                        contents: [{ role: 'user', parts: googleParts }],
+                        config: {
+                            responseModalities: ['TEXT', 'IMAGE'],
+                            imageConfig: {
+                                aspectRatio,
+                                imageSize: modelTier === 'ultra' ? '4K' : '2K'
+                            }
+                        } as any
+                    });
+
+                    const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+                    console.log(`[Campaign] ⏱️ AI Generation took: ${elapsed}s`);
+
+                    // Extract image from response
+                    const parts = result.candidates?.[0]?.content?.parts || [];
+                    const imagePart = parts.find((p: any) => p.inlineData?.mimeType?.startsWith('image/'));
+
+                    if (!imagePart?.inlineData) {
+                        await supabase
+                            .from('generation_jobs')
+                            .update({ status: 'failed', error_message: 'No image returned by AI' })
+                            .eq('id', job.id);
+                        console.error(`[Campaign] Image ${i + 1} failed: No image returned`);
+                        continue;
+                    }
+
+                    // Upload to storage
+                    const resultImage = `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
+                    const publicUrl = await uploadToStorage(resultImage, businessId, supabase);
+
+                    if (!publicUrl) {
+                        await supabase
+                            .from('generation_jobs')
+                            .update({ status: 'failed', error_message: 'Upload to storage failed' })
+                            .eq('id', job.id);
+                        console.error(`[Campaign] Image ${i + 1} failed: Upload failed`);
+                        continue;
+                    }
+
+                    // Create asset record
+                    const assetId = `asset_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+                    await supabase.from('assets').insert({
+                        id: assetId,
+                        business_id: businessId,
+                        type: 'image',
+                        prompt,
+                        content: publicUrl,
+                        style_id: styleId,
+                        aspect_ratio: aspectRatio,
+                        campaign_id: campaignId,
+                        is_campaign_anchor: isAnchor
+                    });
+
+                    // Update job to complete
+                    await supabase
+                        .from('generation_jobs')
+                        .update({ status: 'completed', result_asset_id: assetId })
+                        .eq('id', job.id);
+
+                    assetIds.push(assetId);
+
+                    // Capture anchor URL from first image
+                    if (isAnchor) {
+                        anchorUrl = publicUrl;
+                        await supabase
+                            .from('campaigns')
+                            .update({ anchor_url: anchorUrl })
+                            .eq('id', campaignId);
+                        console.log(`[Campaign] ✅ Anchor captured: ${anchorUrl.substring(0, 80)}...`);
+                    }
+
+                    console.log(`[Campaign] ✅ Image ${i + 1} complete: ${assetId}`);
+
+                } catch (imgError: any) {
+                    console.error(`[Campaign] Error generating image ${i + 1}:`, imgError);
+                }
+            }
+
+            // 5. Mark campaign complete
+            await supabase
+                .from('campaigns')
+                .update({
+                    status: assetIds.length === prompts.length ? 'complete' : 'failed',
+                    completed_images: assetIds.length,
+                    completed_at: new Date().toISOString(),
+                    error: assetIds.length < prompts.length 
+                        ? `Only ${assetIds.length}/${prompts.length} images generated`
+                        : null
+                })
+                .eq('id', campaignId);
+
+            console.log(`[Campaign] ✅ Campaign complete: ${assetIds.length}/${prompts.length} images`);
+        })();
+
+    } catch (error: any) {
+        console.error('[Campaign] Critical Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/generate-campaign/status/:campaignId
+// Get campaign generation progress
+app.get('/api/generate-campaign/status/:campaignId', async (req, res) => {
+    const { campaignId } = req.params;
+
+    const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+
+    const { data: campaign, error } = await supabase
+        .from('campaigns')
+        .select('*')
+        .eq('id', campaignId)
+        .single();
+
+    if (error || !campaign) {
+        res.status(404).json({ error: 'Campaign not found' });
+        return;
+    }
+
+    // Get asset IDs for this campaign
+    const { data: assets } = await supabase
+        .from('assets')
+        .select('id, content')
+        .eq('campaign_id', campaignId)
+        .order('created_at', { ascending: true });
+
+    res.json({
+        campaignId: campaign.id,
+        status: campaign.status,
+        totalImages: campaign.total_images,
+        completedImages: campaign.completed_images,
+        anchorUrl: campaign.anchor_url,
+        assetIds: assets?.map(a => a.id) || [],
+        assetUrls: assets?.map(a => a.content) || []
+    });
+});
+
+// ============================================================================
+// CAMPAIGN PREVIEW FLOW (Anchor-First Generation)
+// ============================================================================
+
+// POST /api/generate-campaign/preview
+// Generate ONLY the anchor image for preview (50 credits)
+app.post('/api/generate-campaign/preview', async (req, res) => {
+    const { businessId, prompts, aspectRatio = '1:1', styleId, modelTier = 'pro' } = req.body;
+
+    if (!businessId || !prompts || !Array.isArray(prompts) || prompts.length < 2) {
+        res.status(400).json({ error: 'businessId and prompts array (2+ items) required' });
+        return;
+    }
+
+    try {
+        const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+        const campaignId = uuidv4();
+
+        console.log('[Campaign Preview] Generating anchor for campaign:', campaignId);
+
+        // Get business and owner subscription
+        const { data: business, error: bizError } = await supabase
+            .from('businesses')
+            .select('*, business_members!inner(user_id, role)')
+            .eq('id', businessId)
+            .single();
+
+        if (bizError || !business) {
+            res.status(404).json({ error: 'Business not found' });
+            return;
+        }
+
+        const ownerId = business.business_members.find((m: any) => m.role === 'owner')?.user_id;
+        if (!ownerId) {
+            res.status(400).json({ error: 'Business has no owner' });
+            return;
+        }
+
+        // Check and deduct 50 credits for preview
+        const { data: subscription, error: subError } = await supabase
+            .from('subscriptions')
+            .select('*')
+            .eq('user_id', ownerId)
+            .single();
+
+        if (subError || !subscription) {
+            res.status(400).json({ error: 'No subscription found' });
+            return;
+        }
+
+        if ((subscription.credits_remaining || 0) < 50) {
+            res.status(400).json({ error: 'Insufficient credits (need 50 for preview)' });
+            return;
+        }
+
+        // Deduct 50 credits
+        await supabase
+            .from('subscriptions')
+            .update({ credits_remaining: subscription.credits_remaining - 50 })
+            .eq('user_id', ownerId);
+
+        // Create campaign record with status 'preview'
+        await supabase.from('campaigns').insert({
+            id: campaignId,
+            business_id: businessId,
+            status: 'preview',
+            total_images: prompts.length,
+            completed_images: 0,
+            prompts: prompts,
+            aspect_ratio: aspectRatio,
+            style_id: styleId,
+            model_tier: modelTier
+        });
+
+        // Generate anchor image (synchronously since it's just one)
+        const anchorPrompt = prompts[0];
+        const mappedBusiness = {
+            name: business.name,
+            colors: business.colors || {},
+            logoUrl: business.logo_url
+        };
+
+        const brandColors = mappedBusiness.colors?.palette?.join(', ') || '';
+        const branding = extractBrandingData(business);
+        
+        const finalPrompt = `## CREATIVE FREEDOM MODE
+
+You are generating a creative visual for ${branding.name}.
+
+### USER'S VISION
+${anchorPrompt}
+
+### BRAND ASSETS
+- **Logo:** An image of the brand logo is provided. Integrate it NATURALLY into your design—it should look like it belongs, not pasted on.
+- **Color Palette:** ${brandColors || 'Use suitable colors'}
+
+### BUSINESS CONTACT DATA (Use these EXACT values if including contact info)
+- Business Name: ${branding.name}
+- Location: ${branding.location}
+- WhatsApp: ${branding.whatsapp}
+- Phone: ${branding.phone}
+
+You decide WHERE and HOW to incorporate this branding based on the visual style. It could be a footer bar, corner badge, integrated watermark, or woven into the design—whatever fits the aesthetic.
+
+### GUIDELINES
+- **Aspect ratio:** ${aspectRatio}
+- All text must be diegetic and spelled correctly.
+- If you include contact details, use the EXACT values above—do NOT fabricate numbers.
+- This is the ANCHOR image — establish strong visual identity.`;
+
+        const googleParts: any[] = [];
+
+        // Logo
+        if (mappedBusiness.logoUrl) {
+            const logoImage = await urlToBase64WithMime(mappedBusiness.logoUrl);
+            if (logoImage) {
+                googleParts.push({
+                    inlineData: { mimeType: logoImage.mimeType, data: logoImage.base64 }
+                });
+            }
+        }
+
+        googleParts.push({ text: finalPrompt });
+
+        const googleClient = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY! });
+        const result = await googleClient.models.generateContent({
+            model: 'gemini-3-pro-image-preview',
+            contents: [{ role: 'user', parts: googleParts }],
+            config: {
+                responseModalities: ['TEXT', 'IMAGE'],
+                imageConfig: { aspectRatio, imageSize: modelTier === 'ultra' ? '4K' : '2K' }
+            } as any
+        });
+
+        const parts = result.candidates?.[0]?.content?.parts || [];
+        const imagePart = parts.find((p: any) => p.inlineData?.mimeType?.startsWith('image/'));
+
+        if (!imagePart?.inlineData) {
+            res.status(500).json({ error: 'No image returned by AI' });
+            return;
+        }
+
+        const resultImage = `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
+        const publicUrl = await uploadToStorage(resultImage, businessId, supabase);
+
+        if (!publicUrl) {
+            res.status(500).json({ error: 'Failed to upload anchor image' });
+            return;
+        }
+
+        // Create asset
+        const assetId = `asset_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        await supabase.from('assets').insert({
+            id: assetId,
+            business_id: businessId,
+            type: 'image',
+            prompt: anchorPrompt,
+            content: publicUrl,
+            style_id: styleId,
+            aspect_ratio: aspectRatio,
+            campaign_id: campaignId,
+            is_campaign_anchor: true
+        });
+
+        // Update campaign with anchor
+        await supabase
+            .from('campaigns')
+            .update({ anchor_url: publicUrl, completed_images: 1 })
+            .eq('id', campaignId);
+
+        console.log('[Campaign Preview] ✅ Anchor generated:', assetId);
+
+        res.json({
+            campaignId,
+            anchorUrl: publicUrl,
+            anchorAssetId: assetId,
+            remainingImages: prompts.length - 1,
+            remainingCredits: (prompts.length - 1) * 100
+        });
+
+    } catch (error: any) {
+        console.error('[Campaign Preview] Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/generate-campaign/continue
+// Continue campaign after anchor approval (deducts remaining credits)
+app.post('/api/generate-campaign/continue', async (req, res) => {
+    const { campaignId } = req.body;
+
+    if (!campaignId) {
+        res.status(400).json({ error: 'campaignId required' });
+        return;
+    }
+
+    try {
+        const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+
+        // Get campaign
+        const { data: campaign, error: campError } = await supabase
+            .from('campaigns')
+            .select('*')
+            .eq('id', campaignId)
+            .single();
+
+        if (campError || !campaign) {
+            res.status(404).json({ error: 'Campaign not found' });
+            return;
+        }
+
+        if (campaign.status !== 'preview') {
+            res.status(400).json({ error: 'Campaign is not in preview state' });
+            return;
+        }
+
+        const remainingCount = campaign.total_images - 1;
+        const remainingCredits = remainingCount * 100;
+
+        // Get business owner
+        const { data: business } = await supabase
+            .from('businesses')
+            .select('*, business_members!inner(user_id, role)')
+            .eq('id', campaign.business_id)
+            .single();
+
+        const ownerId = business?.business_members.find((m: any) => m.role === 'owner')?.user_id;
+        if (!ownerId) {
+            res.status(400).json({ error: 'Business has no owner' });
+            return;
+        }
+
+        // Check credits
+        const { data: subscription } = await supabase
+            .from('subscriptions')
+            .select('*')
+            .eq('user_id', ownerId)
+            .single();
+
+        if (!subscription || (subscription.credits_remaining || 0) < remainingCredits) {
+            res.status(400).json({ error: `Insufficient credits (need ${remainingCredits})` });
+            return;
+        }
+
+        // Deduct credits
+        await supabase
+            .from('subscriptions')
+            .update({ credits_remaining: subscription.credits_remaining - remainingCredits })
+            .eq('user_id', ownerId);
+
+        // Update campaign status
+        await supabase
+            .from('campaigns')
+            .update({ status: 'processing' })
+            .eq('id', campaignId);
+
+        console.log('[Campaign Continue] Starting generation of', remainingCount, 'images');
+
+        // Return immediately, process in background
+        res.json({ 
+            campaignId, 
+            status: 'processing', 
+            remainingImages: remainingCount 
+        });
+
+        // Background generation
+        (async () => {
+            const prompts = campaign.prompts as string[];
+            const anchorUrl = campaign.anchor_url;
+            const mappedBusiness = { name: business.name, colors: business.colors || {}, logoUrl: business.logo_url };
+            const assetIds: string[] = [];
+
+            for (let i = 1; i < prompts.length; i++) {
+                const prompt = prompts[i];
+                console.log(`[Campaign Continue] Generating image ${i + 1}/${prompts.length}`);
+
+                try {
+                    const brandColors = mappedBusiness.colors?.palette?.join(', ') || '';
+                    const branding = extractBrandingData(business);
+                    
+                    const finalPrompt = `## CREATIVE FREEDOM MODE
+
+You are generating a creative visual for ${branding.name}.
+
+### USER'S VISION
+${prompt}
+
+### BRAND ASSETS
+- **Logo:** An image of the brand logo is provided. Integrate it NATURALLY—it should look like it belongs, not pasted on.
+- **Color Palette:** ${brandColors || 'Use suitable colors'}
+
+### BUSINESS CONTACT DATA (Use these EXACT values if including contact info)
+- Business Name: ${branding.name}
+- Location: ${branding.location}
+- WhatsApp: ${branding.whatsapp}
+- Phone: ${branding.phone}
+
+You decide WHERE and HOW to incorporate this branding based on the visual style. It could be a footer bar, corner badge, integrated watermark, or woven into the design—whatever fits the aesthetic.
+
+=== CAMPAIGN CONSISTENCY ===
+A reference image is provided showing the established visual style.
+MATCH THIS STYLE EXACTLY:
+- Same color grading and lighting
+- Same composition approach
+- Same typographic treatment
+- Same overall aesthetic
+
+### GUIDELINES
+- **Aspect ratio:** ${campaign.aspect_ratio}
+- All text must be diegetic and spelled correctly.
+- If you include contact details, use the EXACT values above—do NOT fabricate numbers.`;
+
+                    const googleParts: any[] = [];
+
+                    // Anchor image first (style reference)
+                    if (anchorUrl) {
+                        const anchorImage = await urlToBase64WithMime(anchorUrl);
+                        if (anchorImage) {
+                            googleParts.push({
+                                inlineData: { mimeType: anchorImage.mimeType, data: anchorImage.base64 }
+                            });
+                        }
+                    }
+
+                    // Logo
+                    if (mappedBusiness.logoUrl) {
+                        const logoImage = await urlToBase64WithMime(mappedBusiness.logoUrl);
+                        if (logoImage) {
+                            googleParts.push({
+                                inlineData: { mimeType: logoImage.mimeType, data: logoImage.base64 }
+                            });
+                        }
+                    }
+
+                    googleParts.push({ text: finalPrompt });
+
+                    const googleClient = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY! });
+                    const result = await googleClient.models.generateContent({
+                        model: 'gemini-3-pro-image-preview',
+                        contents: [{ role: 'user', parts: googleParts }],
+                        config: {
+                            responseModalities: ['TEXT', 'IMAGE'],
+                            imageConfig: { aspectRatio: campaign.aspect_ratio, imageSize: campaign.model_tier === 'ultra' ? '4K' : '2K' }
+                        } as any
+                    });
+
+                    const parts = result.candidates?.[0]?.content?.parts || [];
+                    const imagePart = parts.find((p: any) => p.inlineData?.mimeType?.startsWith('image/'));
+
+                    if (!imagePart?.inlineData) {
+                        console.error(`[Campaign Continue] Image ${i + 1} failed: No image returned`);
+                        continue;
+                    }
+
+                    const resultImage = `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
+                    const publicUrl = await uploadToStorage(resultImage, campaign.business_id, supabase);
+
+                    if (!publicUrl) continue;
+
+                    const assetId = `asset_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+                    await supabase.from('assets').insert({
+                        id: assetId,
+                        business_id: campaign.business_id,
+                        type: 'image',
+                        prompt,
+                        content: publicUrl,
+                        style_id: campaign.style_id,
+                        aspect_ratio: campaign.aspect_ratio,
+                        campaign_id: campaignId,
+                        is_campaign_anchor: false
+                    });
+
+                    assetIds.push(assetId);
+
+                    await supabase
+                        .from('campaigns')
+                        .update({ completed_images: i + 1 })
+                        .eq('id', campaignId);
+
+                    console.log(`[Campaign Continue] ✅ Image ${i + 1} complete`);
+                } catch (err) {
+                    console.error(`[Campaign Continue] Error on image ${i + 1}:`, err);
+                }
+            }
+
+            // Mark complete
+            await supabase
+                .from('campaigns')
+                .update({
+                    status: assetIds.length === prompts.length - 1 ? 'complete' : 'partial',
+                    completed_images: assetIds.length + 1
+                })
+                .eq('id', campaignId);
+
+            console.log(`[Campaign Continue] ✅ Complete: ${assetIds.length + 1}/${prompts.length}`);
+        })();
+
+    } catch (error: any) {
+        console.error('[Campaign Continue] Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/generate-campaign/reject
+// Reject anchor and regenerate (uses daily quota or 50 credits)
+app.post('/api/generate-campaign/reject', async (req, res) => {
+    const { campaignId, adjustedPrompt } = req.body;
+
+    if (!campaignId) {
+        res.status(400).json({ error: 'campaignId required' });
+        return;
+    }
+
+    try {
+        const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
+
+        // Get campaign
+        const { data: campaign, error: campError } = await supabase
+            .from('campaigns')
+            .select('*')
+            .eq('id', campaignId)
+            .single();
+
+        if (campError || !campaign) {
+            res.status(404).json({ error: 'Campaign not found' });
+            return;
+        }
+
+        if (campaign.status !== 'preview') {
+            res.status(400).json({ error: 'Campaign is not in preview state' });
+            return;
+        }
+
+        // Get business owner
+        const { data: business } = await supabase
+            .from('businesses')
+            .select('*, business_members!inner(user_id, role)')
+            .eq('id', campaign.business_id)
+            .single();
+
+        const ownerId = business?.business_members.find((m: any) => m.role === 'owner')?.user_id;
+        if (!ownerId) {
+            res.status(400).json({ error: 'Business has no owner' });
+            return;
+        }
+
+        // Check free rejection quota
+        const { data: subscription } = await supabase
+            .from('subscriptions')
+            .select('*')
+            .eq('user_id', ownerId)
+            .single();
+
+        if (!subscription) {
+            res.status(400).json({ error: 'No subscription found' });
+            return;
+        }
+
+        // Reset quota if day has passed
+        const now = new Date();
+        const resetAt = subscription.free_rejections_reset_at ? new Date(subscription.free_rejections_reset_at) : new Date(0);
+        const needsReset = now.getTime() - resetAt.getTime() > 24 * 60 * 60 * 1000;
+
+        let freeRejectionsUsed = needsReset ? 0 : (subscription.free_rejections_used || 0);
+        let creditCost = 0;
+
+        if (freeRejectionsUsed < 3) {
+            // Use free quota
+            freeRejectionsUsed++;
+            await supabase
+                .from('subscriptions')
+                .update({
+                    free_rejections_used: freeRejectionsUsed,
+                    free_rejections_reset_at: needsReset ? now.toISOString() : subscription.free_rejections_reset_at
+                })
+                .eq('user_id', ownerId);
+            console.log('[Campaign Reject] Using free rejection quota:', freeRejectionsUsed, '/3');
+        } else {
+            // Charge 50 credits
+            if ((subscription.credits_remaining || 0) < 50) {
+                res.status(400).json({ 
+                    error: 'No free rejections left and insufficient credits',
+                    freeRejectionsRemaining: 0 
+                });
+                return;
+            }
+            creditCost = 50;
+            await supabase
+                .from('subscriptions')
+                .update({ credits_remaining: subscription.credits_remaining - 50 })
+                .eq('user_id', ownerId);
+            console.log('[Campaign Reject] Charged 50 credits for rejection');
+        }
+
+        // Update first prompt if adjusted
+        const prompts = campaign.prompts as string[];
+        if (adjustedPrompt) {
+            prompts[0] = adjustedPrompt;
+            await supabase
+                .from('campaigns')
+                .update({ prompts })
+                .eq('id', campaignId);
+        }
+
+        // Delete old anchor asset
+        await supabase
+            .from('assets')
+            .delete()
+            .eq('campaign_id', campaignId)
+            .eq('is_campaign_anchor', true);
+
+        // Generate new anchor (similar to preview)
+        const anchorPrompt = prompts[0];
+        const mappedBusiness = { name: business.name, colors: business.colors || {}, logoUrl: business.logo_url };
+        const brandColors = mappedBusiness.colors?.palette?.join(', ') || '';
+        const branding = extractBrandingData(business);
+
+        const finalPrompt = `## CREATIVE FREEDOM MODE
+
+You are generating a creative visual for ${branding.name}.
+
+### USER'S VISION
+${anchorPrompt}
+
+### BRAND ASSETS
+- **Logo:** An image of the brand logo is provided. Integrate it NATURALLY into your design—it should look like it belongs, not pasted on.
+- **Color Palette:** ${brandColors || 'Use suitable colors'}
+
+### BUSINESS CONTACT DATA (Use these EXACT values if including contact info)
+- Business Name: ${branding.name}
+- Location: ${branding.location}
+- WhatsApp: ${branding.whatsapp}
+- Phone: ${branding.phone}
+
+You decide WHERE and HOW to incorporate this branding based on the visual style. It could be a footer bar, corner badge, integrated watermark, or woven into the design—whatever fits the aesthetic.
+
+### GUIDELINES
+- **Aspect ratio:** ${campaign.aspect_ratio}
+- All text must be diegetic and spelled correctly.
+- If you include contact details, use the EXACT values above—do NOT fabricate numbers.
+- This is the ANCHOR image — establish strong visual identity.`;
+
+        const googleParts: any[] = [];
+
+        if (mappedBusiness.logoUrl) {
+            const logoImage = await urlToBase64WithMime(mappedBusiness.logoUrl);
+            if (logoImage) {
+                googleParts.push({
+                    inlineData: { mimeType: logoImage.mimeType, data: logoImage.base64 }
+                });
+            }
+        }
+
+        googleParts.push({ text: finalPrompt });
+
+        const googleClient = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY! });
+        const result = await googleClient.models.generateContent({
+            model: 'gemini-3-pro-image-preview',
+            contents: [{ role: 'user', parts: googleParts }],
+            config: {
+                responseModalities: ['TEXT', 'IMAGE'],
+                imageConfig: { aspectRatio: campaign.aspect_ratio, imageSize: campaign.model_tier === 'ultra' ? '4K' : '2K' }
+            } as any
+        });
+
+        const parts = result.candidates?.[0]?.content?.parts || [];
+        const imagePart = parts.find((p: any) => p.inlineData?.mimeType?.startsWith('image/'));
+
+        if (!imagePart?.inlineData) {
+            res.status(500).json({ error: 'No image returned by AI' });
+            return;
+        }
+
+        const resultImage = `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
+        const publicUrl = await uploadToStorage(resultImage, campaign.business_id, supabase);
+
+        if (!publicUrl) {
+            res.status(500).json({ error: 'Failed to upload new anchor' });
+            return;
+        }
+
+        // Create new anchor asset
+        const assetId = `asset_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        await supabase.from('assets').insert({
+            id: assetId,
+            business_id: campaign.business_id,
+            type: 'image',
+            prompt: anchorPrompt,
+            content: publicUrl,
+            style_id: campaign.style_id,
+            aspect_ratio: campaign.aspect_ratio,
+            campaign_id: campaignId,
+            is_campaign_anchor: true
+        });
+
+        // Update campaign
+        await supabase
+            .from('campaigns')
+            .update({ anchor_url: publicUrl })
+            .eq('id', campaignId);
+
+        console.log('[Campaign Reject] ✅ New anchor generated:', assetId);
+
+        res.json({
+            campaignId,
+            anchorUrl: publicUrl,
+            anchorAssetId: assetId,
+            creditCost,
+            freeRejectionsRemaining: Math.max(0, 3 - freeRejectionsUsed)
+        });
+
+    } catch (error: any) {
+        console.error('[Campaign Reject] Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ============================================================================
 // TASK ATTACHMENTS API
 // ============================================================================
 
@@ -3744,6 +4726,8 @@ app.listen(port, () => {
     console.log(`   - POST /api/generate-image (NEW: Job-based)`);
     console.log(`   - GET  /api/generate-image/status/:jobId`);
     console.log(`   - GET  /api/generate-image/pending/:businessId`);
+    console.log(`   - POST /api/generate-campaign (NEW: Orchestrated)`);
+    console.log(`   - GET  /api/generate-campaign/status/:campaignId`);
     console.log(`   - POST /api/extract-website`);
     console.log(`   - POST /api/export-print`);
     console.log(`   - SOCIAL: /api/social/* (install, callback, accounts, post, sync)`);

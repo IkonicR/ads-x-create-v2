@@ -17,6 +17,14 @@ import { useJobs } from '../context/JobContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import { ChatSession } from '../services/chatService';
 
+// Strip internal context comments (e.g., <!-- campaignId: xxx -->) from display
+const stripInternalComments = (text: string): string => {
+  return text
+    .replace(/<!--\s*campaignId:\s*[^>]+-->/gi, '')
+    .replace(/\n{3,}/g, '\n\n') // Clean up excess newlines
+    .trim();
+};
+
 interface ChatInterfaceProps {
   business: Business;
 }
@@ -47,9 +55,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
     styleName?: string;
   } | null>(null);  // Generation feedback metadata
   const [sendCooldown, setSendCooldown] = useState(false); // Rate limiting: 2s cooldown
+  
+  // Campaign progress tracking: show inline progress as images generate
+  const [activeCampaign, setActiveCampaign] = useState<{
+    id: string;
+    totalImages: number;
+    completedImages: number;
+    assetUrls: string[];
+    aspectRatio?: string;  // Track aspect ratio for proper display
+  } | null>(null);
 
   // Track which job IDs we've already processed to prevent duplicate saves
   const processedJobIds = useRef<Set<string>>(new Set());
+  
+  // Ref to track loading state for Realtime subscription (avoids re-subscription on loading change)
+  const loadingRef = useRef(false);
 
   // Generate the welcome message
   const getWelcomeMessage = useCallback((): ChatMessage => ({
@@ -195,6 +215,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
 
     const reloadMessages = async () => {
       if (isLoading) return;  // Prevent concurrent loads
+      
+      // CRITICAL: Skip reload while we're actively sending a message
+      // This prevents duplicate messages from Realtime triggering reload
+      if (loadingRef.current) {
+        console.log('[ChatInterface] ⏭️ Skipping reload - message send in progress');
+        return;
+      }
 
       // Skip first run if cache already has the data
       if (!hasRunOnce && skipInitialReload) {
@@ -383,10 +410,60 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
     poll();
   }, [sessionId, updateCache]);
 
+  // Campaign progress polling: fetch status and update inline progress display
+  const pollCampaignProgress = useCallback(async (campaignId: string) => {
+    console.log('[ChatInterface] 🎬 Starting campaign progress poll:', campaignId);
+    
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/generate-campaign/status/${campaignId}`);
+        if (!res.ok) {
+          console.error('[ChatInterface] Campaign status fetch failed:', res.status);
+          return;
+        }
+        
+        const data = await res.json();
+        console.log('[ChatInterface] 📊 Campaign status:', {
+          completed: data.completedImages,
+          total: data.totalImages,
+          status: data.status
+        });
+        
+        setActiveCampaign({
+          id: campaignId,
+          totalImages: data.totalImages,
+          completedImages: data.completedImages,
+          assetUrls: data.assetUrls || [],
+          aspectRatio: data.aspectRatio || '1:1'  // Track aspect ratio for proper display
+        });
+        
+        // Keep polling until complete (status becomes 'completed' when all images done)
+        if (data.status !== 'completed' && data.completedImages < data.totalImages) {
+          setTimeout(poll, 2000);  // Poll every 2s
+        } else {
+          console.log('[ChatInterface] ✅ Campaign complete!', campaignId);
+          // Keep the campaign visible for 15 seconds so user can see completion
+          setTimeout(() => setActiveCampaign(null), 15000);
+        }
+      } catch (err) {
+        console.error('[ChatInterface] Campaign poll error:', err);
+      }
+    };
+    
+    poll();
+  }, []);
+
   // Sync pendingJobId/pendingJobIds state from JobContext
   // JobContext handles polling; we just need to track which jobs are ours
   useEffect(() => {
     const chatJobs = jobs.filter(j => j.type === 'chat' && j.businessId === business.id);
+    
+    // DEBUG: Log job filtering for troubleshooting
+    console.log('[ChatInterface] 🔍 Job sync effect:', {
+      totalJobs: jobs.length,
+      chatJobsForBusiness: chatJobs.length,
+      chatJobs: chatJobs.map(j => ({ id: j.id, type: j.type, status: j.status, result: !!j.result }))
+    });
 
     if (chatJobs.length === 0) {
       // No pending chat jobs
@@ -402,6 +479,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
     const pendingJobs = chatJobs.filter(j => j.status === 'polling');
     const completedJobs = chatJobs.filter(j => j.status === 'complete' && j.result);
     const failedJobs = chatJobs.filter(j => j.status === 'failed');
+    
+    console.log('[ChatInterface] 📊 Job breakdown:', {
+      pending: pendingJobs.length,
+      completed: completedJobs.length,
+      failed: failedJobs.length
+    });
+
 
     // Handle failed jobs - show error message, refund credits, and remove
     if (failedJobs.length > 0) {
@@ -501,6 +585,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
 
     setInput('');
     setLoading(true);
+    loadingRef.current = true;  // Sync ref for Realtime subscription
     setSendCooldown(true); // Start cooldown
     setTimeout(() => setSendCooldown(false), 2000); // Reset after 2s
     setEditMode(null); // Clear edit mode if active
@@ -593,10 +678,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
         role: 'ai',
         text: aiResponse.text,
         timestamp: new Date(),
-        attachment: aiResponse.image ? {
-          type: 'image',
-          content: aiResponse.image
-        } : undefined
+        attachments: aiResponse.image ? [{ type: 'image', content: aiResponse.image }] : undefined
       };
 
       // Save AI response to DB - CRITICAL: We need the database ID for attachment persistence
@@ -630,6 +712,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
 
       if (!isValidUuid && (aiResponse.jobId || aiResponse.jobIds?.length)) {
         console.warn('[ChatInterface] ⚠️ Message save failed - attachments may not persist. MessageId:', effectiveMessageId);
+      }
+
+      // CRITICAL FIX: Save direct image responses (like preview_campaign_anchor) to chat_attachments
+      // This prevents race condition where realtime reloadMessages() wipes out in-memory attachments
+      if (aiResponse.image && isValidUuid && !aiResponse.jobId && !aiResponse.jobIds?.length) {
+        console.log('[ChatInterface] 💾 Saving direct image attachment:', aiResponse.image.substring(0, 80) + '...');
+        chatService.saveAttachment(dbMessageId!, business.id, aiResponse.image, {
+          aspectRatio: aiResponse.generationMeta?.aspectRatio,
+          styleName: aiResponse.generationMeta?.styleName,
+        });
       }
 
       // CRITICAL: Deduct credits for chat-triggered image generations
@@ -676,6 +768,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
         setGenerationMeta(aiResponse.generationMeta || { total: aiResponse.jobIds.length });
       }
 
+      // Campaign progress: Start polling if continue_campaign was called
+      // Only trigger when campaignGenerating is true (not on preview_campaign_anchor)
+      if (aiResponse.campaignId && aiResponse.campaignGenerating) {
+        console.log('[ChatInterface] 🎬 Campaign generating, starting progress poll:', aiResponse.campaignId);
+        pollCampaignProgress(aiResponse.campaignId);
+      }
+
     } catch (error) {
       console.error("Chat Error", error);
       const errorMsg: ChatMessage = {
@@ -687,6 +786,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
       setMessages(prev => [...prev, errorMsg]);
     } finally {
       setLoading(false);
+      loadingRef.current = false;  // Sync ref for Realtime subscription
     }
   };
 
@@ -835,7 +935,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
                   : `${styles.bg} ${styles.shadowIn} ${styles.textMain} border-l-4 border-brand whitespace-pre-wrap`
                   }`}>
                   {msg.role === 'ai' ? (
-                    <MarkdownRenderer content={msg.text} />
+                    <MarkdownRenderer content={stripInternalComments(msg.text)} />
                   ) : (
                     msg.text
                   )}
@@ -974,6 +1074,82 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
               </div>
             </div>
           )}
+          
+          {/* Campaign Progress Card: Shows inline progress as images generate */}
+          {activeCampaign && (
+            <div className="flex gap-4">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${styles.bg} ${styles.shadowOut} text-brand`}>
+                <Sparkles size={20} className="animate-pulse" />
+              </div>
+              <NeuCard className="flex-1">
+                <div className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="font-semibold text-brand">
+                      🎬 Generating Campaign...
+                    </span>
+                    <span className={`text-sm ${styles.muted}`}>
+                      {activeCampaign.completedImages}/{activeCampaign.totalImages}
+                    </span>
+                  </div>
+                  {/* Progress bar */}
+                  <div className={`h-2 rounded-full ${styles.bg} ${styles.shadowIn} mb-4 overflow-hidden`}>
+                    <div 
+                      className="h-full bg-linear-to-r from-brand to-accent transition-all duration-500"
+                      style={{ width: `${(activeCampaign.completedImages / Math.max(activeCampaign.totalImages, 1)) * 100}%` }}
+                    />
+                  </div>
+                  {/* Image grid - dynamic aspect ratio based on campaign */}
+                  <div className="grid grid-cols-2 gap-2">
+                    {Array.from({ length: activeCampaign.totalImages }).map((_, i) => {
+                      // Dynamic aspect ratio class based on campaign setting
+                      const getAspectClass = (ratio?: string) => {
+                        switch (ratio) {
+                          case '9:16': return 'aspect-[9/16]';
+                          case '16:9': return 'aspect-[16/9]';
+                          case '4:5': return 'aspect-[4/5]';
+                          case '5:4': return 'aspect-[5/4]';
+                          case '2:3': return 'aspect-[2/3]';
+                          case '3:2': return 'aspect-[3/2]';
+                          case '3:4': return 'aspect-[3/4]';
+                          case '4:3': return 'aspect-[4/3]';
+                          case '21:9': return 'aspect-[21/9]';
+                          default: return 'aspect-square';
+                        }
+                      };
+                      
+                      return (
+                        <div key={i} className={`${getAspectClass(activeCampaign.aspectRatio)} rounded-lg overflow-hidden ${styles.bg} ${styles.shadowIn}`}>
+                          {activeCampaign.assetUrls[i] ? (
+                            <img 
+                              src={activeCampaign.assetUrls[i]} 
+                              alt={`Campaign image ${i + 1}`}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {activeCampaign.completedImages === activeCampaign.totalImages && (
+                    <div className="mt-3 flex items-center justify-between">
+                      <span className="text-brand font-medium">✅ Campaign complete!</span>
+                      <button 
+                        onClick={() => setActiveCampaign(null)}
+                        className={`text-sm ${styles.muted} hover:text-brand transition-colors`}
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </NeuCard>
+            </div>
+          )}
+          
           <div ref={messagesEndRef} />
         </div>
 

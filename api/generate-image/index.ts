@@ -105,7 +105,9 @@ export async function POST(req: Request) {
         strategy,
         subjectContext,
         stylePreset,
-        isFreedomMode // NEW: Freedom Mode flag
+        isFreedomMode,
+        campaignAnchorUrl,   // Campaign anchor URL (for style consistency)
+        campaignId           // Campaign UUID (grouping related assets)
     } = body;
 
     if (!businessId || !prompt) {
@@ -202,7 +204,9 @@ export async function POST(req: Request) {
                 supabase,
                 host,
                 systemPrompts,
-                isFreedomMode // Pass flag
+                isFreedomMode,
+                campaignAnchorUrl,
+                campaignId
             );
             console.log('[Generate] Generation completed successfully');
 
@@ -291,7 +295,9 @@ async function runGeneration(
     supabase: any,
     host: string,
     systemPrompts: any,
-    isFreedomMode?: boolean // Capture flag
+    isFreedomMode?: boolean,
+    campaignAnchorUrl?: string,  // URL of first image in campaign (for consistency)
+    campaignId?: string          // UUID grouping campaign assets
 ) {
     try {
         // Update job status
@@ -397,6 +403,20 @@ ${styleInstructions ? `=== STYLE INSTRUCTIONS ===\n${styleInstructions}` : ''}
         const contentParts: Array<{ type: 'text'; text: string } | { type: 'image'; image: string }> = [
             { type: 'text', text: finalPrompt }
         ];
+
+        // === CAMPAIGN ANCHOR (Slot 1 Priority) ===
+        // Inject FIRST for maximum style influence per Gemini 3 Pro reference hierarchy
+        if (campaignAnchorUrl) {
+            const anchorResult = await urlToBase64WithMime(campaignAnchorUrl, host);
+            if (anchorResult) {
+                // UNSHIFT = Add to BEGINNING for Slot 1 priority
+                contentParts.unshift({ type: 'image', image: `data:${anchorResult.mimeType};base64,${anchorResult.base64}` });
+                contentParts.unshift({ type: 'text', text: '[CAMPAIGN ANCHOR] This is the style reference for a cohesive campaign. Match its exact lighting, color palette, composition, and visual mood. Vary the content but preserve the aesthetic.' });
+                console.log('[Generate] ✓ Campaign anchor loaded as Slot 1');
+            } else {
+                console.error('[Generate] ✗ Campaign anchor fetch FAILED:', campaignAnchorUrl.substring(0, 50));
+            }
+        }
 
         // Add subject image
         if (subjectContext?.imageUrl) {
@@ -514,6 +534,16 @@ ${styleInstructions ? `=== STYLE INSTRUCTIONS ===\n${styleInstructions}` : ''}
             throw new Error('No image in response');
         }
 
+        // Capture thought signature for multi-turn editing (if present)
+        let thoughtSignature: string | undefined;
+        for (const part of parts) {
+            if ((part as any).thought_signature) {
+                thoughtSignature = (part as any).thought_signature;
+                console.log('[Generate] ✓ Thought signature captured');
+                break;
+            }
+        }
+
         const resultImage = `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
 
         // Upload to storage
@@ -525,7 +555,7 @@ ${styleInstructions ? `=== STYLE INSTRUCTIONS ===\n${styleInstructions}` : ''}
         // Finalize
         await supabase.from('generation_jobs').update({ error_message: 'Finalizing...' }).eq('id', jobId);
 
-        // Create asset
+        // Create asset with campaign tracking
         const assetId = `asset_${Date.now()}_${Math.random().toString(36).substring(7)}`;
         await supabase.from('assets').insert({
             id: assetId,
@@ -537,7 +567,10 @@ ${styleInstructions ? `=== STYLE INSTRUCTIONS ===\n${styleInstructions}` : ''}
             style_preset: stylePreset?.name,
             style_id: styleId,
             subject_id: subjectId,
-            model_tier: modelTier
+            model_tier: modelTier,
+            campaign_id: campaignId || null,
+            is_campaign_anchor: campaignId && !campaignAnchorUrl ? true : false, // First in series = anchor
+            thought_signature: thoughtSignature || null
         });
 
         // Update job

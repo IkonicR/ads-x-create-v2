@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Asset } from '../types';
 import { StorageService } from '../services/storage';
+import { supabase } from '../services/supabase';
 
 interface AssetContextType {
     assets: Asset[]; // Renamed from libraryAssets
@@ -184,6 +185,40 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }
         }
     }, [assets, currentBusinessId]);
+
+    // -------------------------------------------------------------------------
+    // REALTIME: Subscribe to new assets from any source (chat, generator, etc.)
+    // -------------------------------------------------------------------------
+    useEffect(() => {
+        if (!currentBusinessId) return;
+
+        const channel = supabase
+            .channel(`assets-${currentBusinessId}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'assets',
+                    filter: `business_id=eq.${currentBusinessId}`
+                },
+                (payload) => {
+                    console.log('[AssetContext] 🔔 Realtime INSERT:', payload.new);
+                    const newAsset = payload.new as Asset;
+                    
+                    // Prepend to state (newest first), avoiding duplicates
+                    setAssets(prev => {
+                        if (prev.some(a => a.id === newAsset.id)) return prev;
+                        return [newAsset, ...prev];
+                    });
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [currentBusinessId]);
 
     return (
         <AssetContext.Provider value={{
