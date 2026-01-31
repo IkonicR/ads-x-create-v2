@@ -152,14 +152,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ business }) => {
 
         if (!session) return; // No session yet - will create on first message
 
-        // CRITICAL: If session matches what we already have from cache, skip reload
-        if (cached?.sessionId === session.id && cached.messages.length > 0) {
-          console.log('[ChatInterface] ✅ Session matches cache - keeping current messages');
-          setSessionId(session.id);
-          localStorage.setItem(storageKey, session.id);
-          return; // Don't overwrite!
-        }
-
+        // Always load from database - it's the source of truth for attachments
+        // Cache is only an optimization layer for initial text render
         console.log('[ChatInterface] Loading messages for session:', session.id);
         setSessionId(session.id);
         // Persist to localStorage for future
